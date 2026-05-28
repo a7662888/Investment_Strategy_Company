@@ -181,8 +181,18 @@ def fetch_yahoo_intraday_quotes(symbols: list[str]) -> list[dict]:
         if latest_index is None:
             continue
         price = float(closes[latest_index])
-        prev_close = parse_float(meta.get("chartPreviousClose")) or parse_float(meta.get("previousClose"))
+        prev_close = parse_float(meta.get("previousClose")) or parse_float(meta.get("chartPreviousClose"))
         change_pct = 0.0 if not prev_close else (price / prev_close - 1.0) * 100.0
+        latest_dt = datetime.fromtimestamp(timestamps[latest_index], tz=timezone(timedelta(hours=8)))
+        same_day_indexes = [
+            index
+            for index, timestamp in enumerate(timestamps)
+            if datetime.fromtimestamp(timestamp, tz=timezone(timedelta(hours=8))).date() == latest_dt.date()
+        ]
+        day_opens = [float(opens[index]) for index in same_day_indexes if index < len(opens) and opens[index] is not None]
+        day_highs = [float(highs[index]) for index in same_day_indexes if index < len(highs) and highs[index] is not None]
+        day_lows = [float(lows[index]) for index in same_day_indexes if index < len(lows) and lows[index] is not None]
+        day_volumes = [float(volumes[index]) for index in same_day_indexes if index < len(volumes) and volumes[index] is not None]
         results.append(
             {
                 "symbol": symbol,
@@ -190,12 +200,12 @@ def fetch_yahoo_intraday_quotes(symbols: list[str]) -> list[dict]:
                 "regularMarketPrice": price,
                 "regularMarketChangePercent": change_pct,
                 "regularMarketTime": int(timestamps[latest_index]),
-                "marketDate": datetime.fromtimestamp(timestamps[latest_index], tz=timezone(timedelta(hours=8))).date().isoformat(),
-                "marketTime": datetime.fromtimestamp(timestamps[latest_index], tz=timezone(timedelta(hours=8))).time().isoformat(timespec="seconds"),
-                "open": parse_float(meta.get("regularMarketOpen")) or (float(opens[0]) if opens and opens[0] is not None else None),
-                "dayHigh": parse_float(meta.get("regularMarketDayHigh")) or (max(float(item) for item in highs if item is not None) if highs else None),
-                "dayLow": parse_float(meta.get("regularMarketDayLow")) or (min(float(item) for item in lows if item is not None) if lows else None),
-                "volume": float(meta.get("regularMarketVolume") or volumes[latest_index] or 0),
+                "marketDate": latest_dt.date().isoformat(),
+                "marketTime": latest_dt.time().isoformat(timespec="seconds"),
+                "open": day_opens[0] if day_opens else None,
+                "dayHigh": parse_float(meta.get("regularMarketDayHigh")) or (max(day_highs) if day_highs else None),
+                "dayLow": parse_float(meta.get("regularMarketDayLow")) or (min(day_lows) if day_lows else None),
+                "volume": float(meta.get("regularMarketVolume") or sum(day_volumes)),
                 "source": "Yahoo 1m intraday",
                 "realtimeStatus": "雲端可用盤中分鐘線，可能延遲；TWSE MIS 不可用時使用",
             }

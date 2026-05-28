@@ -50,6 +50,69 @@ function modelLine(model) {
   return `<p class="modelLine">AI 模型：偏多機率 ${model.probability_up ?? "-"}% · 趨勢 ${model.trend_points ?? "-"} · 動能 ${model.momentum_points ?? "-"} · RSI ${model.rsi14 ?? "-"} · 波動 ${model.volatility_20 ?? "-"}</p>`;
 }
 
+function calibratedModelPanel(model) {
+  if (!model || !model.calibrated_probability_up) return "";
+  
+  const prob = model.calibrated_probability_up;
+  const cal = model.calibrated; // prob_bucket, empirical_up_rate, avg_fwd_return, sample_count, horizon_days
+  const reasons = model.calibrated_reasons || [];
+  const metrics = model.calibrated_evidence || {};
+
+  const isUp = prob >= 50.0;
+  const badgeClass = isUp ? "pos" : "neg";
+  const predictionText = isUp ? "看漲" : "看跌";
+  
+  let calEvidenceHtml = "";
+  if (cal && cal.empirical_up_rate !== undefined) {
+    const avgFwdReturn = cal.avg_fwd_return;
+    const returnClass = avgFwdReturn >= 0 ? "pos" : "neg";
+    const upRatePercent = (cal.empirical_up_rate * 100).toFixed(1);
+    const avgReturnPercent = (avgFwdReturn * 100).toFixed(2);
+    calEvidenceHtml = `
+      <div style="font-size: 13px; color: var(--muted); margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px;">
+        📊 <strong>樣本外前向校準驗證：</strong><br />
+        前向預測天數：<strong>${cal.horizon_days || 5} 天</strong><br />
+        所屬機率區間：<strong>${cal.prob_bucket}</strong><br />
+        歷史同區間實際上漲率：<strong class="pos" style="font-weight: bold;">${upRatePercent}%</strong><br />
+        平均持有報酬率：<strong class="${returnClass}" style="font-weight: bold;">${avgReturnPercent}%</strong> 
+        (歷史樣本數：${cal.sample_count})
+      </div>
+    `;
+  }
+
+  const reasonsHtml = reasons.map(r => {
+    const cls = r.includes("偏多") ? "pos" : r.includes("偏空") ? "neg" : "";
+    return `<li style="font-size: 13px; margin-top: 2px;">
+      <span class="${cls}">${r}</span>
+    </li>`;
+  }).join("");
+
+  return `
+    <div class="calibrated-model-card" style="
+      margin-top: 10px; 
+      padding: 10px; 
+      background: #faf5ff; 
+      border: 1px solid #e9d5ff; 
+      border-radius: 6px;
+      text-align: left;
+    ">
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; color: #6d28d9; margin-bottom: 6px;">
+        <span>🎯 離線訓練校準模型 (logit_v1)</span>
+        <span class="${badgeClass}">${predictionText} (${prob.toFixed(1)}%)</span>
+      </div>
+      
+      <div style="font-size: 13px; color: var(--muted); margin-bottom: 6px;">
+        <strong>主要因子貢獻 (前 4 項)：</strong>
+        <ul style="margin: 4px 0 0 15px; padding: 0; list-style-type: disc;">
+          ${reasonsHtml}
+        </ul>
+      </div>
+      
+      ${calEvidenceHtml}
+    </div>
+  `;
+}
+
 function aiPredictorLine(pred) {
   if (!pred) return "";
 
@@ -178,6 +241,7 @@ async function recommendToday() {
         ${modelLine(item.model)}
         <ul>${asArray(item.reasons).map(reason => `<li>${reason}</li>`).join("")}</ul>
         ${aiPredictorLine(item.ai_predictor)}
+        ${calibratedModelPanel(item.model)}
       </article>
     `).join("") : "<p>沒有候選資料，請縮短區間或確認股票代號。</p>";
   } catch (err) {
@@ -215,6 +279,7 @@ async function nextDayPlan() {
         ${modelLine(item.model)}
         <ul>${asArray(item.reasons).map(reason => `<li>${reason}</li>`).join("")}</ul>
         ${aiPredictorLine(item.ai_predictor)}
+        ${calibratedModelPanel(item.model)}
       </article>`;
     }).join("") : "<p>沒有明日計畫資料，請確認股票代號或區間。</p>";
   } catch (err) {
