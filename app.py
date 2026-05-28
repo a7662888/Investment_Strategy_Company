@@ -38,40 +38,261 @@ def to_epoch(date_text: str) -> int:
 
 
 def yahoo_json(url: str) -> dict:
-    request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    return http_json(url, {"User-Agent": "Mozilla/5.0"})
+
+
+def http_json(url: str, headers: dict[str, str] | None = None) -> dict:
+    request = urllib.request.Request(url, headers=headers or {"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(request, timeout=25) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
-def fetch_quote(symbols: list[str]) -> dict:
+def parse_float(value: object) -> float | None:
     try:
-        query = urllib.parse.urlencode({"symbols": ",".join(symbols)})
-        url = f"https://query1.finance.yahoo.com/v7/finance/quote?{query}"
-        return yahoo_json(url)
+        if value in (None, "", "-"):
+            return None
+        return float(str(value).replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def tw_code(symbol: str) -> str:
+    return symbol.strip().split(".")[0]
+
+
+def twse_market_timestamp(date_text: str | None, time_text: str | None) -> int | None:
+    if not date_text or not time_text:
+        return None
+    for fmt in ("%Y%m%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
+        try:
+            parsed = datetime.strptime(f"{date_text} {time_text}", fmt)
+            return int(parsed.replace(tzinfo=timezone(timedelta(hours=8))).timestamp())
+        except ValueError:
+            continue
+    return None
+
+
+def fetch_twse_mis_quotes(symbols: list[str]) -> list[dict]:
+    channels = []
+    for symbol in symbols:
+        code = tw_code(symbol)
+        channels.extend([f"tse_{code}.tw", f"otc_{code}.tw"])
+
+    if not channels:
+        return []
+
+    query = urllib.parse.urlencode(
+        {
+            "ex_ch": "|".join(channels),
+            "json": "1",
+            "delay": "0",
+            "_": str(int(datetime.now().timestamp() * 1000)),
+        },
+        safe="|",
+    )
+    url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?{query}"
+    payload = http_json(
+        url,
+        {
+            "User-Agent": "Mozilla/5.0",
+            "Referer": "https://mis.twse.com.tw/stock/fibest.jsp",
+        },
+    )
+
+    results: dict[str, dict] = {}
+    for item in payload.get("msgArray", []):
+        code = item.get("c")
+        if not code:
+            continue
+        symbol = f"{code}.TW"
+        if symbol not in symbols:
+            continue
+
+        price = parse_float(item.get("z")) or parse_float(item.get("pz")) or parse_float(item.get("y"))
+        prev_close = parse_float(item.get("y"))
+        if price is None:
+            continue
+
+        change_pct = 0.0 if not prev_close else (price / prev_close - 1.0) * 100.0
+        timestamp = twse_market_timestamp(item.get("d"), item.get("t")) or twse_market_timestamp(
+            payload.get("queryTime", {}).get("sysDate"),
+            payload.get("queryTime", {}).get("sysTime"),
+        )
+        source = "TWSE MIS" if item.get("ex") == "tse" else "TPEx/TWSE MIS"
+        results[symbol] = {
+            "symbol": symbol,
+            "shortName": item.get("n") or symbol,
+            "regularMarketPrice": price,
+            "regularMarketChangePercent": change_pct,
+            "regularMarketTime": timestamp,
+            "marketDate": item.get("d"),
+            "marketTime": item.get("t"),
+            "open": parse_float(item.get("o")),
+            "dayHigh": parse_float(item.get("h")),
+            "dayLow": parse_float(item.get("l")),
+            "volume": parse_float(item.get("v")),
+            "source": source,
+            "realtimeStatus": "盤中撮合/收盤後最後成交價",
+        }
+    return [results[symbol] for symbol in symbols if symbol in results]
+
+
+def fetch_yahoo_quotes(symbols: list[str]) -> list[dict]:
+    query = urllib.parse.urlencode({"symbols": ",".join(symbols)})
+    url = f"https://query1.finance.yahoo.com/v7/finance/quote?{query}"
+    payload = yahoo_json(url)
+    results = []
+    for item in payload.get("quoteResponse", {}).get("result", []):
+        item["source"] = "Yahoo Finance"
+        item["realtimeStatus"] = "備援資料，可能延遲或非盤中"
+        results.append(item)
+    return results
+
+
+def fetch_history_quote(symbol: str) -> dict | None:
+    end = datetime.now().date()
+    start = (end - timedelta(days=10)).isoformat()
+    end_exclusive = (end + timedelta(days=1)).isoformat()
+    rows = fetch_history(symbol, start, end_exclusive)
+    if not rows:
+        return None
+    latest = rows[-1]
+    previous = rows[-2] if len(rows) > 1 else latest
+    price = float(latest["close"])
+    prev_close = float(previous["close"])
+    change_pct = 0.0 if prev_close == 0 else (price / prev_close - 1) * 100
+    return {
+        "symbol": symbol,
+        "shortName": symbol,
+        "regularMarketPrice": price,
+        "regularMarketChangePercent": change_pct,
+        "regularMarketTime": int(datetime.fromisoformat(latest["date"]).replace(tzinfo=timezone.utc).timestamp()),
+        "source": "Yahoo daily chart fallback",
+        "realtimeStatus": "日線備援，不是即時報價",
+    }
+
+
+def iso_from_tw_date(date_text: str | None) -> str | None:
+    if not date_text:
+        return None
+    for fmt in ("%Y%m%d", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(date_text, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
+
+
+def merge_live_quote_into_history(symbol: str, rows: list[dict]) -> list[dict]:
+    if not rows or not symbol.endswith(".TW"):
+        return rows
+    latest_date = datetime.fromisoformat(rows[-1]["date"]).date()
+    if (datetime.now(timezone(timedelta(hours=8))).date() - latest_date).days > 3:
+        return rows
+    try:
+        quotes = fetch_twse_mis_quotes([symbol])
     except Exception:
-        results = []
-        end = datetime.now().date()
-        start = (end - timedelta(days=10)).isoformat()
-        end_exclusive = (end + timedelta(days=1)).isoformat()
-        for symbol in symbols:
-            rows = fetch_history(symbol, start, end_exclusive)
-            if not rows:
-                continue
-            latest = rows[-1]
-            previous = rows[-2] if len(rows) > 1 else latest
-            price = float(latest["close"])
-            prev_close = float(previous["close"])
-            change_pct = 0.0 if prev_close == 0 else (price / prev_close - 1) * 100
-            results.append(
-                {
-                    "symbol": symbol,
-                    "shortName": symbol,
-                    "regularMarketPrice": price,
-                    "regularMarketChangePercent": change_pct,
-                    "regularMarketTime": int(datetime.fromisoformat(latest["date"]).replace(tzinfo=timezone.utc).timestamp()),
-                }
-            )
-        return {"quoteResponse": {"result": results}}
+        return rows
+    if not quotes:
+        return rows
+    quote = quotes[0]
+    quote_date = iso_from_tw_date(quote.get("marketDate"))
+    if not quote_date:
+        return rows
+
+    merged_row = {
+        "date": quote_date,
+        "symbol": symbol,
+        "open": f"{float(quote.get('open') or quote['regularMarketPrice']):.4f}",
+        "high": f"{float(quote.get('dayHigh') or quote['regularMarketPrice']):.4f}",
+        "low": f"{float(quote.get('dayLow') or quote['regularMarketPrice']):.4f}",
+        "close": f"{float(quote['regularMarketPrice']):.4f}",
+        "volume": str(int(float(quote.get("volume") or 0))),
+    }
+    if rows[-1]["date"] == quote_date:
+        rows[-1] = merged_row
+    elif rows[-1]["date"] < quote_date:
+        rows.append(merged_row)
+    return rows
+
+
+def fetch_quote(symbols: list[str]) -> dict:
+    symbols = [symbol.strip() for symbol in symbols if symbol.strip()]
+    by_symbol: dict[str, dict] = {}
+    try:
+        for item in fetch_twse_mis_quotes(symbols):
+            by_symbol[item["symbol"]] = item
+    except Exception:
+        pass
+
+    missing = [symbol for symbol in symbols if symbol not in by_symbol]
+    if missing:
+        try:
+            for item in fetch_yahoo_quotes(missing):
+                by_symbol[item["symbol"]] = item
+        except Exception:
+            pass
+
+    missing = [symbol for symbol in symbols if symbol not in by_symbol]
+    for symbol in missing:
+        item = fetch_history_quote(symbol)
+        if item:
+            by_symbol[symbol] = item
+
+    return {
+        "quoteResponse": {"result": [by_symbol[symbol] for symbol in symbols if symbol in by_symbol]},
+        "quotePolicy": "TWSE/TPEx MIS first; Yahoo only as labeled fallback.",
+    }
+
+
+def sigmoid(value: float) -> float:
+    return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, value))))
+
+
+def model_evidence(symbol: str, closes: list[float]) -> dict:
+    last = closes[-1]
+    ma20 = moving_average(closes, 20)
+    ma60 = moving_average(closes, 60)
+    ma120 = moving_average(closes, 120)
+    momentum_20 = last / closes[-21] - 1 if len(closes) > 21 else 0
+    volatility = 0.0
+    if len(closes) > 21:
+        returns = [closes[i] / closes[i - 1] - 1 for i in range(len(closes) - 20, len(closes))]
+        avg = sum(returns) / len(returns)
+        volatility = math.sqrt(sum((item - avg) ** 2 for item in returns) / len(returns))
+    rsi = calculate_rsi_list(closes, 14)
+    _, _, hist_val = calculate_macd_list(closes, 12, 26, 9)
+
+    trend_points = 0.0
+    if ma20 and ma60:
+        trend_points += 1.4 if last > ma20 > ma60 else -0.9 if last < ma20 < ma60 else 0.0
+    if ma60 and ma120:
+        trend_points += 0.8 if ma60 > ma120 else -0.5
+    momentum_points = max(-1.2, min(1.2, momentum_20 * 8.0))
+    rsi_points = 0.4 if 45 <= rsi <= 68 else -0.5 if rsi > 76 else 0.2 if rsi < 35 else 0.0
+    macd_points = 0.5 if hist_val > 0 else -0.4
+    risk_points = -0.8 if volatility > 0.045 else 0.2 if volatility < 0.025 else 0.0
+    raw_score = trend_points + momentum_points + rsi_points + macd_points + risk_points
+
+    return {
+        "name": "interpretable_technical_ensemble_v1",
+        "symbol": symbol,
+        "trend_points": round(trend_points, 3),
+        "momentum_points": round(momentum_points, 3),
+        "rsi_points": round(rsi_points, 3),
+        "macd_points": round(macd_points, 3),
+        "risk_points": round(risk_points, 3),
+        "raw_score": round(raw_score, 3),
+        "probability_up": round(sigmoid(raw_score) * 100.0, 1),
+        "ma20": round(ma20, 2) if ma20 else None,
+        "ma60": round(ma60, 2) if ma60 else None,
+        "ma120": round(ma120, 2) if ma120 else None,
+        "momentum_20": round(momentum_20, 4),
+        "volatility_20": round(volatility, 4),
+        "rsi14": round(rsi, 1),
+        "macd_histogram": round(hist_val, 3),
+        "note": "可解釋技術因子模型，僅使用截止日以前資料；機率尚未校準，供訓練比較。",
+    }
 
 
 def fetch_history(symbol: str, start_date: str, end_date: str) -> list[dict]:
@@ -79,7 +300,7 @@ def fetch_history(symbol: str, start_date: str, end_date: str) -> list[dict]:
     cache_path = CACHE_DIR / f"{symbol.replace('.', '_')}_{start_date}_{end_date}.csv"
     if cache_path.exists() and cache_path.stat().st_size > 0:
         with cache_path.open("r", encoding="utf-8-sig", newline="") as handle:
-            return list(csv.DictReader(handle))
+            return merge_live_quote_into_history(symbol, list(csv.DictReader(handle)))
 
     params = {
         "period1": str(to_epoch(start_date)),
@@ -117,7 +338,7 @@ def fetch_history(symbol: str, start_date: str, end_date: str) -> list[dict]:
             writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
             writer.writeheader()
             writer.writerows(rows)
-    return rows
+    return merge_live_quote_into_history(symbol, rows)
 
 
 def moving_average(values: list[float], window: int) -> float | None:
@@ -180,6 +401,11 @@ def simulate(symbol: str, rows: list[dict], role: str, initial_cash: float) -> d
                 pending = "hold"
 
     final_equity = equity_curve[-1] if equity_curve else initial_cash
+    model_basis = (
+        "C-1 保守價值流：只看當日以前收盤，價格低於 MA60 7% 才分批買，反彈高於 MA60 5% 才賣。"
+        if role == "C-1"
+        else "C-2 激進動能流：只看當日以前收盤，MA15 上穿 MA45 才買，MA15 跌回 MA45 才賣。"
+    )
     return {
         "symbol": symbol,
         "role": role,
@@ -189,6 +415,8 @@ def simulate(symbol: str, rows: list[dict], role: str, initial_cash: float) -> d
         "total_return": round(final_equity / initial_cash - 1, 6),
         "max_drawdown": round(max_drawdown(equity_curve), 6) if equity_curve else 0,
         "trade_count": trades,
+        "model_basis": model_basis,
+        "training_note": "訊號在 T 日收盤後形成，下一個交易日開盤才執行；不讀取預設日期之後資料。",
         "future_knowledge_used": False,
     }
 
@@ -237,6 +465,7 @@ def calculate_macd_list(prices: list[float], fast: int = 12, slow: int = 26, sig
 def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
     closes = [float(row["close"]) for row in rows]
     last = closes[-1]
+    model = model_evidence(symbol, closes)
     ma20 = moving_average(closes, 20)
     ma60 = moving_average(closes, 60)
     ma120 = moving_average(closes, 120)
@@ -289,6 +518,11 @@ def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
     if not reasons:
         reasons.append("訊號不明確，暫列觀察")
 
+    reasons.append(
+        f"AI 因子模型估計隔日偏多機率 {model['probability_up']:.1f}%；"
+        f"趨勢 {model['trend_points']}、動能 {model['momentum_points']}、風險 {model['risk_points']}"
+    )
+
     action = "觀察"
     if score >= 5:
         action = "研究買進候選"
@@ -302,6 +536,7 @@ def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
         "score": score,
         "action": action,
         "reasons": reasons,
+        "model": model,
         "future_knowledge_used": False,
     }
 
@@ -349,6 +584,7 @@ def plan_next_session(symbol: str, rows: list[dict], position: dict | None) -> d
         "score": analysis["score"],
         "action": action,
         "reasons": reasons,
+        "model": analysis["model"],
         "rule": "收盤後產生明日計畫，不做當沖；買賣僅作研究與模擬用途。",
         "future_knowledge_used": False,
     }

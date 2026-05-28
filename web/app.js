@@ -28,6 +28,11 @@ function pct(value) {
   return `${(Number(value) * 100).toFixed(2)}%`;
 }
 
+function modelLine(model) {
+  if (!model) return "";
+  return `<p class="modelLine">AI 模型：偏多機率 ${model.probability_up}% · 趨勢 ${model.trend_points} · 動能 ${model.momentum_points} · RSI ${model.rsi14} · 波動 ${model.volatility_20}</p>`;
+}
+
 async function refreshQuotes() {
   const qs = symbols().join(",");
   $("quoteTime").textContent = "更新中";
@@ -44,9 +49,11 @@ async function refreshQuotes() {
       <td>${row.regularMarketPrice ?? ""}</td>
       <td class="${cls}">${change.toFixed(2)}%</td>
       <td>${time}</td>
+      <td>${row.source || ""}</td>
+      <td>${row.realtimeStatus || ""}</td>
     </tr>`;
   }).join("");
-  $("quoteTime").textContent = new Date().toLocaleString();
+  $("quoteTime").textContent = `${new Date().toLocaleString()} · ${data.quotePolicy || ""}`;
 }
 
 async function runTraining() {
@@ -76,6 +83,7 @@ async function runTraining() {
       <td class="${row.total_return >= 0 ? "pos" : "neg"}">${pct(row.total_return)}</td>
       <td class="neg">${pct(row.max_drawdown)}</td>
       <td>${row.trade_count}</td>
+      <td><span title="${row.training_note || ""}">${row.model_basis || ""}</span></td>
       <td>${row.future_knowledge_used ? "異常" : "未使用"}</td>
     </tr>
   `).join("");
@@ -106,6 +114,7 @@ async function recommendToday() {
         <span class="${item.score >= 5 ? "pos" : item.score <= -2 ? "neg" : "watch"}">分數 ${item.score}</span>
       </strong>
       <p>截至 ${item.last_date}，收盤 ${item.last_close}</p>
+      ${modelLine(item.model)}
       <ul>${item.reasons.map(reason => `<li>${reason}</li>`).join("")}</ul>
     </article>
   `).join("");
@@ -137,6 +146,7 @@ async function nextDayPlan() {
         <span>分數 ${item.score}</span>
       </strong>
       <p>截至 ${item.as_of}，收盤 ${item.last_close} ${gain}</p>
+      ${modelLine(item.model)}
       <ul>${item.reasons.map(reason => `<li>${reason}</li>`).join("")}</ul>
     </article>`;
   }).join("");

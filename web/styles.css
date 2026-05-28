@@ -158,6 +158,11 @@ th {
   padding-left: 20px;
   color: var(--muted);
 }
+.modelLine {
+  margin-top: 8px;
+  color: var(--blue);
+  font-size: 13px;
+}
 .pos { color: var(--red); }
 .neg { color: var(--green); }
 .watch { color: var(--amber); }
