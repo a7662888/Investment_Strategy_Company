@@ -15,14 +15,19 @@ import math
 from ..model.score import score_series
 
 REGIME_POLICY = {
+    # exposure = 建議總曝險(其餘現金);trail_stop = 組合自波段高點回落多少即轉現金(風險感知核心)
     "BULL_TREND": {"label": "多頭趨勢", "min_prob": 50, "mom_tilt": 35.0, "vol_pen": 0.0,
-                   "require_uptrend": False, "picks_factor": 1.0, "stance": "順勢追動能,可較積極"},
+                   "require_uptrend": False, "picks_factor": 1.0, "exposure": 1.0, "trail_stop": 0.18,
+                   "stance": "順勢追動能,可較積極(滿倉,移動停損 18%)"},
     "RANGE": {"label": "區間盤整", "min_prob": 52, "mom_tilt": 10.0, "vol_pen": 20.0,
-              "require_uptrend": False, "picks_factor": 0.8, "stance": "偏穩健,挑站穩均線且不過熱者"},
+              "require_uptrend": False, "picks_factor": 0.8, "exposure": 0.7, "trail_stop": 0.12,
+              "stance": "偏穩健,挑站穩均線且不過熱者(7 成倉,移動停損 12%)"},
     "BEAR_TREND": {"label": "空頭趨勢", "min_prob": 56, "mom_tilt": 5.0, "vol_pen": 60.0,
-                   "require_uptrend": True, "picks_factor": 0.4, "stance": "轉守,只留少數逆勢偏強且低波動者,寧可保留現金"},
+                   "require_uptrend": True, "picks_factor": 0.4, "exposure": 0.35, "trail_stop": 0.08,
+                   "stance": "轉守,僅 3.5 成倉、嚴格 8% 停損,其餘保留現金"},
     "HIGH_VOL": {"label": "高波動", "min_prob": 56, "mom_tilt": 5.0, "vol_pen": 90.0,
-                 "require_uptrend": True, "picks_factor": 0.4, "stance": "降風險,嚴篩低波動,部位收斂"},
+                 "require_uptrend": True, "picks_factor": 0.4, "exposure": 0.35, "trail_stop": 0.08,
+                 "stance": "降風險,3.5 成倉、嚴格 8% 停損,部位收斂"},
 }
 
 
@@ -149,6 +154,8 @@ def claude_screen(candidates: dict[str, dict], top_n: int = 5,
             "regime": regime, "regime_label": policy["label"], "stance": policy["stance"],
             "breadth_above_ma20": round(breadth, 3), "index_momentum_20": round(idx_mom20, 4),
             "n_universe": tot,
+            "target_exposure": policy["exposure"],   # 建議總曝險(其餘現金)
+            "trail_stop": policy["trail_stop"],       # 組合移動停損
         },
         "policy": {"min_prob": policy["min_prob"], "max_picks": max_picks},
         "candidates_scored": len(scored), "qualified": len(qualified),
