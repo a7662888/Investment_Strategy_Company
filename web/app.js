@@ -314,8 +314,7 @@ async function runTraining() {
     $("trainingRows").innerHTML = "";
     
     // Clear console and hide optimized weights banner
-    $("trainConsole").textContent = "🔍 正在啟動在線優化訓練器...
-";
+    $("trainConsole").textContent = "🔍 正在啟動在線優化訓練器...\n";
     $("optimizedWeights").style.display = "none";
     $("trainProgress").textContent = "優化狀態：計算特徵中";
 
@@ -353,11 +352,8 @@ async function runTraining() {
       $("trainProgress").textContent = "優化狀態：回傳迭代日誌中";
       const logs = mt.epoch_logs;
       const terminal = $("trainConsole");
-      terminal.textContent = "🔍 [1/4] 特徵提取完成，共收集 " + (logs.length * 10) + " 個跨股票歷史交易日樣本。
-";
-      terminal.textContent += "⚙️ [2/4] 啟動隨機梯度下降 L2 擬合器 (Learning Rate=0.1, L2=0.01, Epochs=500)...
-
-";
+      terminal.textContent = "🔍 [1/4] 特徵提取完成，共收集 " + (logs.length * 10) + " 個跨股票歷史交易日樣本。\n";
+      terminal.textContent += "⚙️ [2/4] 啟動隨機梯度下降 L2 擬合器 (Learning Rate=0.1, L2=0.01, Epochs=500)...\n\n";
       
       let idx = 0;
       function printEpochLog() {
