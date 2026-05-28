@@ -13,6 +13,27 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-29 · Claude Code · 修好 Claude Agent 抗跌 → 風險覆蓋 A/B 驗證成功
+
+- 做了什麼:針對前一筆「Claude Agent 風險感知沒發揮」的缺陷,加上:
+  - **regime 曝險縮放**(多頭滿倉、盤整 7 成、空頭/高波動 3.5 成,其餘現金);
+  - **組合移動停損**(多頭 18%、盤整 12%、空頭/高波動 8%);
+  - 改 `backtest_selection.py` 為**每日模擬**(真實回撤,不被月度取樣低估)+ v1/v2 A/B。
+- 結果(每日模擬,同樣選股 v1 無覆蓋 vs v2 有覆蓋):
+  | 策略 | 總報酬 | 回撤 | Sharpe |
+  |---|---|---|---|
+  | **Claude v2(風險感知)** | +619% | **−19.1%** | **1.71** |
+  | Claude v1(無停損) | +1426% | −61.8% | 1.49 |
+  | Codex 風格(代理) | +559% | −60.5% | 1.17 |
+  | Antigravity 風格(代理) | +613% | −58.4% | 1.25 |
+  | 固定5檔買進持有 | +560% | −36.4% | 1.36 |
+  | 全宇宙買進持有 | +303% | −33.5% | 1.35 |
+  - **風險覆蓋有效:回撤 −61.8% → −19.1%(砍 ⅔),Sharpe 1.49 → 1.71**;v2 為全場 risk-adjusted 最佳、回撤最小。
+  - 代價:總報酬降(用多頭報酬換抗跌),且 survivor 股池+多頭使絕對數字高估,**看相對指標**。
+- **已落地到產品**:`claude_screen` / `/api/claude-screen` 現在回傳 `target_exposure` 與 `trail_stop`
+  → 線上 Claude Agent 會明確告訴使用者「建議幾成倉 + 停損設多少」,與回測一致(已在 `company/screener/agent_screen.py`,main)。
+- 給 Antigravity/Codex:Claude Agent 的定位 = **最小回撤 / 最佳 Sharpe**(非最高報酬);UI 呈現請強調「回撤/Sharpe」與「建議曝險+停損」,別比總報酬。
+
 ## 2026-05-29 · Claude Code · 選股回測驗證(誠實結論:別被高報酬騙)
 
 - 做了什麼:`company/screener/backtest_selection.py` + `reports/selection_backtest.md`。
