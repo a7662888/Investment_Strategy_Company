@@ -118,6 +118,29 @@ function calibratedModelPanel(model) {
   `;
 }
 
+function renderStatusBadge(source, status) {
+  if (!source) return "<td></td><td></td>";
+  
+  let sourceHtml = "";
+  let statusHtml = "";
+  
+  const isTwse = source.includes("TWSE MIS") || source.includes("TPEx");
+  const isYahoo1m = source.includes("Yahoo 1m") || (status && status.includes("分鐘線"));
+  
+  if (isTwse) {
+    sourceHtml = `<span class="pill" style="border-color: var(--green); color: var(--green); font-weight: bold; background: #e6f4ea;">${source}</span>`;
+    statusHtml = `<span style="color: var(--green); font-weight: bold;">${status || "即時盤中"}</span>`;
+  } else if (isYahoo1m) {
+    sourceHtml = `<span class="pill" style="border-color: var(--amber); color: var(--amber); background: #fef7e0;">${source}</span>`;
+    statusHtml = `<span style="color: var(--amber);">${status || "盤中分鐘線"}</span>`;
+  } else {
+    sourceHtml = `<span class="pill" style="color: var(--muted); background: #f1f3f4;">${source}</span>`;
+    statusHtml = `<span style="color: var(--muted);">${status || "延遲或日線備援"}</span>`;
+  }
+  
+  return `<td>${sourceHtml}</td><td>${statusHtml}</td>`;
+}
+
 function aiPredictorLine(pred) {
   if (!pred) return "";
 
@@ -170,8 +193,7 @@ async function refreshQuotes() {
         <td>${row.regularMarketPrice ?? ""}</td>
         <td class="${cls}">${change.toFixed(2)}%</td>
         <td>${time}</td>
-        <td>${row.source || ""}</td>
-        <td>${row.realtimeStatus || ""}</td>
+        ${renderStatusBadge(row.source, row.realtimeStatus)}
       </tr>`;
     }).join("");
     $("quoteTime").textContent = `${new Date().toLocaleString()} · ${data.quotePolicy || ""}`;
