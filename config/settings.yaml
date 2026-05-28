@@ -1,0 +1,44 @@
+# 公司營運參數 —— 單一設定來源
+capital:
+  initial: 1000000          # 起始資金(新台幣)
+
+costs:                      # 防線④:台股交易成本
+  fee_rate: 0.001425
+  fee_discount: 0.6         # 手續費折數(6 折)
+  min_fee: 20
+  tax_rate: 0.003           # 賣出證交稅
+  slippage_bps: 5           # 單邊滑價(萬分之 5)
+
+data:
+  source: synthetic         # synthetic | finmind
+  finmind_symbols: ["2330", "2317", "2454", "2603", "3008", "1101"]
+  start: "2019-01-01"
+  end: "2021-12-31"
+
+# 防線③:資料切分 —— 訓練/驗證/測試,測試期只動一次
+# 合成資料 regime:2019 盤整、2020 多頭噴出、2020Q4~2021 急跌
+# 測試期刻意涵蓋「多頭→崩盤」完整循環,讓紅藍對抗與 PM regime 配置有意義
+periods:
+  train_end: "2019-06-30"
+  validation_end: "2019-12-31"
+  # test 期 = validation_end 之後到 data.end
+
+walk_forward:
+  train_days: 180
+  test_days: 60
+
+# 能力②:組合層熔斷
+circuit_breaker:
+  enabled: true
+  halt_drawdown: 0.20      # 回撤超過 20% 觸發、強制轉現金
+  cooldown_days: 20        # 熔斷後冷卻 20 個交易日才解除(時間冷卻,非等權益回升)
+
+# 能力④:成本壓力測試倍率
+cost_stress:
+  multipliers: [0.5, 1.0, 2.0, 3.0]
+
+# 單股逐日操盤(run_operator.py)
+operator:
+  symbol: "2327"           # 國巨 Yageo
+  start: "2020-01-01"
+  end: "2026-05-28"

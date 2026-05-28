@@ -1,0 +1,7 @@
+# Claude lane:策略引擎 + 操盤手 + 審計資源庫的相依套件
+# (與 root requirements.txt 分開,讓 Codex 的 Render app.py 維持純標準函式庫)
+# 安裝:pip install -r requirements-strategy.txt
+pandas>=2.0
+numpy>=1.24
+requests>=2.28
+pyyaml>=6.0
