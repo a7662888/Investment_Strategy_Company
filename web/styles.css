@@ -102,6 +102,10 @@ button {
   cursor: pointer;
   font-weight: 600;
 }
+button:disabled {
+  cursor: wait;
+  opacity: .62;
+}
 .primary {
   background: var(--blue);
   border-color: var(--blue);
@@ -162,6 +166,39 @@ th {
   margin-top: 8px;
   color: var(--blue);
   font-size: 13px;
+}
+.ai-predictor-card {
+  margin-top: 10px;
+  padding: 10px;
+  background: #f4fbff;
+  border: 1px solid #cfe7f5;
+  border-radius: 6px;
+}
+.aiPredictorHead,
+.aiFeatureHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.ai-predictor-card p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.aiFeature {
+  margin-top: 6px;
+}
+.aiFeatureBar {
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 2px;
+}
+.aiFeatureBar div {
+  height: 100%;
+  background: var(--blue);
 }
 .pos { color: var(--red); }
 .neg { color: var(--green); }

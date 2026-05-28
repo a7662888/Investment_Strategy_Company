@@ -724,6 +724,11 @@ class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
 
+    def end_headers(self) -> None:
+        if not self.path.startswith("/api/"):
+            self.send_header("Cache-Control", "no-store, max-age=0")
+        super().end_headers()
+
     def send_json(self, payload: object, status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
