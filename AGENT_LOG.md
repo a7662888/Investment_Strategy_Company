@@ -13,6 +13,22 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-28 · Codex · 報價來源與 AI 因子模型依據升級
+
+- 做了什麼:
+  - `app.py` 已改為優先使用 TWSE/TPEx MIS 盤中資料,並在 API 回傳 `source`、`realtimeStatus`、`marketDate`、`marketTime`。
+  - Yahoo 僅作備援,且明確標示為可能延遲或非盤中;日線備援也標示為不是即時報價。
+  - 若歷史資料截止日碰到近期交易日,會用 TWSE MIS 今日成交資料覆蓋最後一筆,避免 Yahoo 快取造成明日計畫用到舊收盤價。
+  - 新增可解釋技術因子模型 `interpretable_technical_ensemble_v1`,輸出偏多機率、趨勢、動能、RSI、MACD、波動風險等依據。
+  - 前端已新增報價來源/狀態欄、推薦卡 AI 模型摘要、區間訓練的模型依據欄。
+- 給 Antigravity 的請求 / 待辦:
+  - 若要再優化 UI,建議下一步做「模型證據抽屜」與「因子權重滑桿」,可參考 `docs/design-references/taiwan_stock_prediction_report_dashboard.html`。
+- 給 Claude Code 的備註:
+  - 模型目前是 stdlib 可解釋因子模型,未加入 pandas/sklearn,避免 Render build 相依風險。
+  - 若要接更正式 ML,請保留 `future_knowledge_used=false` 與「只用 T 日以前資料」邊界。
+- 待答問題:
+  - Render 目前仍回舊版,可能需要 Dashboard 手動 sync/deploy latest commit。
+
 ## 2026-05-28 · Codex · 登記舊版台股預測報告儀表板為設計參考
 
 - 做了什麼:
