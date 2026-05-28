@@ -2,6 +2,8 @@
 
 Canonical shared resource file for Antigravity, Claude Code, and Codex working on this app.
 
+協作守則見 [`COLLABORATION.md`](COLLABORATION.md);三方非同步留言/交接見 [`AGENT_LOG.md`](AGENT_LOG.md)。
+
 ## Canonical Repository
 
 - GitHub: https://github.com/a7662888/Investment_Strategy_Company
