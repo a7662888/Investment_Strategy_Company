@@ -33,6 +33,51 @@ function modelLine(model) {
   return `<p class="modelLine">AI 模型：偏多機率 ${model.probability_up}% · 趨勢 ${model.trend_points} · 動能 ${model.momentum_points} · RSI ${model.rsi14} · 波動 ${model.volatility_20}</p>`;
 }
 
+function aiPredictorLine(pred) {
+  if (!pred) return "";
+  
+  const isUp = pred.prediction.includes("Uptrend") || pred.prediction.includes("看漲");
+  const isDown = pred.prediction.includes("Downtrend") || pred.prediction.includes("看跌");
+  const predClass = isUp ? "pos" : isDown ? "neg" : "watch";
+  
+  const featuresHtml = pred.features.map(f => `
+    <div style="margin-top: 5px;">
+      <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted);">
+        <span>${f.name}</span>
+        <span>${f.weight}%</span>
+      </div>
+      <div style="height: 4px; background: rgba(255, 255, 255, 0.05); border-radius: 2px; overflow: hidden; margin-top: 2px;">
+        <div style="height: 100%; width: ${f.weight}%; background: linear-gradient(90deg, #0055ff, #00f0ff); border-radius: 2px;"></div>
+      </div>
+    </div>
+  `).join("");
+
+  return `
+    <div class="ai-predictor-card" style="
+      margin-top: 10px; 
+      padding: 10px; 
+      background: rgba(0, 240, 255, 0.02); 
+      border: 1px solid rgba(0, 240, 255, 0.1); 
+      border-radius: 6px;
+      text-align: left;
+    ">
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: bold; color: #00f0ff; margin-bottom: 6px;">
+        <span>🤖 AI 預測模型官 (AI Quant Predictor)</span>
+        <span class="${predClass}" style="padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.02);">${pred.prediction} (${pred.probability.toFixed(0)}%)</span>
+      </div>
+      <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px;">
+        預估明日價格區間：<strong style="color: var(--text-main); font-family: monospace;">${pred.predicted_range}</strong>
+      </div>
+      <div style="font-size: 0.75rem; line-height: 1.4; color: var(--text-muted); padding: 6px; background: rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 8px;">
+        <strong>數理理由：</strong>${pred.rationale}
+      </div>
+      <div style="border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px;">
+        ${featuresHtml}
+      </div>
+    </div>
+  `;
+}
+
 async function refreshQuotes() {
   const qs = symbols().join(",");
   $("quoteTime").textContent = "更新中";
@@ -116,6 +161,7 @@ async function recommendToday() {
       <p>截至 ${item.last_date}，收盤 ${item.last_close}</p>
       ${modelLine(item.model)}
       <ul>${item.reasons.map(reason => `<li>${reason}</li>`).join("")}</ul>
+      ${aiPredictorLine(item.ai_predictor)}
     </article>
   `).join("");
 }
@@ -148,6 +194,7 @@ async function nextDayPlan() {
       <p>截至 ${item.as_of}，收盤 ${item.last_close} ${gain}</p>
       ${modelLine(item.model)}
       <ul>${item.reasons.map(reason => `<li>${reason}</li>`).join("")}</ul>
+      ${aiPredictorLine(item.ai_predictor)}
     </article>`;
   }).join("");
 }

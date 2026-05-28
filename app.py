@@ -537,7 +537,119 @@ def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
         "action": action,
         "reasons": reasons,
         "model": model,
+        "ai_predictor": generate_ai_prediction(closes, rsi, hist_val),
         "future_knowledge_used": False,
+    }
+
+
+def generate_ai_prediction(closes: list[float], rsi: float, macd_hist: float) -> dict:
+    if len(closes) < 5:
+        return {
+            "prediction": "Rangebound (盤整)",
+            "probability": 50.0,
+            "predicted_range": f"${closes[-1]:.1f} - ${closes[-1]:.1f}",
+            "features": [
+                {"name": "RSI 超買超賣權重", "weight": 30},
+                {"name": "5日 OLS 短期動能", "weight": 40},
+                {"name": "MACD 柱狀體排列", "weight": 30}
+            ],
+            "rationale": "歷史數據不足，無法進行預測模型分析。"
+        }
+
+    last_price = float(closes[-1])
+    
+    # 1. Short-term OLS slope (last 5 days)
+    y = closes[-5:]
+    slope = (-2.0 * y[0] - 1.0 * y[1] + 1.0 * y[3] + 2.0 * y[4]) / 10.0
+
+    # 2. Volatility (last 20 days returns)
+    window = min(20, len(closes))
+    sub_closes = closes[-window:]
+    returns = []
+    for i in range(1, len(sub_closes)):
+        if sub_closes[i - 1] != 0:
+            returns.append((sub_closes[i] - sub_closes[i - 1]) / sub_closes[i - 1])
+    
+    if returns:
+        avg_ret = sum(returns) / len(returns)
+        variance = sum((r - avg_ret) ** 2 for r in returns) / len(returns)
+        volatility = math.sqrt(variance)
+    else:
+        volatility = 0.01
+
+    std_dev = last_price * max(volatility, 0.005)
+    pred_low = last_price + slope - 1.96 * std_dev
+    pred_high = last_price + slope + 1.96 * std_dev
+
+    pred_low = max(0.1, round(pred_low, 1))
+    pred_high = max(pred_low + 0.1, round(pred_high, 1))
+
+    # 3. Dynamic Probability Calculation
+    rsi_contrib = (50.0 - rsi) * 0.3
+    
+    slope_pct = slope / last_price
+    slope_contrib = max(-20.0, min(20.0, slope_pct * 500.0))
+    
+    macd_contrib = max(-15.0, min(15.0, macd_hist * 2.0))
+    
+    prob_uptrend = 50.0 + rsi_contrib + slope_contrib + macd_contrib
+    prob_uptrend = max(15.0, min(92.0, prob_uptrend))
+
+    if prob_uptrend > 55.0:
+        prediction = "Uptrend (看漲)"
+        prob = float(prob_uptrend)
+        rationale = (
+            f"模型顯示明日上漲機率達 {prob:.0f}%。主因 14 日 RSI 目前為 {rsi:.1f}，估值處於偏低或整理安全區，"
+            f"且近 5 日股價斜率為 {slope:.2f}。雖然 MACD 柱狀體為 {macd_hist:.2f}，"
+            f"但近期震盪收斂，波動度約 {(volatility*100):.1f}%。模型預測明日價格主要運行區間落於 ${pred_low:.1f} 至 ${pred_high:.1f}，"
+            f"建議持股或分批左側承接。"
+        )
+    elif prob_uptrend < 45.0:
+        prediction = "Downtrend (看跌)"
+        prob = float(100.0 - prob_uptrend)
+        rationale = (
+            f"模型預期明日有 {prob:.0f}% 機率延續修正趨勢。主要由於 RSI 達 {rsi:.1f} 且短期 5 日斜率為 {slope:.2f} "
+            f"呈現下行慣性，且 MACD 柱狀體為 {macd_hist:.2f} 處於負值區。波動度 {(volatility*100):.1f}% 顯示賣壓未消退，"
+            f"預測明日運行區間為 ${pred_low:.1f} 至 ${pred_high:.1f}。風控建議保留現金，暫避風險。"
+        )
+    else:
+        prediction = "Rangebound (盤整)"
+        prob = 50.0
+        rationale = (
+            f"模型預估明日將呈區間盤整（機率 50%）。短期斜率極微 ({slope:.2f})，RSI 數值為 {rsi:.1f} 處於常態中性區，"
+            f"多空拉鋸。預估運行區間為 ${pred_low:.1f} 至 ${pred_high:.1f}，建議空手者觀望，持股者續抱等待明確動能訊號。"
+        )
+
+    abs_rsi = abs(rsi_contrib)
+    abs_slope = abs(slope_contrib)
+    abs_macd = abs(macd_contrib)
+    total_abs = abs_rsi + abs_slope + abs_macd
+
+    if total_abs > 0:
+        rsi_w = int(round(abs_rsi / total_abs * 100))
+        slope_w = int(round(abs_slope / total_abs * 100))
+        macd_w = int(round(abs_macd / total_abs * 100))
+    else:
+        rsi_w, slope_w, macd_w = 30, 40, 30
+
+    total_w = rsi_w + slope_w + macd_w
+    if total_w > 0:
+        rsi_w = int(round(rsi_w / total_w * 100))
+        slope_w = int(round(slope_w / total_w * 100))
+        macd_w = 100 - rsi_w - slope_w
+
+    features = [
+        {"name": "RSI 超買超賣權重", "weight": rsi_w},
+        {"name": "5日 OLS 短期動能", "weight": slope_w},
+        {"name": "MACD 柱狀體排列", "weight": macd_w}
+    ]
+
+    return {
+        "prediction": prediction,
+        "probability": prob,
+        "predicted_range": f"${pred_low:.1f} - ${pred_high:.1f}",
+        "features": features,
+        "rationale": rationale
     }
 
 
@@ -574,6 +686,9 @@ def plan_next_session(symbol: str, rows: list[dict], position: dict | None) -> d
         if action == "觀察":
             action = "明日觀察"
 
+    rsi = calculate_rsi_list(closes, 14)
+    _, _, hist_val = calculate_macd_list(closes, 12, 26, 9)
+
     return {
         "symbol": symbol,
         "as_of": rows[-1]["date"],
@@ -585,6 +700,7 @@ def plan_next_session(symbol: str, rows: list[dict], position: dict | None) -> d
         "action": action,
         "reasons": reasons,
         "model": analysis["model"],
+        "ai_predictor": generate_ai_prediction(closes, rsi, hist_val),
         "rule": "收盤後產生明日計畫，不做當沖；買賣僅作研究與模擬用途。",
         "future_knowledge_used": False,
     }
