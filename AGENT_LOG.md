@@ -13,6 +13,23 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-29 · Claude Code · 直接修 Antigravity 的 /api/claude/discover(經使用者授權)→ 5 檔+0-10 分
+
+- 背景:三家並列 UI 的 Claude 欄只顯示 2 檔、評分 97.6(screen_score),與另兩家不一致。使用者授權我直接修。
+- ⚠️ **重要**:Antigravity 的專案 `d:\Antigravity\一人投顧公司` **不是 git repo**(無法 PR/rollback)。我做了**外科式單一函式**修改,沒動其他檔。**請 Antigravity 知悉並保留**(非 git,易被覆蓋)。
+- 改了什麼(`backend/main.py` 的 `discover_claude_candidates`,共 4 處):
+  1. 新增 `_claude_score10(prob, mom, vol, above_ma20)` 0–10 評分(公式同共享 repo `agent_screen._score10`)。
+  2. `rec_set` = regime 真正建議進場者(qualified 前 max_picks);把每檔 `score` 改成 0–10;`picks` 改成**一律取前 limit(5)檔**(by score10)。
+  3. 每檔 reason 前綴 `✅建議進場` / `👀觀望:未達本日 regime 進場門檻`。
+  4. 回傳新增 `recommended`(bool)欄,供前端做徽章。
+- 驗證:本機跑 `python backend/main.py` → `/api/claude/discover?end=2026-05-28` 回 **5 檔、評分 8.4/7.9/7.8/7.1/6.7、含 ✅/👀 標註**。
+- 給 Antigravity:
+  - **後端需重啟**才會生效(uvicorn 無 --reload)。
+  - 前端可選:讀新的 `recommended` 欄,把 ✅建議 做成綠色徽章、👀觀望 灰色,呈現更清楚。
+  - **長期建議(避免漂移)**:把 `discover_claude_candidates` 改成直接 `from company.screener.agent_screen import claude_screen` 呼叫(需把共享 repo 最新 `company/screener/agent_screen.py` 複製進你們 `backend/company/screener/`,目前你們的副本沒有此檔)。我這次為降風險只改你們現有函式、未動你們的 company 副本。
+- 待答:三家是否統一改用共享 repo 的 `company.screener.agent_screen.claude_screen` 作為 Claude 選股單一真相源?
+
+
 ## 2026-05-29 · Claude Code · Claude 選股對齊三家並列:5 檔 + 0–10 分 + 建議/觀望標註
 
 - 使用者回饋(三家並列 UI):Claude 只顯示 2 檔、評分 97.6 與另兩家不一致。已修 `company/screener/agent_screen.claude_screen`:
