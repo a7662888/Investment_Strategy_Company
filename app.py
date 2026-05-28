@@ -69,6 +69,42 @@ MARKET_CONTEXT_SYMBOLS = [
     {"symbol": "006208.TW", "name": "富邦台50"},
 ]
 
+# Claude Agent regime policy: controls momentum tilt, vol penalty, concentration limits
+AGENT_REGIME_POLICY = {
+    "BULL_TREND": {
+        "label": "多頭趨勢",
+        "momentum_tilt": 35.0,
+        "vol_penalty": 0.0,
+        "require_above_ma20": False,
+        "max_picks_factor": 1.0,
+        "stance": "順勢追動能,可較積極",
+    },
+    "RANGE": {
+        "label": "區間盤整",
+        "momentum_tilt": 10.0,
+        "vol_penalty": 20.0,
+        "require_above_ma20": False,
+        "max_picks_factor": 0.8,
+        "stance": "偏穩健,挑站穩均線且不過熱者",
+    },
+    "BEAR_TREND": {
+        "label": "空頭趨勢",
+        "momentum_tilt": 5.0,
+        "vol_penalty": 60.0,
+        "require_above_ma20": True,
+        "max_picks_factor": 0.4,
+        "stance": "轉守,只留少數逆勢偏強且低波動者,寧可保留現金",
+    },
+    "HIGH_VOL": {
+        "label": "高波動",
+        "momentum_tilt": 5.0,
+        "vol_penalty": 90.0,
+        "require_above_ma20": True,
+        "max_picks_factor": 0.4,
+        "stance": "降風險,嚴篩低波動,部位收斂",
+    },
+}
+
 
 def to_epoch(date_text: str) -> int:
     return int(datetime.fromisoformat(date_text).replace(tzinfo=timezone.utc).timestamp())
@@ -1487,6 +1523,249 @@ def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> d
     }
 
 
+# ---------------------------------------------------------------------------
+# Multi-Agent Stock Discovery Functions
+# ---------------------------------------------------------------------------
+
+def _vol_of_returns(closes: list[float], window: int) -> float:
+    """Annualised daily return std-dev over the last `window` trading days."""
+    if len(closes) < window + 1:
+        return 0.0
+    rets = [closes[i] / closes[i - 1] - 1.0 for i in range(len(closes) - window, len(closes))]
+    avg = sum(rets) / len(rets)
+    return math.sqrt(sum((r - avg) ** 2 for r in rets) / len(rets))
+
+
+def _claude_determine_regime(all_data: dict) -> tuple[str, dict]:
+    """Determine market regime via equal-weighted synthetic index of discovery universe.
+
+    Tighter than naive TAIEX: HIGH_VOL triggers at 60th vol-percentile (vs 80th)
+    to give earlier drawdown protection — fixes the backtest finding.
+    """
+    if not all_data:
+        return "RANGE", AGENT_REGIME_POLICY["RANGE"]
+
+    all_dates: set[str] = set()
+    for data in all_data.values():
+        all_dates.update(data["dates"])
+    sorted_dates = sorted(all_dates)
+
+    first_prices = {t: d["closes"][0] for t, d in all_data.items()}
+    date_idx_maps = {t: {date: i for i, date in enumerate(d["dates"])} for t, d in all_data.items()}
+
+    index_series: list[float] = []
+    for date in sorted_dates:
+        vals = [
+            all_data[t]["closes"][date_idx_maps[t][date]] / first_prices[t]
+            for t in all_data
+            if date in date_idx_maps[t]
+        ]
+        if vals:
+            index_series.append(sum(vals) / len(vals))
+
+    if len(index_series) < 80:
+        return "RANGE", AGENT_REGIME_POLICY["RANGE"]
+
+    # MA60 of the synthetic index
+    ma60: list[float | None] = [
+        None if i < 59 else sum(index_series[i - 59: i + 1]) / 60.0
+        for i in range(len(index_series))
+    ]
+
+    # 20-period slope of MA60
+    slope: list[float | None] = [
+        None if i < 20 or ma60[i] is None or ma60[i - 20] is None
+        else ma60[i] - ma60[i - 20]  # type: ignore[operator]
+        for i in range(len(ma60))
+    ]
+
+    # 20-day rolling vol of index returns
+    rets = [0.0] + [index_series[i] / index_series[i - 1] - 1.0 for i in range(1, len(index_series))]
+    vol20: list[float | None] = []
+    for i in range(len(rets)):
+        if i < 19:
+            vol20.append(None)
+        else:
+            w = rets[i - 19: i + 1]
+            avg_w = sum(w) / 20.0
+            vol20.append(math.sqrt(sum((r - avg_w) ** 2 for r in w) / 20.0))
+
+    # Vol percentile (120-day lookback) — HIGH_VOL threshold tightened to 0.60
+    vol_pct: float | None = None
+    if vol20[-1] is not None:
+        w_vols = [v for v in vol20[-120:] if v is not None]
+        if len(w_vols) >= 40:
+            vol_pct = sum(1 for v in w_vols if vol20[-1] >= v) / len(w_vols)  # type: ignore[operator]
+
+    idx_val = index_series[-1]
+    ma_val = ma60[-1]
+    slope_val = slope[-1]
+
+    regime = "RANGE"
+    if vol_pct is not None and vol_pct >= 0.60:  # tighter trigger (was 0.80)
+        regime = "HIGH_VOL"
+    elif ma_val is not None and slope_val is not None:
+        above = idx_val > ma_val
+        going_up = slope_val > 0
+        if above and going_up:
+            regime = "BULL_TREND"
+        elif (not above) and (not going_up):
+            regime = "BEAR_TREND"
+
+    return regime, AGENT_REGIME_POLICY[regime]
+
+
+def discover_antigravity_candidates(end: str, limit: int = 5) -> list[dict]:
+    """Antigravity VCP (Volatility Contraction Pattern) breakthrough selection."""
+    lookback = 320
+    start = (datetime.fromisoformat(end) - timedelta(days=lookback)).date().isoformat()
+    end_excl = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
+    candidates = []
+    for item in DISCOVERY_UNIVERSE:
+        try:
+            rows = fetch_history(item["symbol"], start, end_excl)
+            if len(rows) < 130:
+                continue
+            closes = [float(r["close"]) for r in rows]
+            volumes = [float(r.get("volume", 0) or 0) for r in rows]
+
+            vol_10 = _vol_of_returns(closes, 10)
+            vol_60 = _vol_of_returns(closes, 60)
+
+            v5 = sum(volumes[-5:]) / 5.0 if len(volumes) >= 5 else 0.0
+            v60 = sum(volumes[-60:]) / 60.0 if len(volumes) >= 60 else 0.0
+            vol_surge = (v5 / v60 - 1.0) if v60 > 0 else 0.0
+
+            high_20 = max(closes[-20:]) if len(closes) >= 20 else closes[-1]
+            close_near_high = closes[-1] >= 0.98 * high_20
+
+            ev = model_evidence(item["symbol"], closes, volumes)
+            prob = ev.get("probability_up", 50.0)
+
+            score = 0
+            reasons: list[str] = []
+
+            if vol_10 < vol_60:
+                score += 3
+                reasons.append("波動收縮 (短期 vol < 長期 vol)")
+            if vol_surge > 0.3:
+                score += 3
+                reasons.append(f"量能突破 (5日均量高出60日均量 {vol_surge * 100:+.1f}%)")
+            if close_near_high:
+                score += 2
+                reasons.append("收盤逼近 20 日高點 (≥ 98%)")
+            if prob > 55.0:
+                score += 2
+                reasons.append(f"AI 技術模型偏多 ({prob:.1f}%)")
+            if vol_10 > 2.0 * vol_60:
+                score -= 3
+                reasons.append("波動發散扣分 (短期 vol > 2× 長期 vol)")
+
+            candidates.append({
+                "symbol": item["symbol"],
+                "name": item["name"],
+                "sector": item.get("sector", ""),
+                "last_date": rows[-1]["date"],
+                "last_close": round(closes[-1], 2),
+                "score": score,
+                "discovery_score": float(score),
+                "reasons": [f"Antigravity VCP 突破得分：{score} 分"] + reasons,
+                "future_knowledge_used": False,
+            })
+        except Exception as exc:
+            print(f"[Antigravity Discover] {item['symbol']}: {exc}")
+
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    return candidates[:limit]
+
+
+def discover_claude_candidates(end: str, limit: int = 5) -> list[dict]:
+    """Claude Regime-guided intelligent stock selection.
+
+    Uses a tightened HIGH_VOL trigger (vol-pct ≥ 0.60) for earlier drawdown protection.
+    In BEAR_TREND, only picks with positive 20-day momentum are qualified.
+    """
+    lookback = 320
+    start = (datetime.fromisoformat(end) - timedelta(days=lookback)).date().isoformat()
+    end_excl = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
+
+    all_data: dict[str, dict] = {}
+    for item in DISCOVERY_UNIVERSE:
+        try:
+            rows = fetch_history(item["symbol"], start, end_excl)
+            if len(rows) >= 130:
+                all_data[item["symbol"]] = {
+                    "dates":   [r["date"] for r in rows],
+                    "closes":  [float(r["close"]) for r in rows],
+                    "volumes": [float(r.get("volume", 0) or 0) for r in rows],
+                    "name":    item["name"],
+                    "sector":  item.get("sector", ""),
+                    "last_date": rows[-1]["date"],
+                }
+        except Exception as exc:
+            print(f"[Claude Discover] data {item['symbol']}: {exc}")
+
+    if not all_data:
+        return []
+
+    regime, policy = _claude_determine_regime(all_data)
+
+    scored: list[dict] = []
+    for symbol, data in all_data.items():
+        closes  = data["closes"]
+        volumes = data["volumes"]
+        try:
+            ev   = model_evidence(symbol, closes, volumes)
+            prob = ev.get("probability_up", 50.0)
+
+            mom_20 = closes[-1] / closes[-21] - 1.0 if len(closes) > 21 else 0.0
+            ma20   = sum(closes[-20:]) / 20.0 if len(closes) >= 20 else closes[-1]
+            above_ma20 = closes[-1] > ma20
+
+            sr = [closes[i] / closes[i - 1] - 1.0 for i in range(len(closes) - 20, len(closes))] if len(closes) >= 21 else [0.0]
+            avg_sr = sum(sr) / len(sr)
+            vol20  = math.sqrt(sum((r - avg_sr) ** 2 for r in sr) / len(sr))
+
+            screen_score = prob + policy["momentum_tilt"] * mom_20 - policy["vol_penalty"] * vol20
+
+            # Extra momentum filter in bear/high-vol: exclude negative-momentum stocks
+            momentum_ok = mom_20 >= 0 if regime in ("BEAR_TREND", "HIGH_VOL") else True
+            qualifies = momentum_ok and (above_ma20 or not policy["require_above_ma20"])
+
+            reasons: list[str] = [
+                f"{policy['label']} · {policy['stance']}",
+                f"AI 模型偏多 {prob:.1f}%",
+            ]
+            if above_ma20:
+                reasons.append("站上 20 日均線")
+            if mom_20 > 0.05:
+                reasons.append(f"20 日動能 +{mom_20:.0%}")
+            elif mom_20 < -0.05:
+                reasons.append(f"20 日動能 {mom_20:.0%} ⚠️ 空頭跌勢")
+
+            scored.append({
+                "symbol":        symbol,
+                "name":          data["name"],
+                "sector":        data["sector"],
+                "last_date":     data["last_date"],
+                "last_close":    round(closes[-1], 2),
+                "score":         round(screen_score, 2),
+                "discovery_score": round(screen_score, 2),
+                "qualifies":     qualifies,
+                "reasons":       reasons,
+                "regime":        regime,
+                "regime_label":  policy["label"],
+                "future_knowledge_used": False,
+            })
+        except Exception as exc:
+            print(f"[Claude Discover] score {symbol}: {exc}")
+
+    qualified = [r for r in scored if r.pop("qualifies")]
+    qualified.sort(key=lambda r: r["score"], reverse=True)
+    max_picks = max(1, int(round(limit * policy["max_picks_factor"])))
+    return qualified[:max_picks]
+
+
 def normalize_positions(raw_positions: list[dict]) -> dict[str, dict]:
     positions = {}
     for item in raw_positions:
@@ -1559,6 +1838,16 @@ class Handler(SimpleHTTPRequestHandler):
                 end = query.get("end", [datetime.now().date().isoformat()])[0]
                 limit = int(query.get("limit", ["5"])[0])
                 self.send_json(discover_candidates(end, limit=limit))
+                return
+            if parsed.path == "/api/antigravity/discover":
+                end = query.get("end", [datetime.now().date().isoformat()])[0]
+                limit = int(query.get("limit", ["5"])[0])
+                self.send_json(discover_antigravity_candidates(end, limit=limit))
+                return
+            if parsed.path == "/api/claude/discover":
+                end = query.get("end", [datetime.now().date().isoformat()])[0]
+                limit = int(query.get("limit", ["5"])[0])
+                self.send_json(discover_claude_candidates(end, limit=limit))
                 return
             super().do_GET()
         except Exception as exc:

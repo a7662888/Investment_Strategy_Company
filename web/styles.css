@@ -312,3 +312,62 @@ th {
 .market-badge.bearish { background: #fee2e2; color: #991b1b; }
 .market-badge.consolidation { background: #f1f5f9; color: #334155; }
 .market-badge.volatility { background: #fef3c7; color: #92400e; }
+
+/* ── 3-Agent Side-by-Side Grid ──────────────────────────────────────── */
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 4px;
+}
+@media (max-width: 900px) {
+  .agent-grid { grid-template-columns: 1fr; }
+}
+.agent-col {
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 80px;
+}
+.agent-col-head {
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid;
+  margin-bottom: 4px;
+}
+.agent-sub {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.75;
+}
+.agent-codex { background: #eff6ff; border: 1px solid #bfdbfe; }
+.agent-codex .agent-col-head { color: #1d4ed8; border-color: #93c5fd; }
+.agent-anti  { background: #f0fdf4; border: 1px solid #bbf7d0; }
+.agent-anti  .agent-col-head { color: #15803d; border-color: #86efac; }
+.agent-claude { background: #fef2f2; border: 1px solid #fecaca; }
+.agent-claude .agent-col-head { color: #b91c1c; border-color: #fca5a5; }
+.agent-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: box-shadow .15s, border-color .15s;
+  font-size: 13px;
+}
+.agent-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.10); border-color: #93c5fd; }
+.agent-card strong {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+

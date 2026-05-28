@@ -466,37 +466,89 @@ async function recommendToday() {
 }
 
 async function discoverToday() {
+  const end = encodeURIComponent($("endDate").value);
+  $("discoverStatus").textContent = "三家 Agent 正在並行計算選股中...";
+  $("codexList").innerHTML = "<p>計算中</p>";
+  $("antigravityList").innerHTML = "<p>計算中</p>";
+  $("claudeList").innerHTML = "<p>計算中</p>";
+  setBusy("discoverToday", true);
+
   try {
-    setBusy("discoverToday", true);
-    $("discoverStatus").textContent = "Agent 正在讀取大盤與候選池";
-    $("discoverList").innerHTML = "<p>篩選中</p>";
-    const res = await fetch(`/api/discover?end=${encodeURIComponent($("endDate").value)}&limit=5`);
-    const data = await readJson(res);
-    const context = data.market_context || {};
-    const selected = asArray(data.selected_symbols);
+    const [resCodex, resAnti, resClaude] = await Promise.all([
+      fetch(`/api/discover?end=${end}&limit=5`),
+      fetch(`/api/antigravity/discover?end=${end}&limit=5`),
+      fetch(`/api/claude/discover?end=${end}&limit=5`),
+    ]);
+
+    const codexData  = resCodex.ok  ? await resCodex.json()  : {};
+    const antiData   = resAnti.ok   ? await resAnti.json()   : [];
+    const claudeData = resClaude.ok ? await resClaude.json() : [];
+
+    // Codex returns a discover-style wrapper; Antigravity/Claude return plain arrays
+    const codexCands  = asArray(codexData.candidates || codexData);
+    const antiCands   = asArray(antiData);
+    const claudeCands = asArray(claudeData);
+
+    // Auto-fill symbolInput from Codex's selected_symbols (or first of any agent)
+    const selected = asArray(codexData.selected_symbols);
     if (selected.length) {
       $("symbolInput").value = selected.join(",");
+    } else if (codexCands.length) {
+      $("symbolInput").value = codexCands.map(c => c.symbol).join(",");
     }
-    $("discoverStatus").textContent = `大盤環境：${context.regime || "-"}；候選池 ${data.universe_size || 0} 檔；已套入 ${selected.length} 檔`;
-    $("discoverList").innerHTML = asArray(data.candidates).map(item => `
-      <article class="candidate">
-        <strong>
-          <span>${item.symbol} ${item.name || ""} · ${item.sector || ""}</span>
-          <span class="${item.discovery_score >= 5 ? "pos" : item.discovery_score <= 0 ? "neg" : "watch"}">Agent分 ${item.discovery_score}</span>
-        </strong>
-        <p>截至 ${item.last_date}，收盤 ${item.last_close}；${item.action}</p>
-        ${modelLine(item.model)}
-        <ul>${asArray(item.reasons).map(reason => `<li>${reason}</li>`).join("")}</ul>
-      </article>
-    `).join("");
+
+    $("discoverStatus").textContent =
+      `Codex ${codexCands.length} 檔｜Antigravity ${antiCands.length} 檔｜Claude ${claudeCands.length} 檔`;
+
+    $("codexList").innerHTML = codexCands.length
+      ? codexCands.map(c => renderAgentCard(c, "codex")).join("")
+      : "<p>無候選股</p>";
+    $("antigravityList").innerHTML = antiCands.length
+      ? antiCands.map(c => renderAgentCard(c, "anti")).join("")
+      : "<p>無候選股</p>";
+    $("claudeList").innerHTML = claudeCands.length
+      ? claudeCands.map(c => renderAgentCard(c, "claude")).join("")
+      : "<p>無候選股 (目前 regime 建議持守現金)</p>";
+
     recommendToday();
     nextDayPlan();
   } catch (err) {
-    $("discoverStatus").textContent = "Agent 選股失敗";
-    $("discoverList").innerHTML = `<p>${err.message}</p>`;
+    $("discoverStatus").textContent = "Agent 選股失敗: " + err.message;
+    const errHtml = `<p>${err.message}</p>`;
+    $("codexList").innerHTML = $("antigravityList").innerHTML = $("claudeList").innerHTML = errHtml;
   } finally {
     setBusy("discoverToday", false);
   }
+}
+
+function renderAgentCard(item, agentType) {
+  const scoreVal = item.discovery_score !== undefined ? item.discovery_score : item.score;
+  const score = Number(scoreVal || 0);
+  const cls = score >= 5 ? "pos" : score <= 0 ? "neg" : "watch";
+  const symbol = item.symbol || "";
+  const name = item.name || "";
+  const sector = item.sector ? `<span class="pill">${item.sector}</span>` : "";
+  const regimePill = item.regime_label
+    ? `<span class="pill" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">${item.regime_label}</span>`
+    : "";
+  const reasonsHtml = asArray(item.reasons).slice(0, 4).map(r => `<li>${r}</li>`).join("");
+  const dateClose = item.last_date
+    ? `<p style="margin:4px 0;font-size:12px;color:var(--muted)">截至 ${item.last_date}，收盤 ${item.last_close || "-"}</p>`
+    : "";
+  const scoreLabel = Number.isInteger(score) ? score : score.toFixed(1);
+  return `<article class="agent-card" onclick="setSymbolFromAgent('${symbol}')"
+    title="點擊將 ${symbol} 填入股票代號欄">
+    <strong>
+      <span>${symbol} ${name} ${sector} ${regimePill}</span>
+      <span class="${cls}">${scoreLabel}分</span>
+    </strong>
+    ${dateClose}
+    <ul style="margin:4px 0 0;padding-left:14px;font-size:12px;color:var(--muted)">${reasonsHtml}</ul>
+  </article>`;
+}
+
+function setSymbolFromAgent(symbol) {
+  $("symbolInput").value = symbol;
 }
 
 async function nextDayPlan() {

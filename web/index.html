@@ -38,10 +38,23 @@
 
     <section class="panel">
       <div class="sectionHead">
-        <h2>Agent 今日選股</h2>
-        <span id="discoverStatus">依大盤環境自動篩選候選池</span>
+        <h2>🤖 三家 Agent 今日選股（並列對比）</h2>
+        <span id="discoverStatus">正在進行多因子計算...</span>
       </div>
-      <div id="discoverList" class="cards"></div>
+      <div id="agentGrid" class="agent-grid">
+        <div class="agent-col agent-codex">
+          <div class="agent-col-head">🤖 Codex Agent<span class="agent-sub">綜合多因子 + 大盤環境</span></div>
+          <div id="codexList"></div>
+        </div>
+        <div class="agent-col agent-anti">
+          <div class="agent-col-head">🌌 Antigravity Agent<span class="agent-sub">VCP 波動收縮 + 量能突破</span></div>
+          <div id="antigravityList"></div>
+        </div>
+        <div class="agent-col agent-claude">
+          <div class="agent-col-head">🧠 Claude Agent<span class="agent-sub">智能 Regime 風險感知</span></div>
+          <div id="claudeList"></div>
+        </div>
+      </div>
     </section>
 
     <section class="panel">
@@ -125,6 +138,6 @@
       </div>
     </section>
   </main>
-  <script src="/app.js?v=20260528-8" charset="utf-8"></script>
+  <script src="/app.js?v=20260529-1" charset="utf-8"></script>
 </body>
 </html>
