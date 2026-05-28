@@ -331,6 +331,15 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/symbols":
                 self.send_json({"symbols": DEFAULT_SYMBOLS})
                 return
+            if parsed.path == "/api/health":
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "service": "investment-strategy-company",
+                        "time": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+                return
             if parsed.path == "/api/quote":
                 symbols = query.get("symbols", ["2327.TW"])[0].split(",")
                 self.send_json(fetch_quote(symbols))

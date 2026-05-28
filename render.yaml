@@ -4,4 +4,5 @@ services:
     env: python
     buildCommand: ""
     startCommand: python app.py $PORT 0.0.0.0
+    healthCheckPath: /api/health
     plan: free

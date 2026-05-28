@@ -49,14 +49,24 @@ http://192.168.1.103:8765
 
 ### Render
 
-1. 建立新的 GitHub repository。
-2. 將本資料夾內容推上 GitHub。
-3. 在 Render 建立 Web Service。
-4. Start command 使用：
+GitHub repo：
+
+```text
+https://github.com/a7662888/Investment_Strategy_Company
+```
+
+在 Render 建立 Web Service：
+
+- Build command：留空
+- Start command：
 
 ```bash
 python app.py $PORT 0.0.0.0
 ```
+
+- Health check path：`/api/health`
+
+部署完成後，手機可用 Render 提供的 HTTPS 網址。
 
 ### Cloudflare Tunnel
 

@@ -19,6 +19,9 @@ Settings:
 - Runtime: Python
 - Build command: empty
 - Start command: `python app.py $PORT 0.0.0.0`
+- Health check path: `/api/health`
+
+Render Blueprint can also read `render.yaml` from this repository.
 
 ## Local Tunnel
 

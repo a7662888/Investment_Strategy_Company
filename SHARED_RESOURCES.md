@@ -13,8 +13,10 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 - Local command: `py app.py 8770 127.0.0.1`
 - LAN command: `py app.py 8770 0.0.0.0`
 - Render start command: `python app.py $PORT 0.0.0.0`
+- Render health check: `/api/health`
 - Local URL: `http://127.0.0.1:8770`
 - Temporary tunnel URL: `https://unix-legendary-douglas-anticipated.trycloudflare.com`
+- Separate detected tunnel: `D:\secondbrain\投資策略顧問公司` uses `http://localhost:8501`; do not modify it from this repo unless explicitly requested.
 
 ## Do Not Commit
 
