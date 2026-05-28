@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+data/web_cache/
+cloudflared*.log
+.env
+.DS_Store

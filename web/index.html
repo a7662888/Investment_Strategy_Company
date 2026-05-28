@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>一人投資策略公司</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>一人投資策略公司</h1>
+        <p>收盤後產生明日計畫、續抱通知、區間訓練與研究候選</p>
+      </div>
+      <button id="refreshQuotes" class="primary">更新報價</button>
+    </header>
+
+    <section class="panel controls">
+      <label>訓練區間開始
+        <input id="startDate" type="date" value="2020-01-01">
+      </label>
+      <label>訓練區間結束
+        <input id="endDate" type="date" value="2026-05-28">
+      </label>
+      <label>股票代號
+        <input id="symbolInput" value="2327.TW,2330.TW,2317.TW,2454.TW,2308.TW">
+      </label>
+      <div class="roleBox">
+        <label><input id="roleC1" type="checkbox" checked> C-1 保守價值流</label>
+        <label><input id="roleC2" type="checkbox" checked> C-2 激進動能流</label>
+      </div>
+      <button id="runTraining" class="primary">開始區間訓練</button>
+      <button id="recommendToday">今日候選</button>
+      <button id="nextDayPlan" class="primary">明日計畫</button>
+    </section>
+
+    <section class="panel">
+      <div class="sectionHead">
+        <h2>持股與明日計畫</h2>
+        <span>格式：2327.TW:1000@500，一行或逗號分隔</span>
+      </div>
+      <textarea id="positionInput" rows="3" placeholder="2327.TW:1000@500, 2330.TW:10@900"></textarea>
+      <div id="planList" class="cards planList"></div>
+    </section>
+
+    <section class="grid">
+      <section class="panel">
+        <div class="sectionHead">
+          <h2>即時報價</h2>
+          <span id="quoteTime"></span>
+        </div>
+        <div class="tableWrap">
+          <table>
+            <thead><tr><th>股票</th><th>名稱</th><th>價格</th><th>漲跌</th><th>時間</th></tr></thead>
+            <tbody id="quoteRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="sectionHead">
+          <h2>今日候選</h2>
+          <span>研究用途</span>
+        </div>
+        <div id="candidateList" class="cards"></div>
+      </section>
+    </section>
+
+    <section class="panel">
+      <div class="sectionHead">
+        <h2>區間訓練結果</h2>
+        <span id="trainingStatus">尚未執行</span>
+      </div>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>股票</th><th>操盤手</th><th>期間</th><th>總報酬</th><th>最大回撤</th><th>交易次數</th><th>未來資料</th></tr></thead>
+          <tbody id="trainingRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

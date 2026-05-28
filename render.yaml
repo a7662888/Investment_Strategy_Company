@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: investment-strategy-company
+    env: python
+    buildCommand: ""
+    startCommand: python app.py $PORT 0.0.0.0
+    plan: free
