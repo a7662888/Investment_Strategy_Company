@@ -536,8 +536,11 @@ function renderAgentCard(item, agentType) {
     ? `<p style="margin:4px 0;font-size:12px;color:var(--muted)">截至 ${item.last_date}，收盤 ${item.last_close || "-"}</p>`
     : "";
   const scoreLabel = Number.isInteger(score) ? score : score.toFixed(1);
-  return `<article class="agent-card" onclick="setSymbolFromAgent('${symbol}')"
-    title="點擊將 ${symbol} 填入股票代號欄">
+  // Check if this symbol is currently selected to show active state
+  const currentSyms = $("symbolInput").value.split(",").map(s => s.trim()).filter(Boolean);
+  const isSelected = currentSyms.includes(symbol);
+  return `<article class="agent-card${isSelected ? " agent-card--selected" : ""}" onclick="toggleSymbol('${symbol}', this)"
+    title="點擊即可加入/移除 ${symbol}。可多選">
     <strong>
       <span>${symbol} ${name} ${sector} ${regimePill}</span>
       <span class="${cls}">${scoreLabel}分</span>
@@ -547,8 +550,23 @@ function renderAgentCard(item, agentType) {
   </article>`;
 }
 
+function toggleSymbol(symbol, cardEl) {
+  const input = $("symbolInput");
+  let syms = input.value.split(",").map(s => s.trim()).filter(Boolean);
+  const idx = syms.indexOf(symbol);
+  if (idx === -1) {
+    syms.push(symbol);
+    cardEl.classList.add("agent-card--selected");
+  } else {
+    syms.splice(idx, 1);
+    cardEl.classList.remove("agent-card--selected");
+  }
+  input.value = syms.join(",");
+}
+
+// Keep backward-compat alias for candidate cards rendered by recommendToday
 function setSymbolFromAgent(symbol) {
-  $("symbolInput").value = symbol;
+  toggleSymbol(symbol, { classList: { add() {}, remove() {} } });
 }
 
 async function nextDayPlan() {
@@ -597,8 +615,14 @@ function bindActions() {
   $("nextDayPlan").addEventListener("click", nextDayPlan);
 }
 
+// Set endDate to today if not already set
+if (!$("endDate").value) {
+  $("endDate").value = new Date().toISOString().slice(0, 10);
+}
+
 bindActions();
 refreshQuotes();
 discoverToday();
 recommendToday();
 nextDayPlan();
+

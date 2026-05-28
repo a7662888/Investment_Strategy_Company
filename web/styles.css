@@ -371,3 +371,34 @@ th {
   flex-wrap: wrap;
 }
 
+/* Selected state: shown when symbol is already in the input */
+.agent-card--selected {
+  border-color: #2454a6;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px #bfdbfe;
+}
+.agent-card--selected::before {
+  content: "✓ 已選";
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1d4ed8;
+  margin-bottom: 4px;
+}
+
+/* 今日候選 panel: 2-column grid on wide screens for better readability */
+.candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 800px) {
+  .candidate-grid { grid-template-columns: 1fr; }
+}
+
+/* Controls bar: tighten for 5-item layout (removed 今日候選 button) */
+.controls {
+  grid-template-columns: 150px 150px minmax(260px, 1fr) 220px auto auto auto;
+}
+
+

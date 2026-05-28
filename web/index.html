@@ -21,7 +21,7 @@
         <input id="startDate" type="date" value="2020-01-01">
       </label>
       <label>訓練區間結束
-        <input id="endDate" type="date" value="2026-05-28">
+        <input id="endDate" type="date">
       </label>
       <label>股票代號
         <input id="symbolInput" value="2327.TW,2330.TW,2317.TW,2454.TW,2308.TW">
@@ -31,7 +31,6 @@
         <label><input id="roleC2" type="checkbox" checked> C-2 激進動能流</label>
       </div>
       <button id="runTraining" class="primary">開始區間訓練</button>
-      <button id="recommendToday">今日候選</button>
       <button id="discoverToday">Agent選股</button>
       <button id="nextDayPlan" class="primary">明日計畫</button>
     </section>
@@ -76,28 +75,26 @@
       <div id="planList" class="cards planList"></div>
     </section>
 
-    <section class="grid">
-      <section class="panel">
-        <div class="sectionHead">
-          <h2>即時報價</h2>
-          <span id="quoteTime"></span>
-        </div>
-        <div class="tableWrap">
-          <table>
-            <thead><tr><th>股票</th><th>名稱</th><th>價格</th><th>漲跌</th><th>時間</th><th>來源</th><th>狀態</th></tr></thead>
-            <tbody id="quoteRows"></tbody>
-          </table>
-        </div>
-      </section>
+    <section class="panel">
+      <div class="sectionHead">
+        <h2>即時報價</h2>
+        <span id="quoteTime"></span>
+      </div>
+      <div class="tableWrap">
+        <table>
+          <thead><tr><th>股票</th><th>名稱</th><th>價格</th><th>漲跌</th><th>時間</th><th>來源</th><th>狀態</th></tr></thead>
+          <tbody id="quoteRows"></tbody>
+        </table>
+      </div>
+    </section>
 
-      <section class="panel">
-        <div class="sectionHead">
-          <h2>今日候選</h2>
-          <span>研究用途</span>
-        </div>
-        <div id="marketStatusCard" class="market-status-card" style="display: none;"></div>
-        <div id="candidateList" class="cards"></div>
-      </section>
+    <section class="panel">
+      <div class="sectionHead">
+        <h2>📋 今日候選 <span style="font-size:13px;font-weight:400;color:var(--muted)">研究用途 · 點擊代號可追加至股票欄</span></h2>
+        <button id="recommendToday" style="flex-shrink:0">重新計算</button>
+      </div>
+      <div id="marketStatusCard" class="market-status-card" style="display: none;"></div>
+      <div id="candidateList" class="cards candidate-grid"></div>
     </section>
 
     <section class="panel">
@@ -138,6 +135,6 @@
       </div>
     </section>
   </main>
-  <script src="/app.js?v=20260529-1" charset="utf-8"></script>
+  <script src="/app.js?v=20260529-2" charset="utf-8"></script>
 </body>
 </html>
