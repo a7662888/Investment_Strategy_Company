@@ -8,6 +8,12 @@ Use a separate GitHub repository, for example:
 a7662888/Investment_Strategy_Company
 ```
 
+Current public deployment:
+
+```text
+https://investment-strategy-company.onrender.com
+```
+
 Do not put this app inside a medical research repository. It has a different domain, risk profile, README, and deployment lifecycle.
 
 ## Render

@@ -15,6 +15,8 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 - Render start command: `python app.py $PORT 0.0.0.0`
 - Render health check: `/api/health`
 - Local URL: `http://127.0.0.1:8770`
+- Render URL: `https://investment-strategy-company.onrender.com`
+- Render health check: `https://investment-strategy-company.onrender.com/api/health`
 - Temporary tunnel URL: `https://unix-legendary-douglas-anticipated.trycloudflare.com`
 - Separate detected tunnel: `D:\secondbrain\投資策略顧問公司` uses `http://localhost:8501`; do not modify it from this repo unless explicitly requested.
 

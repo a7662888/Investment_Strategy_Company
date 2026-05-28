@@ -23,6 +23,18 @@ Antigravity、Claude Code、Codex 都應先讀 [`SHARED_RESOURCES.md`](SHARED_RE
 
 ## 本機執行
 
+## 線上網址
+
+```text
+https://investment-strategy-company.onrender.com
+```
+
+健康檢查：
+
+```text
+https://investment-strategy-company.onrender.com/api/health
+```
+
 ```powershell
 py app.py 8765
 ```
