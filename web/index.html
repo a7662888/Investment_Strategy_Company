@@ -89,6 +89,31 @@
         </table>
       </div>
     </section>
+
+    <section class="panel" style="margin-top: 20px; border: 1px solid #10b981; background: #fafdfb;">
+      <div class="sectionHead">
+        <h2 style="color: #10b981;">🤖 AI 預測模型在線訓練與思考過程控制台</h2>
+        <span id="trainProgress">優化狀態：未執行</span>
+      </div>
+      <div id="trainConsole" class="terminal-log" style="
+        background: #0f1710; 
+        color: #34d399; 
+        font-family: monospace; 
+        padding: 15px; 
+        border-radius: 6px; 
+        max-height: 250px; 
+        overflow-y: auto; 
+        margin-bottom: 15px; 
+        font-size: 13px;
+        line-height: 1.5;
+        border: 1px solid #059669;
+        white-space: pre-wrap;
+      ">等待執行區間訓練...</div>
+      <div id="optimizedWeights" style="display: none; padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 13px; color: #166534; line-height: 1.6;">
+        <strong>🎉 AI 預測模型優化完成！</strong>
+        <p id="weightsDetail" style="margin: 4px 0 0 0; font-family: monospace; font-size: 13px;"></p>
+      </div>
+    </section>
   </main>
   <script src="/app.js?v=20260528-6" charset="utf-8"></script>
 </body>
