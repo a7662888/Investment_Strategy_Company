@@ -141,6 +141,69 @@ function renderStatusBadge(source, status) {
   return `<td>${sourceHtml}</td><td>${statusHtml}</td>`;
 }
 
+function renderLearningPanel(data) {
+  const summary = data.model_training || {};
+  const results = asArray(data.results);
+  if (!summary.available) {
+    $("learningStatus").textContent = "模型 artifact 不可用";
+    $("learningPanel").innerHTML = `<p>${summary.summary || "尚無模型訓練資訊"}</p>`;
+    return;
+  }
+
+  const best = summary.best_bucket || {};
+  const topFactors = asArray(summary.top_factors).map(item => `
+    <li>
+      <strong>${item.label}</strong>
+      <span class="${item.direction === "偏多" ? "pos" : "neg"}">${item.direction} ${Number(item.weight || 0).toFixed(3)}</span>
+    </li>
+  `).join("");
+  const process = asArray(summary.thinking_process).map(item => `<li>${item}</li>`).join("");
+  const limits = asArray(summary.limitations).map(item => `<li>${item}</li>`).join("");
+  const nextSteps = asArray(summary.next_steps).map(item => `<li>${item}</li>`).join("");
+  const reviews = results.map(row => {
+    const review = row.learning_review || {};
+    const findings = asArray(review.findings).map(item => `<li>${item}</li>`).join("");
+    const next = asArray(review.next_adjustments).map(item => `<li>${item}</li>`).join("");
+    return `
+      <article class="learningCard">
+        <strong>${row.symbol} · ${row.role}</strong>
+        <p>策略報酬 ${pct(row.total_return)}；買進持有 ${pct(review.buy_hold_return)}；差距 ${pct(review.gap_vs_buy_hold)}；交易 ${row.trade_count} 次。</p>
+        <ul>${findings}</ul>
+        <p class="learningSubtitle">下一輪優化</p>
+        <ul>${next}</ul>
+      </article>
+    `;
+  }).join("");
+
+  $("learningStatus").textContent = `${summary.name} · 樣本外 ${summary.oos_sample_count || "-"} 筆`;
+  $("learningPanel").innerHTML = `
+    <div class="learningGrid">
+      <article class="learningCard">
+        <strong>校準模型證據</strong>
+        <p>訓練股票 ${summary.train_symbol_count} 檔；訓練樣本 ${summary.train_sample_count}；樣本外 AUC ${Number(summary.oos_auc || 0).toFixed(3)}；基準上漲率 ${(Number(summary.base_rate_up || 0) * 100).toFixed(1)}%。</p>
+        <p>最佳校準桶 ${best.lo !== undefined ? `${(best.lo * 100).toFixed(0)}-${(best.hi * 100).toFixed(0)}%` : "-"}：歷史上漲率 ${(Number(best.empirical_up_rate || 0) * 100).toFixed(1)}%，5日均報酬 ${(Number(best.avg_fwd_return || 0) * 100).toFixed(2)}%。</p>
+      </article>
+      <article class="learningCard">
+        <strong>目前主要權重</strong>
+        <ul>${topFactors}</ul>
+      </article>
+      <article class="learningCard">
+        <strong>模型怎麼學</strong>
+        <ul>${process}</ul>
+      </article>
+      <article class="learningCard">
+        <strong>限制與風險</strong>
+        <ul>${limits}</ul>
+      </article>
+    </div>
+    <div class="learningReviews">${reviews}</div>
+    <article class="learningCard">
+      <strong>下一步總體優化</strong>
+      <ul>${nextSteps}</ul>
+    </article>
+  `;
+}
+
 function aiPredictorLine(pred) {
   if (!pred) return "";
 
@@ -222,6 +285,7 @@ async function runTraining() {
     });
     const data = await readJson(res);
     const results = asArray(data.results);
+    renderLearningPanel(data);
     $("trainingRows").innerHTML = results.map(row => `
       <tr>
         <td>${row.symbol}</td>
@@ -237,6 +301,8 @@ async function runTraining() {
     $("trainingStatus").textContent = results.length ? "完成" : "完成，但沒有可顯示結果";
   } catch (err) {
     $("trainingStatus").textContent = `訓練失敗：${err.message}`;
+    $("learningStatus").textContent = "訓練失敗";
+    $("learningPanel").innerHTML = `<p>${err.message}</p>`;
   } finally {
     setBusy("runTraining", false);
   }

@@ -205,6 +205,45 @@ th {
   height: 100%;
   background: var(--blue);
 }
+.learningPanel {
+  display: grid;
+  gap: 12px;
+}
+.learningGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.learningReviews {
+  display: grid;
+  gap: 10px;
+}
+.learningCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcff;
+}
+.learningCard p {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.learningCard ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.learningCard li + li {
+  margin-top: 4px;
+}
+.learningCard li {
+  white-space: normal;
+}
+.learningSubtitle {
+  color: var(--ink);
+  font-weight: 700;
+}
 .pos { color: var(--red); }
 .neg { color: var(--green); }
 .watch { color: var(--amber); }
@@ -220,7 +259,7 @@ th {
 }
 
 @media (max-width: 980px) {
-  .controls, .grid {
+  .controls, .grid, .learningGrid {
     grid-template-columns: 1fr;
   }
   .topbar {

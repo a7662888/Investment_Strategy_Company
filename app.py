@@ -17,6 +17,7 @@ PROJECT = ROOT
 WEB_ROOT = PROJECT / "web"
 DATA_DIR = PROJECT / "data"
 CACHE_DIR = PROJECT / "data" / "web_cache"
+MODEL_ARTIFACT_PATH = PROJECT / "model_artifacts" / "logit_v1.json"
 
 
 DEFAULT_SYMBOLS = [
@@ -450,6 +451,139 @@ def max_drawdown(values: list[float]) -> float:
     return worst
 
 
+def load_model_artifact() -> dict | None:
+    try:
+        return json.loads(MODEL_ARTIFACT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def model_training_summary() -> dict:
+    artifact = load_model_artifact()
+    if not artifact:
+        return {
+            "available": False,
+            "summary": "尚未找到校準模型 artifact，區間訓練只會顯示規則策略績效。",
+            "next_steps": ["先建立或重新產生 model_artifacts/logit_v1.json。"],
+        }
+
+    weights = artifact.get("weights", {})
+    labels = {}
+    try:
+        from company.model.features import FEATURE_LABELS
+
+        labels = FEATURE_LABELS
+    except Exception:
+        labels = {}
+
+    ranked = sorted(weights.items(), key=lambda item: abs(float(item[1])), reverse=True)
+    top_factors = [
+        {
+            "feature": key,
+            "label": labels.get(key, key),
+            "weight": round(float(weight), 4),
+            "direction": "偏多" if float(weight) > 0 else "偏空",
+        }
+        for key, weight in ranked[:6]
+    ]
+    metrics = artifact.get("metrics", {})
+    buckets = artifact.get("calibration_buckets", [])
+    best_bucket = None
+    if buckets:
+        best_bucket = max(
+            buckets,
+            key=lambda item: (float(item.get("empirical_up_rate") or 0), float(item.get("avg_fwd_return") or 0)),
+        )
+
+    return {
+        "available": True,
+        "name": artifact.get("name"),
+        "horizon_days": artifact.get("horizon_days"),
+        "train_window": artifact.get("train_window"),
+        "train_symbol_count": len(artifact.get("train_symbols", [])),
+        "train_sample_count": metrics.get("n_train_total"),
+        "oos_sample_count": metrics.get("n_oos_total"),
+        "oos_auc": metrics.get("pooled_oos_auc"),
+        "oos_accuracy": metrics.get("pooled_oos_accuracy"),
+        "base_rate_up": metrics.get("base_rate_up"),
+        "brier": metrics.get("pooled_oos_brier"),
+        "top_factors": top_factors,
+        "best_bucket": best_bucket,
+        "calibration_buckets": buckets,
+        "thinking_process": [
+            "先用截止日以前的價格與成交量產生 11 個技術因子，避免偷看未來。",
+            "用 rolling walk-forward 樣本外資料檢查模型機率是否有排序能力。",
+            "把模型機率映射到歷史校準桶，讓每次建議都有實際上漲率與 5 日平均報酬作依據。",
+            "訓練回饋不是直接改操盤原則，而是調整因子權重、信心門檻與風控提示。",
+        ],
+        "limitations": [
+            "AUC 只略高於 0.5，代表技術面模型只能作為輔助排序，不應單獨決策。",
+            "高信心桶樣本較少，需持續擴大股票池並做滾動再校準。",
+            "模型預測的是未來 5 日方向，不等於明日必漲或逐筆交易訊號。",
+        ],
+        "next_steps": [
+            "擴大訓練股票池與產業覆蓋，降低只適合少數股票的偏誤。",
+            "每月或每季滾動重訓，比較新舊模型的樣本外 AUC、Brier 與高信心桶報酬。",
+            "把 C-1/C-2 的交易結果回饋給 D 審計，檢查過度交易、追高與獲利回吐。",
+        ],
+    }
+
+
+def strategy_learning_review(role: str, rows: list[dict], total_return: float, drawdown: float, trades: int) -> dict:
+    closes = [float(row["close"]) for row in rows]
+    volumes = [float(row.get("volume", 0) or 0) for row in rows]
+    buy_hold_return = closes[-1] / closes[0] - 1 if closes and closes[0] else 0.0
+    model = model_evidence(rows[-1].get("symbol", ""), closes, volumes)
+    calibrated = model.get("calibrated") or {}
+    calibrated_prob = model.get("calibrated_probability_up")
+    gap_vs_buy_hold = total_return - buy_hold_return
+
+    findings = []
+    if trades == 0:
+        findings.append("區間內沒有交易，代表規則過於保守或訊號門檻未被觸發。")
+    if gap_vs_buy_hold < -0.05:
+        findings.append("策略明顯落後買進持有，需檢查進出場是否太慢或過度避險。")
+    elif gap_vs_buy_hold > 0.05:
+        findings.append("策略優於買進持有，值得保留目前核心規則並觀察是否可複製到其他股票。")
+    else:
+        findings.append("策略與買進持有差距不大，下一步應看最大回撤與交易次數。")
+    if drawdown < -0.25:
+        findings.append("最大回撤偏深，D 風控應要求降低單次投入或加入停損/停利保護。")
+    if calibrated_prob is not None:
+        findings.append(
+            f"校準模型目前給 {calibrated_prob:.1f}% 偏多；同桶歷史上漲率約 "
+            f"{float(calibrated.get('empirical_up_rate', 0)) * 100:.1f}% 。"
+        )
+
+    next_adjustments = []
+    if role == "C-1":
+        next_adjustments.extend(
+            [
+                "維持不追價原則，但記錄 MA60 折價 7% 是否太嚴，下一輪可比較 5%/7%/10%。",
+                "若已獲利且跌破 MA20，優先測試分批獲利而非一次賣出。",
+            ]
+        )
+    else:
+        next_adjustments.extend(
+            [
+                "維持動能交易原則，但加入 RSI>75 或波動過高時降低部位，避免追高。",
+                "比較 MA15/45 與 MA20/60 的交叉訊號，檢查是否能降低假突破。",
+            ]
+        )
+    if trades == 0:
+        next_adjustments.append("本區間應補做較長期間或不同股票，否則這次訓練無法有效提升模型。")
+
+    return {
+        "buy_hold_return": round(buy_hold_return, 6),
+        "gap_vs_buy_hold": round(gap_vs_buy_hold, 6),
+        "current_model_probability": calibrated_prob,
+        "current_model_bucket": calibrated,
+        "findings": findings,
+        "next_adjustments": next_adjustments,
+        "future_knowledge_used": False,
+    }
+
+
 def simulate(symbol: str, rows: list[dict], role: str, initial_cash: float) -> dict:
     closes = [float(row["close"]) for row in rows]
     cash = initial_cash
@@ -494,22 +628,26 @@ def simulate(symbol: str, rows: list[dict], role: str, initial_cash: float) -> d
                 pending = "hold"
 
     final_equity = equity_curve[-1] if equity_curve else initial_cash
+    total_return = final_equity / initial_cash - 1
+    drawdown = max_drawdown(equity_curve) if equity_curve else 0
     model_basis = (
         "C-1 保守價值流：只看當日以前收盤，價格低於 MA60 7% 才分批買，反彈高於 MA60 5% 才賣。"
         if role == "C-1"
         else "C-2 激進動能流：只看當日以前收盤，MA15 上穿 MA45 才買，MA15 跌回 MA45 才賣。"
     )
+    learning_review = strategy_learning_review(role, rows, total_return, drawdown, trades)
     return {
         "symbol": symbol,
         "role": role,
         "start": rows[0]["date"],
         "end": rows[-1]["date"],
         "final_equity": round(final_equity, 2),
-        "total_return": round(final_equity / initial_cash - 1, 6),
-        "max_drawdown": round(max_drawdown(equity_curve), 6) if equity_curve else 0,
+        "total_return": round(total_return, 6),
+        "max_drawdown": round(drawdown, 6),
         "trade_count": trades,
         "model_basis": model_basis,
         "training_note": "訊號在 T 日收盤後形成，下一個交易日開盤才執行；不讀取預設日期之後資料。",
+        "learning_review": learning_review,
         "future_knowledge_used": False,
     }
 
@@ -878,7 +1016,13 @@ class Handler(SimpleHTTPRequestHandler):
                     rows = fetch_history(symbol, body["start"], end_exclusive)
                     for role in body["roles"]:
                         output.append(simulate(symbol, rows, role, float(body.get("initial_cash", 1_000_000))))
-                self.send_json({"results": output})
+                self.send_json(
+                    {
+                        "results": output,
+                        "model_training": model_training_summary(),
+                        "training_goal": "用區間回測找出策略弱點，並用校準模型提供樣本外機率依據；操盤手不可讀取截止日之後資料。",
+                    }
+                )
                 return
             if self.path == "/api/recommend":
                 body = self.read_body()
