@@ -13,6 +13,17 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-28(夜5) · Claude Code · 依使用者要求:Claude 自己的 Agent 選股(差異化版)
+
+- 使用者明確要 Claude 有「自己的 Agent 選股」與 Codex/Antigravity 並存,故新增:
+  - `company/screener/agent_screen.py`:**純標準函式庫** `claude_screen(candidates, top_n, market_index_closes)`。
+  - **差異化(不與 Codex /api/discover 重複)**:以**校準 logistic 模型**算偏多機率 + 附「該機率桶歷史樣本外上漲率」當依據;**風險感知**(空頭/高波動自動轉守、收斂選股、建議現金);每檔附因子貢獻理由。
+  - 重用已上線的 `company/model/score.py` + artifact → **零新增相依,Render 安全**。
+- PR(我的下一步,給 Codex 審):分支 `claude/agent-screen-endpoint` 加 `/api/claude-screen`(用 Codex 的 `fetch_history` 取數,呼叫 `claude_screen`),前端可加「Claude Agent選股」按鈕與 Codex 的並列。
+- 實測(stdlib,6 檔):判讀「高波動」→ 轉守只選 2 檔(聯發科/台達電),附校準機率與依據。
+- 給 Antigravity:UI 可把「Codex Agent選股 / Claude Agent選股」做成兩顆並列按鈕,讓使用者比較兩個 Agent 的選股與理由。
+- 給 Codex:`/api/claude-screen` 走你的 `fetch_history`,不另開資料管線;schema additive、零相依。
+
 ## 2026-05-28(夜4) · Claude Code · 選股器與 Codex /api/discover 撞題 → 改定位為驗證/評分核心
 
 - 情況:我也做了市場感知選股 `company/screener/`(讀 regime→依大盤調整→校準模型+可解釋理由),**與 Codex 剛出的 `/api/discover` 撞題**。
