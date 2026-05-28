@@ -193,6 +193,47 @@ def simulate(symbol: str, rows: list[dict], role: str, initial_cash: float) -> d
     }
 
 
+def calculate_rsi_list(prices: list[float], period: int = 14) -> float:
+    if len(prices) < period + 1:
+        return 50.0
+    gains = []
+    losses = []
+    for i in range(1, len(prices)):
+        diff = prices[i] - prices[i - 1]
+        if diff > 0:
+            gains.append(diff)
+            losses.append(0.0)
+        else:
+            gains.append(0.0)
+            losses.append(-diff)
+            
+    avg_gain = sum(gains[-period:]) / period
+    avg_loss = sum(losses[-period:]) / period
+    if avg_loss == 0:
+        return 100.0
+    rs = avg_gain / avg_loss
+    return 100.0 - (100.0 / (1.0 + rs))
+
+
+def calculate_macd_list(prices: list[float], fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[float, float, float]:
+    if len(prices) < slow:
+        return 0.0, 0.0, 0.0
+    
+    def ema(values: list[float], period: int) -> list[float]:
+        multiplier = 2.0 / (period + 1.0)
+        ema_values = [values[0]]
+        for val in values[1:]:
+            ema_values.append((val - ema_values[-1]) * multiplier + ema_values[-1])
+        return ema_values
+        
+    ema_fast = ema(prices, fast)
+    ema_slow = ema(prices, slow)
+    macd_line = [f - s for f, s in zip(ema_fast, ema_slow)]
+    signal_line = ema(macd_line, signal)
+    hist = [m - s for m, s in zip(macd_line, signal_line)]
+    return macd_line[-1], signal_line[-1], hist[-1]
+
+
 def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
     closes = [float(row["close"]) for row in rows]
     last = closes[-1]
@@ -205,6 +246,10 @@ def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
         returns = [closes[i] / closes[i - 1] - 1 for i in range(len(closes) - 20, len(closes))]
         avg = sum(returns) / len(returns)
         volatility = math.sqrt(sum((item - avg) ** 2 for item in returns) / len(returns))
+
+    # Calculate RSI and MACD
+    rsi = calculate_rsi_list(closes, 14)
+    macd_val, signal_val, hist_val = calculate_macd_list(closes, 12, 26, 9)
 
     score = 0
     reasons = []
@@ -223,6 +268,23 @@ def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
     if volatility > 0.045:
         score -= 1
         reasons.append("近期波動偏高，需降低部位或等待確認")
+
+    # Add RSI and MACD factors to score & reasons
+    if rsi < 35:
+        score += 1
+        reasons.append(f"RSI(14) 降至 {rsi:.1f}，顯示超賣且價格進入價值安全區")
+    elif rsi > 70:
+        score -= 1
+        reasons.append(f"RSI(14) 達 {rsi:.1f}，進入超買區，需防範拉回修正")
+    else:
+        reasons.append(f"RSI(14) 數值為 {rsi:.1f}，處於常態整理區間")
+
+    if hist_val > 0:
+        score += 1
+        reasons.append(f"MACD 柱狀體攀升至 {hist_val:.2f}，短線動能轉強")
+    else:
+        score -= 1
+        reasons.append(f"MACD 柱狀體位於負值區 ({hist_val:.2f})，空頭慣性存在")
 
     if not reasons:
         reasons.append("訊號不明確，暫列觀察")
