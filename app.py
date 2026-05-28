@@ -149,6 +149,60 @@ def fetch_yahoo_quotes(symbols: list[str]) -> list[dict]:
     return results
 
 
+def fetch_yahoo_intraday_quotes(symbols: list[str]) -> list[dict]:
+    results = []
+    for symbol in symbols:
+        end = datetime.now(timezone.utc) + timedelta(days=1)
+        start = end - timedelta(days=5)
+        params = {
+            "period1": str(int(start.timestamp())),
+            "period2": str(int(end.timestamp())),
+            "interval": "1m",
+            "includePrePost": "false",
+        }
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?{urllib.parse.urlencode(params)}"
+        payload = yahoo_json(url)
+        if payload["chart"].get("error"):
+            continue
+        chart = payload["chart"]["result"][0]
+        meta = chart.get("meta", {})
+        quote = (chart.get("indicators", {}).get("quote") or [{}])[0]
+        timestamps = chart.get("timestamp") or []
+        opens = quote.get("open") or []
+        highs = quote.get("high") or []
+        lows = quote.get("low") or []
+        closes = quote.get("close") or []
+        volumes = quote.get("volume") or []
+        latest_index = None
+        for index in range(len(timestamps) - 1, -1, -1):
+            if index < len(closes) and closes[index] is not None:
+                latest_index = index
+                break
+        if latest_index is None:
+            continue
+        price = float(closes[latest_index])
+        prev_close = parse_float(meta.get("chartPreviousClose")) or parse_float(meta.get("previousClose"))
+        change_pct = 0.0 if not prev_close else (price / prev_close - 1.0) * 100.0
+        results.append(
+            {
+                "symbol": symbol,
+                "shortName": meta.get("shortName") or meta.get("longName") or symbol,
+                "regularMarketPrice": price,
+                "regularMarketChangePercent": change_pct,
+                "regularMarketTime": int(timestamps[latest_index]),
+                "marketDate": datetime.fromtimestamp(timestamps[latest_index], tz=timezone(timedelta(hours=8))).date().isoformat(),
+                "marketTime": datetime.fromtimestamp(timestamps[latest_index], tz=timezone(timedelta(hours=8))).time().isoformat(timespec="seconds"),
+                "open": parse_float(meta.get("regularMarketOpen")) or (float(opens[0]) if opens and opens[0] is not None else None),
+                "dayHigh": parse_float(meta.get("regularMarketDayHigh")) or (max(float(item) for item in highs if item is not None) if highs else None),
+                "dayLow": parse_float(meta.get("regularMarketDayLow")) or (min(float(item) for item in lows if item is not None) if lows else None),
+                "volume": float(meta.get("regularMarketVolume") or volumes[latest_index] or 0),
+                "source": "Yahoo 1m intraday",
+                "realtimeStatus": "雲端可用盤中分鐘線，可能延遲；TWSE MIS 不可用時使用",
+            }
+        )
+    return results
+
+
 def fetch_history_quote(symbol: str) -> dict | None:
     end = datetime.now().date()
     start = (end - timedelta(days=10)).isoformat()
@@ -192,11 +246,16 @@ def merge_live_quote_into_history(symbol: str, rows: list[dict]) -> list[dict]:
     try:
         quotes = fetch_twse_mis_quotes([symbol])
     except Exception:
-        return rows
+        quotes = []
+    if not quotes:
+        try:
+            quotes = fetch_yahoo_intraday_quotes([symbol])
+        except Exception:
+            quotes = []
     if not quotes:
         return rows
     quote = quotes[0]
-    quote_date = iso_from_tw_date(quote.get("marketDate"))
+    quote_date = iso_from_tw_date(quote.get("marketDate")) or quote.get("marketDate")
     if not quote_date:
         return rows
 
@@ -228,6 +287,14 @@ def fetch_quote(symbols: list[str]) -> dict:
     missing = [symbol for symbol in symbols if symbol not in by_symbol]
     if missing:
         try:
+            for item in fetch_yahoo_intraday_quotes(missing):
+                by_symbol[item["symbol"]] = item
+        except Exception:
+            pass
+
+    missing = [symbol for symbol in symbols if symbol not in by_symbol]
+    if missing:
+        try:
             for item in fetch_yahoo_quotes(missing):
                 by_symbol[item["symbol"]] = item
         except Exception:
@@ -241,7 +308,7 @@ def fetch_quote(symbols: list[str]) -> dict:
 
     return {
         "quoteResponse": {"result": [by_symbol[symbol] for symbol in symbols if symbol in by_symbol]},
-        "quotePolicy": "TWSE/TPEx MIS first; Yahoo only as labeled fallback.",
+        "quotePolicy": "TWSE/TPEx MIS first; Yahoo 1m intraday cloud fallback; Yahoo daily only as last resort.",
     }
 
 
@@ -249,7 +316,7 @@ def sigmoid(value: float) -> float:
     return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, value))))
 
 
-def model_evidence(symbol: str, closes: list[float]) -> dict:
+def model_evidence(symbol: str, closes: list[float], volumes: list[float] | None = None) -> dict:
     last = closes[-1]
     ma20 = moving_average(closes, 20)
     ma60 = moving_average(closes, 60)
@@ -274,7 +341,7 @@ def model_evidence(symbol: str, closes: list[float]) -> dict:
     risk_points = -0.8 if volatility > 0.045 else 0.2 if volatility < 0.025 else 0.0
     raw_score = trend_points + momentum_points + rsi_points + macd_points + risk_points
 
-    return {
+    evidence = {
         "name": "interpretable_technical_ensemble_v1",
         "symbol": symbol,
         "trend_points": round(trend_points, 3),
@@ -293,6 +360,22 @@ def model_evidence(symbol: str, closes: list[float]) -> dict:
         "macd_histogram": round(hist_val, 3),
         "note": "可解釋技術因子模型，僅使用截止日以前資料；機率尚未校準，供訓練比較。",
     }
+
+    try:
+        from company.model.score import score_series
+
+        calibrated = score_series(closes, volumes)
+        if calibrated:
+            evidence["calibrated_model"] = calibrated["name"]
+            evidence["calibrated_probability_up"] = calibrated["probability_up"]
+            evidence["calibrated"] = calibrated["calibrated"]
+            evidence["calibrated_reasons"] = calibrated["reasons"]
+            evidence["calibrated_evidence"] = calibrated["evidence"]
+            evidence["horizon_days"] = calibrated.get("horizon_days")
+            evidence["note"] = calibrated["note"]
+    except Exception:
+        pass
+    return evidence
 
 
 def fetch_history(symbol: str, start_date: str, end_date: str) -> list[dict]:
@@ -464,8 +547,9 @@ def calculate_macd_list(prices: list[float], fast: int = 12, slow: int = 26, sig
 
 def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
     closes = [float(row["close"]) for row in rows]
+    volumes = [float(row.get("volume", 0) or 0) for row in rows]
     last = closes[-1]
-    model = model_evidence(symbol, closes)
+    model = model_evidence(symbol, closes, volumes)
     ma20 = moving_average(closes, 20)
     ma60 = moving_average(closes, 60)
     ma120 = moving_average(closes, 120)
