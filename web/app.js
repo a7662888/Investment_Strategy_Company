@@ -47,7 +47,12 @@ function setBusy(buttonId, busy) {
 
 function modelLine(model) {
   if (!model) return "";
-  return `<p class="modelLine">AI 模型：偏多機率 ${model.probability_up ?? "-"}% · 趨勢 ${model.trend_points ?? "-"} · 動能 ${model.momentum_points ?? "-"} · RSI ${model.rsi14 ?? "-"} · 波動 ${model.volatility_20 ?? "-"}</p>`;
+  const calibrated = model.calibrated ? ` · 校準桶 ${model.calibrated.prob_bucket}：歷史上漲率 ${(Number(model.calibrated.empirical_up_rate || 0) * 100).toFixed(1)}%，5日均報酬 ${(Number(model.calibrated.avg_fwd_return || 0) * 100).toFixed(1)}%` : "";
+  const reasons = asArray(model.calibrated_reasons).slice(0, 3).join("；");
+  return `
+    <p class="modelLine">AI 模型：未校準偏多 ${model.probability_up ?? "-"}% · 校準偏多 ${model.calibrated_probability_up ?? "-"}% · 趨勢 ${model.trend_points ?? "-"} · 動能 ${model.momentum_points ?? "-"}${calibrated}</p>
+    ${reasons ? `<p class="modelReason">校準理由：${reasons}</p>` : ""}
+  `;
 }
 
 function calibratedModelPanel(model) {

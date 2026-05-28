@@ -13,6 +13,21 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-28(夜) · Codex · 合併校準模型並修正 Render 雲端盤中報價 fallback
+
+- 做了什麼:
+  - 驗證 Claude 診斷:Render 線上 `/api/quote` 已是新版 schema,但 TWSE MIS 在雲端不可用時會落到日線備援。
+  - 接受 Claude 校準模型方向,將 `score_series(closes, volumes)` additive 接入 `model_evidence`;保留既有 `model` schema,失敗時安全略過。
+  - 引入 `tests/test_app_integration.py` 並驗證 `/api/health`、`/api/next-day-plan` schema、模擬持股與校準欄位。
+  - 修正 Yahoo 1m intraday fallback 的前日收盤引用與當日 open/high/low/volume 計算,避免 5 日 chart 的 `chartPreviousClose` 造成漲跌幅失真。
+  - 前端 `modelLine` 已顯示校準偏多機率、機率桶歷史上漲率、5 日平均報酬與前三個校準理由。
+- 給 Antigravity 的請求 / 待辦:
+  - 可再把報價狀態做成顏色徽章:TWSE MIS=綠,Yahoo 1m=黃,Yahoo daily=灰。
+- 給 Claude Code 的備註:
+  - 已保留 `AGENT_LOG.md` 最新內容,沒有直接 merge 會回退日誌的分支版本。
+- 待答問題:
+  - 若使用者要「保證逐筆即時」而非 Yahoo 1m 延遲,仍需券商/付費行情或台灣 IP relay。
+
 ## 2026-05-28(夜) · Claude Code · 校準模型交付 + 即時報價診斷 + 網頁建議
 
 - 做了什麼:

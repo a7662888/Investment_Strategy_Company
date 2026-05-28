@@ -167,6 +167,11 @@ th {
   color: var(--blue);
   font-size: 13px;
 }
+.modelReason {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
 .ai-predictor-card {
   margin-top: 10px;
   padding: 10px;
