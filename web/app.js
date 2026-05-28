@@ -144,6 +144,8 @@ function renderStatusBadge(source, status) {
 function renderLearningPanel(data) {
   const summary = data.model_training || {};
   const results = asArray(data.results);
+  const optimizations = asArray(data.optimization);
+  const thresholdReviews = asArray(data.threshold_reviews);
   if (!summary.available) {
     $("learningStatus").textContent = "模型 artifact 不可用";
     $("learningPanel").innerHTML = `<p>${summary.summary || "尚無模型訓練資訊"}</p>`;
@@ -174,6 +176,42 @@ function renderLearningPanel(data) {
       </article>
     `;
   }).join("");
+  const optimizationHtml = optimizations.map(item => {
+    const best = item.best_variant || {};
+    const params = best.params ? Object.entries(best.params).map(([key, value]) => `${key}=${value}`).join("，") : "-";
+    return `
+      <article class="learningCard">
+        <strong>${item.symbol} · ${item.role} 參數競賽</strong>
+        <p>目前規則 ${pct(item.baseline_return)}；最佳候選 ${pct(best.total_return)}；改善 ${pct(item.improvement)}。</p>
+        <p>最佳參數：${params}</p>
+        <p>${item.recommendation || ""}</p>
+      </article>
+    `;
+  }).join("");
+  const thresholdHtml = thresholdReviews.map(review => {
+    const rows = asArray(review.thresholds).map(item => `
+      <tr>
+        <td>${item.threshold}%</td>
+        <td>${item.signals}</td>
+        <td>${item.hit_rate === null || item.hit_rate === undefined ? "-" : pct(item.hit_rate)}</td>
+        <td>${pct(item.avg_forward_return)}</td>
+      </tr>
+    `).join("");
+    const best = review.best_threshold;
+    return `
+      <article class="learningCard">
+        <strong>${review.symbol} · 機率門檻審計</strong>
+        <p>${review.interpretation || ""}</p>
+        ${best ? `<p>本區間最佳門檻：${best.threshold}%；命中率 ${pct(best.hit_rate)}；5日均報酬 ${pct(best.avg_forward_return)}。</p>` : "<p>訊號不足，暫無可靠門檻。</p>"}
+        <div class="tableWrap">
+          <table>
+            <thead><tr><th>門檻</th><th>訊號</th><th>命中率</th><th>5日均報酬</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </article>
+    `;
+  }).join("");
 
   $("learningStatus").textContent = `${summary.name} · 樣本外 ${summary.oos_sample_count || "-"} 筆`;
   $("learningPanel").innerHTML = `
@@ -197,6 +235,8 @@ function renderLearningPanel(data) {
       </article>
     </div>
     <div class="learningReviews">${reviews}</div>
+    <div class="learningReviews">${optimizationHtml}</div>
+    <div class="learningReviews">${thresholdHtml}</div>
     <article class="learningCard">
       <strong>下一步總體優化</strong>
       <ul>${nextSteps}</ul>
