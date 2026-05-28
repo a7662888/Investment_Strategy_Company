@@ -49,6 +49,20 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 
 可互相引用的成果,避免重做。新增資源請登記於此。
 
+### 舊版台股預測報告儀表板(設計參考)
+
+- 原始位置:`D:\Temp\taiwan_stock_prediction_report_dashboard.html`
+- repo 參考副本:`docs/design-references/taiwan_stock_prediction_report_dashboard.html`
+- 可借用內容:
+  - 模型權重 UI(momentum/reversal/volatility/liquidity/gap)。
+  - 可列印/匯出 HTML/JSON 報告。
+  - 分數長條圖與 top/bottom 摘要。
+  - Proxy 契約說明(TWSE/TPEx/券商 API/正式資料源)。
+- 不建議直接搬入主 app:
+  - 單檔 HTML 太大,與目前 Render API 架構不同。
+  - 有瀏覽器直連 TWSE/TPEx 的 CORS 風險。
+  - 目前 app.py 已有 RSI/MACD 與明日計畫;應抽取其「報告產生器」與「權重 UI」概念,不要整頁替換。
+
 ### 策略引擎 + 操盤手 + 審計庫(Claude lane)
 
 - 位置:`company/`(純 Python,可被 `app.py` / UI / 任何前端 import)。完整說明見 [`STRATEGY_ENGINE.md`](STRATEGY_ENGINE.md)。
