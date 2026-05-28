@@ -2,6 +2,10 @@
 
 研究與模擬用途的一人投資策略公司儀表板。
 
+## 共享資源
+
+Antigravity、Claude Code、Codex 都應先讀 [`SHARED_RESOURCES.md`](SHARED_RESOURCES.md)，再新增部署、tunnel、資料來源或長期狀態檔。
+
 ## 功能
 
 - 台股即時/近期報價查詢。
