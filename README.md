@@ -49,6 +49,8 @@ http://192.168.1.103:8765
 
 ### Render
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/a7662888/Investment_Strategy_Company)
+
 GitHub repo：
 
 ```text

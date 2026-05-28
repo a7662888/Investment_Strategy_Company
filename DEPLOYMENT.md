@@ -14,6 +14,12 @@ Do not put this app inside a medical research repository. It has a different dom
 
 Render can run this Python app without extra dependencies.
 
+One-click deploy:
+
+```text
+https://render.com/deploy?repo=https://github.com/a7662888/Investment_Strategy_Company
+```
+
 Settings:
 
 - Runtime: Python
