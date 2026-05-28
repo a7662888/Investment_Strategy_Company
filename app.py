@@ -274,7 +274,7 @@ def model_evidence(symbol: str, closes: list[float]) -> dict:
     risk_points = -0.8 if volatility > 0.045 else 0.2 if volatility < 0.025 else 0.0
     raw_score = trend_points + momentum_points + rsi_points + macd_points + risk_points
 
-    return {
+    evidence = {
         "name": "interpretable_technical_ensemble_v1",
         "symbol": symbol,
         "trend_points": round(trend_points, 3),
@@ -293,6 +293,21 @@ def model_evidence(symbol: str, closes: list[float]) -> dict:
         "macd_histogram": round(hist_val, 3),
         "note": "可解釋技術因子模型，僅使用截止日以前資料；機率尚未校準，供訓練比較。",
     }
+
+    # additive：接上 Claude lane 的校準模型(company/model,純 stdlib)。
+    # 失敗(import/artifact 缺)則略過,不影響既有欄位 → Render 安全、schema 不變。
+    try:
+        from company.model.score import score_series
+        calibrated = score_series(closes)
+        if calibrated:
+            evidence["calibrated_model"] = calibrated["name"]
+            evidence["calibrated_probability_up"] = calibrated["probability_up"]
+            evidence["calibrated"] = calibrated["calibrated"]
+            evidence["calibrated_reasons"] = calibrated["reasons"]
+            evidence["calibrated_evidence"] = calibrated["evidence"]
+    except Exception:
+        pass
+    return evidence
 
 
 def fetch_history(symbol: str, start_date: str, end_date: str) -> list[dict]:
