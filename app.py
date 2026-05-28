@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import sys
 import urllib.parse
 import urllib.request
@@ -456,6 +457,22 @@ def load_model_artifact() -> dict | None:
         return json.loads(MODEL_ARTIFACT_PATH.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def build_version() -> dict:
+    return {
+        "app_version": "training-diagnostics-v2",
+        "expected_min_commit": "6bb9f83",
+        "render_git_commit": os.environ.get("RENDER_GIT_COMMIT"),
+        "render_service_id": os.environ.get("RENDER_SERVICE_ID"),
+        "render_service_name": os.environ.get("RENDER_SERVICE_NAME"),
+        "features": {
+            "quote_yahoo_1m_fallback": True,
+            "train_model_training": True,
+            "train_optimizer_audit": True,
+            "train_threshold_reviews": True,
+        },
+    }
 
 
 def model_training_summary() -> dict:
@@ -1237,8 +1254,12 @@ class Handler(SimpleHTTPRequestHandler):
                         "status": "ok",
                         "service": "investment-strategy-company",
                         "time": datetime.now(timezone.utc).isoformat(),
+                        "version": build_version(),
                     }
                 )
+                return
+            if parsed.path == "/api/version":
+                self.send_json(build_version())
                 return
             if parsed.path == "/api/quote":
                 symbols = query.get("symbols", ["2327.TW"])[0].split(",")
