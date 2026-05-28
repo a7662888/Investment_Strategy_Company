@@ -15,105 +15,135 @@
     "vol_surge"
   ],
   "weights": {
-    "ma_ratio_20": -0.35936,
-    "ma_ratio_60": 0.27311,
-    "ma20_over_ma60": 0.02038,
-    "ma60_over_ma120": 0.10047,
-    "mom_20": -0.20346,
-    "mom_60": 0.01438,
-    "rsi14_z": -0.00456,
-    "macd_hist_norm": 0.37938,
-    "vol_20": 0.04857,
-    "dist_from_high": -0.08752,
-    "vol_surge": 0.08173
+    "ma_ratio_20": -0.32903,
+    "ma_ratio_60": 0.42836,
+    "ma20_over_ma60": -0.28008,
+    "ma60_over_ma120": 0.0916,
+    "mom_20": -0.06698,
+    "mom_60": 0.00293,
+    "rsi14_z": 0.02272,
+    "macd_hist_norm": 0.11908,
+    "vol_20": 0.09064,
+    "dist_from_high": 0.04155,
+    "vol_surge": 0.0228
   },
-  "bias": 0.07799,
+  "bias": 0.06583,
   "means": {
-    "ma_ratio_20": 0.01012,
-    "ma_ratio_60": 0.032455,
-    "ma20_over_ma60": 0.020047,
-    "ma60_over_ma120": 0.030148,
-    "mom_20": 0.027506,
-    "mom_60": 0.091559,
-    "rsi14_z": 0.050353,
-    "macd_hist_norm": -1.8e-05,
-    "vol_20": 0.021952,
-    "dist_from_high": -0.129169,
-    "vol_surge": -0.00297
+    "ma_ratio_20": 0.007961,
+    "ma_ratio_60": 0.024479,
+    "ma20_over_ma60": 0.01458,
+    "ma60_over_ma120": 0.020279,
+    "mom_20": 0.021699,
+    "mom_60": 0.069264,
+    "rsi14_z": 0.039624,
+    "macd_hist_norm": 4.2e-05,
+    "vol_20": 0.019226,
+    "dist_from_high": -0.121721,
+    "vol_surge": 0.027894
   },
   "stds": {
-    "ma_ratio_20": 0.07154,
-    "ma_ratio_60": 0.13737,
-    "ma20_over_ma60": 0.086977,
-    "ma60_over_ma120": 0.094308,
-    "mom_20": 0.139871,
-    "mom_60": 0.311167,
-    "rsi14_z": 0.33789,
-    "macd_hist_norm": 0.009366,
-    "vol_20": 0.018434,
-    "dist_from_high": 0.113697,
-    "vol_surge": 0.439745
+    "ma_ratio_20": 0.064744,
+    "ma_ratio_60": 0.126118,
+    "ma20_over_ma60": 0.079472,
+    "ma60_over_ma120": 0.086507,
+    "mom_20": 0.126886,
+    "mom_60": 0.293019,
+    "rsi14_z": 0.342182,
+    "macd_hist_norm": 0.009957,
+    "vol_20": 0.013474,
+    "dist_from_high": 0.113971,
+    "vol_surge": 0.494346
   },
   "calibration_buckets": [
     {
       "lo": 0.0,
       "hi": 0.45,
-      "count": 93,
-      "empirical_up_rate": 0.5161,
-      "avg_fwd_return": 0.03197
+      "count": 272,
+      "empirical_up_rate": 0.4779,
+      "avg_fwd_return": 0.00958
     },
     {
       "lo": 0.45,
       "hi": 0.5,
-      "count": 1061,
-      "empirical_up_rate": 0.574,
-      "avg_fwd_return": 0.01016
+      "count": 5756,
+      "empirical_up_rate": 0.5092,
+      "avg_fwd_return": 0.00318
     },
     {
       "lo": 0.5,
       "hi": 0.55,
-      "count": 1565,
-      "empirical_up_rate": 0.5348,
-      "avg_fwd_return": 0.00631
+      "count": 8628,
+      "empirical_up_rate": 0.5191,
+      "avg_fwd_return": 0.00482
     },
     {
       "lo": 0.55,
       "hi": 0.6,
-      "count": 571,
-      "empirical_up_rate": 0.613,
-      "avg_fwd_return": 0.01969
+      "count": 1379,
+      "empirical_up_rate": 0.5693,
+      "avg_fwd_return": 0.01452
     },
     {
       "lo": 0.6,
       "hi": 1.01,
-      "count": 141,
-      "empirical_up_rate": 0.6667,
-      "avg_fwd_return": 0.04077
+      "count": 212,
+      "empirical_up_rate": 0.5708,
+      "avg_fwd_return": 0.01425
     }
   ],
   "metrics": {
-    "train_accuracy": 0.5288,
-    "oos_accuracy": 0.5182,
-    "oos_auc": 0.5171,
-    "oos_brier": 0.2485,
-    "base_rate_up": 0.5376
+    "pooled_oos_auc": 0.515,
+    "pooled_oos_accuracy": 0.5141,
+    "pooled_oos_brier": 0.2499,
+    "base_rate_up": 0.5163,
+    "fold_aucs": [
+      {
+        "oos": "2023-01-01~2024-01-01",
+        "n": 4780,
+        "auc": 0.49
+      },
+      {
+        "oos": "2024-01-01~2025-01-01",
+        "n": 4840,
+        "auc": 0.5259
+      },
+      {
+        "oos": "2025-01-01~2027-01-01",
+        "n": 6627,
+        "auc": 0.5271
+      }
+    ],
+    "n_train_total": 28332,
+    "n_oos_total": 16247,
+    "n_symbols": 20
   },
   "train_symbols": [
-    "2327",
     "2330",
     "2317",
     "2454",
     "2308",
-    "2603"
+    "2303",
+    "3711",
+    "2002",
+    "1301",
+    "1303",
+    "2412",
+    "3045",
+    "2881",
+    "2882",
+    "2891",
+    "2603",
+    "2609",
+    "2615",
+    "2327",
+    "2379",
+    "3034"
   ],
   "train_window": [
     "2020-01-01",
-    "2024-01-01"
-  ],
-  "oos_window": [
-    "2024-01-01",
     "2026-05-28"
   ],
+  "validation": "rolling walk-forward,池化 OOS 校準;production 以全資料擬合",
   "future_knowledge_used": false,
-  "note": "特徵只用截止日以前資料;機率經樣本外校準;每桶附歷史上漲率與前向報酬作依據。"
+  "note": "特徵只用截止日以前資料;機率經滾動樣本外校準;每桶附歷史上漲率與前向報酬作依據。"
 }
