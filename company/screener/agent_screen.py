@@ -43,6 +43,16 @@ def _vol(closes: list[float], w: int = 20) -> float:
     return math.sqrt(sum((r - avg) ** 2 for r in rets) / len(rets))
 
 
+def _score10(prob: float, mom: float, vol: float, above_ma20: bool) -> float:
+    """0–10 評分(與 Codex/Antigravity 滿分一致)。透明:校準機率為主,動能加分、波動扣分(風險感知)。"""
+    s = 5.0
+    s += (prob - 50.0) * 0.12               # 校準偏多機率(±6)
+    s += max(-0.3, min(0.6, mom)) * 5.0     # 動能
+    s -= min(max(vol, 0.0), 0.06) * 25.0    # 波動懲罰(風險感知特色)
+    s += 0.8 if above_ma20 else -0.8        # 趨勢
+    return round(max(0.0, min(10.0, s)), 1)
+
+
 def detect_regime(index_closes: list[float]) -> str:
     """純 stdlib regime 判讀:高波動 > 多頭/空頭趨勢 > 盤整。"""
     if len(index_closes) < 60:
@@ -127,12 +137,24 @@ def claude_screen(candidates: dict[str, dict], top_n: int = 5,
             "reasons": ev.get("reasons", [])[:2],
         })
 
-    qualified = sorted([s for s in scored if s["qualifies"]],
-                       key=lambda r: r["screen_score"], reverse=True)
+    # 0–10 評分(與另兩家一致)
+    for r in scored:
+        r["score"] = _score10(r["probability_up"], r["momentum_20"],
+                              r["volatility_20"], r["above_ma20"])
+    ranked = sorted(scored, key=lambda r: r["score"], reverse=True)
+
+    # regime 風險感知:挑出「本日建議實際進場」的子集(其餘僅供比較=觀望)
+    qualified = [r for r in ranked if r["qualifies"]]
     max_picks = max(1, int(round(top_n * policy["picks_factor"])))
-    picks = qualified[:max_picks]
+    rec_syms = {r["symbol"] for r in qualified[:max_picks]}
+
+    # 與另兩家一致:一律回傳前 top_n(預設 5)檔,逐檔標「建議/觀望」
+    picks = ranked[:top_n]
     for r in picks:
-        bits = [f"{policy['label']}下{policy['stance']}"]
+        r["recommended"] = r["symbol"] in rec_syms
+        bits = []
+        if not r["recommended"]:
+            bits.append("觀望:未達本日 regime 進場條件")
         if r["above_ma20"]:
             bits.append("站上 20 日均線")
         if r["momentum_20"] > 0.05:
@@ -142,11 +164,9 @@ def claude_screen(candidates: dict[str, dict], top_n: int = 5,
         bits += r["reasons"]
         r["why_selected"] = ";".join(bits)
 
-    note = ""
-    if regime in ("BEAR_TREND", "HIGH_VOL"):
-        note = f"⚠️ 大盤為{policy['label']},Claude Agent 轉守:僅選 {len(picks)} 檔逆勢偏強且低波動者,其餘建議保留現金。"
-    elif not picks:
-        note = "今日無標的通過 Claude Agent 門檻,建議觀望。"
+    note = (f"大盤 {policy['label']}:建議實際進場 {len(rec_syms)} 檔、總曝險約 "
+            f"{policy['exposure']:.0%}、移動停損 {policy['trail_stop']:.0%};"
+            f"以下 {len(picks)} 檔為評分排序,未標『建議』者本日觀望。")
 
     return {
         "agent": "Claude Agent(校準模型 + 風險感知)",
@@ -159,5 +179,6 @@ def claude_screen(candidates: dict[str, dict], top_n: int = 5,
         },
         "policy": {"min_prob": policy["min_prob"], "max_picks": max_picks},
         "candidates_scored": len(scored), "qualified": len(qualified),
+        "recommended_count": len(rec_syms),
         "picks": picks, "note": note, "future_knowledge_used": False,
     }
