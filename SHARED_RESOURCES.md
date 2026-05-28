@@ -24,6 +24,9 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 - `data/web_cache/`
 - `.env`
 - local process logs
+- `tools/`(cloudflared 等可攜執行檔)
+- `data_cache/`(單股 FinMind 快取,可重生)
+- `reports/`(產出的審計/復盤報告,可重生)
 
 ## Project Rules
 
@@ -37,6 +40,26 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 - Antigravity: UI, product flow, mobile experience, deployment UX.
 - Claude Code: strategy rules, long-form docs, audit reports, handoff text.
 - Codex: local implementation, tests, data ingestion, GitHub push, deployment wiring.
+
+## Shared Code Resources
+
+可互相引用的成果,避免重做。新增資源請登記於此。
+
+### 策略引擎 + 操盤手 + 審計庫(Claude lane)
+
+- 位置:`company/`(純 Python,可被 `app.py` / UI / 任何前端 import)。完整說明見 [`STRATEGY_ENGINE.md`](STRATEGY_ENGINE.md)。
+- 相依:`pip install -r requirements-strategy.txt`(刻意與 root `requirements.txt` 分開,不影響 Render 的純 stdlib `app.py`)。
+- 主要可用介面:
+  - `company.operator.recommend.recommend_one(...)` → 回傳某股某操盤手的**明日建議**(買進/獲利了結/停損/續抱/觀望)+ 理由 + 未實現損益%。
+  - `company.operator.trend.TrendOperator` / `company.operator.value_chip.ValueChipOperator` → 兩派操盤手(逐日決策、含理由)。
+  - `company.operator.journal.JournalEngine` → 單股逐日操盤(T 決策/T+1 開盤成交、含成本與熔斷),產出操盤日誌。
+  - `company.operator.review.review_report(...)` → 月/季復盤 + 錯誤偵測(追高/殺低/whipsaw/錯過大波段)。
+  - `company.audit.metrics` / `company.audit.attribution` → 硬指標與單筆交易貢獻度(審計用)。
+  - `company.sandbox`(回測引擎/成本/熔斷)、`company.validation`(walk-forward/成本壓測)、`company.allocator`(regime 分類)。
+- 資料:`company.data.single_stock.load(symbol, start, end)`(FinMind 單股,自動快取);**Codex 的 ingestion 可替換此處**,操盤手只依賴 `StockView` 的 PIT 介面。
+- 給前端最短用法見 STRATEGY_ENGINE.md 的「app.py 怎麼引用」範例。
+
+> 建議:`app.py` 的「明日建議」直接呼叫 `recommend_one`,即可拿到帶理由的買/賣/續抱清單,不需重寫策略。
 
 ## Update This File When
 
