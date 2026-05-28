@@ -1487,6 +1487,38 @@ def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> d
     }
 
 
+def claude_screen_candidates(end: str, limit: int = 5, lookback_days: int = 360) -> dict:
+    """
+    Claude Agent 選股(與 /api/discover 並存、差異化):
+      用 Claude lane 的校準模型 + 風險感知選股核心 company.screener.agent_screen。
+      重用本檔 fetch_history 取數;純 stdlib、零新增相依。
+    """
+    try:
+        from company.screener.agent_screen import claude_screen
+    except Exception as exc:
+        return {"error": f"Claude Agent 選股核心無法載入:{exc}", "as_of": end, "picks": []}
+
+    start = (datetime.fromisoformat(end) - timedelta(days=lookback_days)).date().isoformat()
+    end_exclusive = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
+    candidates, names = {}, {}
+    for item in DISCOVERY_UNIVERSE:
+        try:
+            rows = fetch_history(item["symbol"], start, end_exclusive)
+            if len(rows) < 130:
+                continue
+            candidates[item["symbol"]] = {
+                "closes": [float(r["close"]) for r in rows],
+                "volumes": [float(r.get("volume") or 0) for r in rows],
+            }
+            names[item["symbol"]] = item["name"]
+        except Exception:
+            continue
+    result = claude_screen(candidates, top_n=limit, names=names)
+    result["as_of"] = end
+    result["rule"] = "Claude Agent:讀大盤 regime → 校準模型機率(附樣本外依據)+ 風險感知選股；不使用截止日之後資料。"
+    return result
+
+
 def normalize_positions(raw_positions: list[dict]) -> dict[str, dict]:
     positions = {}
     for item in raw_positions:
@@ -1559,6 +1591,11 @@ class Handler(SimpleHTTPRequestHandler):
                 end = query.get("end", [datetime.now().date().isoformat()])[0]
                 limit = int(query.get("limit", ["5"])[0])
                 self.send_json(discover_candidates(end, limit=limit))
+                return
+            if parsed.path == "/api/claude-screen":
+                end = query.get("end", [datetime.now().date().isoformat()])[0]
+                limit = int(query.get("limit", ["5"])[0])
+                self.send_json(claude_screen_candidates(end, limit=limit))
                 return
             super().do_GET()
         except Exception as exc:
