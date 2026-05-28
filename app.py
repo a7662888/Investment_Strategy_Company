@@ -888,7 +888,77 @@ def calculate_macd_list(prices: list[float], fast: int = 12, slow: int = 26, sig
     return macd_line[-1], signal_line[-1], hist[-1]
 
 
-def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
+def analyze_market_index(end_date: str) -> dict | None:
+    """獲取並分析大盤指數 (^TWII) 以判定當前市場 Regime"""
+    try:
+        # 大盤回測歷史天數，確保能算 120 日均線與長動能
+        lookback_days = 260
+        start_date = (datetime.fromisoformat(end_date) - timedelta(days=lookback_days)).date().isoformat()
+        end_exclusive = (datetime.fromisoformat(end_date) + timedelta(days=1)).date().isoformat()
+        
+        # 獲取加權指數歷史
+        rows = fetch_history("^TWII", start_date, end_exclusive)
+        if len(rows) < 130:
+            return None
+        
+        closes = [float(row["close"]) for row in rows]
+        last = closes[-1]
+        prev_close = closes[-2] if len(closes) > 1 else last
+        change_pct = (last / prev_close - 1) * 100.0 if prev_close > 0 else 0.0
+        
+        ma20 = moving_average(closes, 20)
+        ma60 = moving_average(closes, 60)
+        ma120 = moving_average(closes, 120)
+        
+        # 判定 MA20 斜率是否為正 (近 5 日均值相較於前 5 日)
+        ma20_list = []
+        for t in range(len(closes) - 10, len(closes)):
+            ma_t = moving_average(closes[:t+1], 20)
+            if ma_t:
+                ma20_list.append(ma_t)
+        ma20_rising = False
+        if len(ma20_list) >= 5:
+            ma20_rising = sum(ma20_list[-2:]) / 2 > sum(ma20_list[:2]) / 2
+            
+        # 計算波動度 (20 日)
+        volatility = 0.0
+        if len(closes) > 21:
+            returns = [closes[i] / closes[i - 1] - 1 for i in range(len(closes) - 20, len(closes))]
+            avg = sum(returns) / len(returns)
+            volatility = math.sqrt(sum((item - avg) ** 2 for item in returns) / len(returns))
+            
+        # 判定 Regime
+        if ma20 and ma60 and ma120 and last > ma20 > ma60 > ma120 and ma20_rising:
+            regime = "強勢多頭"
+            regime_note = "大盤均線多頭排列且向上，系統已自動加重強勢動能股評分。"
+        elif ma20 and ma60 and ma120 and last < ma20 < ma60 < ma120 and not ma20_rising:
+            regime = "弱勢空頭"
+            regime_note = "大盤均線空頭排列，系統已自動重罰高波動並加重超賣股之安全邊際評分。"
+        elif volatility > 0.02:
+            regime = "高波動震盪"
+            regime_note = "大盤近期波動度偏高且無明確趨勢，系統已自動側重低買高賣的擺盪指標評分。"
+        else:
+            regime = "區間整理"
+            regime_note = "大盤進入窄幅區間整理，系統已自動側重 RSI 與 MACD 擺盪指標進行區間操作評分。"
+            
+        return {
+            "symbol": "^TWII",
+            "name": "加權指數 (TAIEX)",
+            "date": rows[-1]["date"],
+            "close": round(last, 2),
+            "change_percent": round(change_pct, 2),
+            "ma20": round(ma20, 2) if ma20 else None,
+            "ma60": round(ma60, 2) if ma60 else None,
+            "ma120": round(ma120, 2) if ma120 else None,
+            "regime": regime,
+            "regime_note": regime_note
+        }
+    except Exception as e:
+        print(f"Error analyzing market index ^TWII: {e}")
+        return None
+
+
+def analyze_candidate(symbol: str, rows: list[dict], market_regime: str | None = None) -> dict:
     closes = [float(row["close"]) for row in rows]
     volumes = [float(row.get("volume", 0) or 0) for row in rows]
     last = closes[-1]
@@ -909,38 +979,113 @@ def analyze_candidate(symbol: str, rows: list[dict]) -> dict:
 
     score = 0
     reasons = []
-    if ma20 and ma60 and last > ma20 > ma60:
-        score += 3
-        reasons.append("價格站上 20 日與 60 日均線，短中期趨勢偏強")
-    if ma60 and ma120 and ma60 > ma120:
-        score += 2
-        reasons.append("60 日均線高於 120 日均線，中期結構偏多")
-    if momentum_20 > 0.08:
-        score += 2
-        reasons.append("20 日動能明顯轉強")
-    elif momentum_20 < -0.08:
-        score -= 2
-        reasons.append("20 日動能偏弱，需避免追高或接刀")
-    if volatility > 0.045:
-        score -= 1
-        reasons.append("近期波動偏高，需降低部位或等待確認")
 
-    # Add RSI and MACD factors to score & reasons
-    if rsi < 35:
-        score += 1
-        reasons.append(f"RSI(14) 降至 {rsi:.1f}，顯示超賣且價格進入價值安全區")
-    elif rsi > 70:
-        score -= 1
-        reasons.append(f"RSI(14) 達 {rsi:.1f}，進入超買區，需防範拉回修正")
-    else:
-        reasons.append(f"RSI(14) 數值為 {rsi:.1f}，處於常態整理區間")
-
-    if hist_val > 0:
-        score += 1
-        reasons.append(f"MACD 柱狀體攀升至 {hist_val:.2f}，短線動能轉強")
-    else:
-        score -= 1
-        reasons.append(f"MACD 柱狀體位於負值區 ({hist_val:.2f})，空頭慣性存在")
+    # 根據大盤狀態 (Market Regime) 動態配置得分與理由
+    if market_regime == "強勢多頭":
+        # 1. 均線多頭結構 (加重得分)
+        if ma20 and ma60 and last > ma20 > ma60:
+            score += 4
+            reasons.append("價格站上 20 日與 60 日均線 (多頭市場加重趨勢分 +4)")
+        if ma60 and ma120 and ma60 > ma120:
+            score += 2
+            reasons.append("60 日均線高於 120 日均線，中期結構偏多")
+            
+        # 2. 動能因子 (加重得分，不懲罰 RSI 高檔)
+        if momentum_20 > 0.08:
+            score += 3
+            reasons.append("20 日動能明顯轉強 (多頭順勢動能加分 +3)")
+        elif momentum_20 < -0.08:
+            score -= 1
+            reasons.append("20 日短期回檔修正")
+            
+        # 3. 波動度與 RSI (多頭不重罰高波動，不扣分超買)
+        if volatility > 0.045:
+            reasons.append(f"近期波動偏高 ({volatility * 100:.1f}%)，但多頭市場維持持股")
+        if rsi < 35:
+            score += 1
+            reasons.append(f"RSI(14) 降至 {rsi:.1f}，顯示超賣且價格進入價值安全區")
+        elif rsi > 70:
+            reasons.append(f"RSI(14) 達 {rsi:.1f}，進入超買區，多頭強勢暫不扣分")
+        else:
+            reasons.append(f"RSI(14) 數值為 {rsi:.1f}，處於常態整理區間")
+            
+        # 4. MACD 柱狀體
+        if hist_val > 0:
+            score += 2
+            reasons.append(f"MACD 柱狀體攀升至 {hist_val:.2f} (多頭動能擴大分 +2)")
+        else:
+            score -= 1
+            reasons.append(f"MACD 柱狀體位於負值區 ({hist_val:.2f})")
+            
+    elif market_regime == "弱勢空頭":
+        # 1. 均線與動能 (不給追價與均線多頭得分)
+        if ma20 and ma60 and last > ma20 > ma60:
+            score += 1
+            reasons.append("價格站上 20/60 均線，但大盤偏空需防假突破")
+        if momentum_20 > 0.08:
+            reasons.append("20 日動能有反彈，空頭市場不建議追高")
+        elif momentum_20 < -0.08:
+            score -= 2
+            reasons.append("20 日動能偏弱，避開空頭弱勢股")
+            
+        # 2. 波動度與價值買進 (重罰高波動，大幅加分超賣安全邊際)
+        if volatility > 0.045:
+            score -= 3
+            reasons.append(f"近期波動偏高 ({volatility * 100:.1f}%)，避開高風險標的")
+        if rsi < 35:
+            score += 3
+            reasons.append(f"RSI(14) 降至 {rsi:.1f} (空頭超跌安全邊際擴大分 +3)")
+        elif rsi > 70:
+            score -= 2
+            reasons.append(f"RSI(14) 達 {rsi:.1f} 進入超買區，空頭反彈應避開")
+        else:
+            reasons.append(f"RSI(14) 數值為 {rsi:.1f}，處於常態整理區間")
+            
+        # 3. MACD 柱狀體
+        if hist_val > 0:
+            score += 1
+            reasons.append(f"MACD 柱狀體攀升至 {hist_val:.2f}")
+        else:
+            score -= 2
+            reasons.append(f"MACD 柱狀體位於負值區 ({hist_val:.2f})，空頭慣性強烈")
+            
+    else: # 區間整理 或 高波動震盪
+        # 1. 均線多頭結構
+        if ma20 and ma60 and last > ma20 > ma60:
+            score += 2
+            reasons.append("價格站上 20 日與 60 日均線")
+        if ma60 and ma120 and ma60 > ma120:
+            score += 1
+            reasons.append("60 日均線高於 120 日均線，中期結構偏多")
+            
+        # 2. 動能與波動
+        if momentum_20 > 0.08:
+            score += 1
+            reasons.append("20 日動能轉強，震盪整理盤防假突破")
+        elif momentum_20 < -0.08:
+            score -= 1
+            reasons.append("20 日動能偏弱")
+        if volatility > 0.045:
+            score -= 2
+            reasons.append(f"近期波動偏高 ({volatility * 100:.1f}%)，區間交易需控風險")
+            
+        # 3. RSI 擺盪 (加重 RSI 的低買高賣)
+        if rsi < 35:
+            score += 2
+            reasons.append(f"RSI(14) 降至 {rsi:.1f} (區間下緣，擺盪加分 +2)")
+        elif rsi > 70:
+            score -= 2
+            reasons.append(f"RSI(14) 達 {rsi:.1f} (區間上緣，防回檔扣分 -2)")
+        else:
+            reasons.append(f"RSI(14) 數值為 {rsi:.1f}，處於常態整理區間")
+            
+        # 4. MACD 柱狀體
+        if hist_val > 0:
+            score += 2
+            reasons.append(f"MACD 柱狀體攀升至 {hist_val:.2f}")
+        else:
+            score -= 1
+            reasons.append(f"MACD 柱狀體位於負值區 ({hist_val:.2f})")
 
     if not reasons:
         reasons.append("訊號不明確，暫列觀察")
@@ -1186,8 +1331,8 @@ def generate_ai_prediction(closes: list[float], rsi: float, macd_hist: float) ->
     }
 
 
-def plan_next_session(symbol: str, rows: list[dict], position: dict | None) -> dict:
-    analysis = analyze_candidate(symbol, rows)
+def plan_next_session(symbol: str, rows: list[dict], position: dict | None, market_regime: str | None = None) -> dict:
+    analysis = analyze_candidate(symbol, rows, market_regime=market_regime)
     closes = [float(row["close"]) for row in rows]
     last = closes[-1]
     ma20 = moving_average(closes, 20)
@@ -1508,13 +1653,32 @@ class Handler(SimpleHTTPRequestHandler):
                 end = body.get("end") or datetime.now().date().isoformat()
                 start = (datetime.fromisoformat(end) - timedelta(days=int(body.get("lookback_days", 260)))).date().isoformat()
                 end_exclusive = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
+                
+                # 分析大盤與 Regime
+                market_info = analyze_market_index(end)
+                market_regime = market_info["regime"] if market_info else None
+                
+                symbols_to_scan = body.get("symbols") or []
+                symbols_to_scan = [s.strip() for s in symbols_to_scan if s.strip()]
+                if not symbols_to_scan:
+                    # 如果使用者輸入為空，自動載入預設的 10 檔指標股進行篩選
+                    symbols_to_scan = [item["symbol"] for item in DEFAULT_SYMBOLS]
+                
                 candidates = []
-                for symbol in body["symbols"]:
-                    rows = fetch_history(symbol, start, end_exclusive)
-                    if len(rows) >= 80:
-                        candidates.append(analyze_candidate(symbol, rows))
+                for symbol in symbols_to_scan:
+                    try:
+                        rows = fetch_history(symbol, start, end_exclusive)
+                        if len(rows) >= 80:
+                            candidates.append(analyze_candidate(symbol, rows, market_regime=market_regime))
+                    except Exception as e:
+                        print(f"Error recommending for {symbol}: {e}")
+                
                 candidates.sort(key=lambda item: item["score"], reverse=True)
-                self.send_json({"as_of": end, "candidates": candidates[: int(body.get("limit", 5))]})
+                self.send_json({
+                    "as_of": end,
+                    "market_index": market_info,
+                    "candidates": candidates[: int(body.get("limit", 5))]
+                })
                 return
             if self.path == "/api/next-day-plan":
                 body = self.read_body()
@@ -1522,11 +1686,20 @@ class Handler(SimpleHTTPRequestHandler):
                 start = (datetime.fromisoformat(end) - timedelta(days=int(body.get("lookback_days", 320)))).date().isoformat()
                 end_exclusive = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
                 positions = normalize_positions(body.get("positions", []))
+                
+                # 分析大盤與 Regime
+                market_info = analyze_market_index(end)
+                market_regime = market_info["regime"] if market_info else None
+                
                 plans = []
                 for symbol in body["symbols"]:
-                    rows = fetch_history(symbol, start, end_exclusive)
-                    if len(rows) >= 80:
-                        plans.append(plan_next_session(symbol, rows, positions.get(symbol)))
+                    try:
+                        rows = fetch_history(symbol, start, end_exclusive)
+                        if len(rows) >= 80:
+                            plans.append(plan_next_session(symbol, rows, positions.get(symbol), market_regime=market_regime))
+                    except Exception as e:
+                        print(f"Error planning next day for {symbol}: {e}")
+                
                 plans.sort(key=lambda item: (not item["held"], -item["score"]))
                 self.send_json({"as_of": end, "plans": plans, "rule": "after_close_next_session_plan_only"})
                 return

@@ -411,8 +411,41 @@ async function recommendToday() {
       })
     });
     const data = await readJson(res);
+    
+    // 渲染大盤導引狀態卡
+    const m = data.market_index;
+    const mCard = $("marketStatusCard");
+    if (m && mCard) {
+      mCard.style.display = "block";
+      const changeClass = m.change_percent >= 0 ? "pos" : "neg";
+      const changePrefix = m.change_percent >= 0 ? "+" : "";
+      
+      let badgeClass = "consolidation";
+      if (m.regime === "強勢多頭") badgeClass = "bullish";
+      else if (m.regime === "弱勢空頭") badgeClass = "bearish";
+      else if (m.regime === "高波動震盪") badgeClass = "volatility";
+      
+      mCard.className = `market-status-card ${badgeClass}`;
+      mCard.innerHTML = `
+        <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; justify-content: space-between;">
+          <span>📈 ${m.name} (${m.symbol}) 收盤：${m.close.toLocaleString()} <span class="${changeClass}" style="font-weight: bold;">${changePrefix}${m.change_percent}%</span></span>
+          <span class="market-badge ${badgeClass}">${m.regime}</span>
+        </div>
+        <div style="margin-top: 6px; font-size: 13px; opacity: 0.95;">
+          🎯 <strong>大盤引導決策：</strong>${m.regime_note}
+        </div>
+      `;
+    } else if (mCard) {
+      mCard.style.display = "none";
+    }
+
     const candidates = asArray(data.candidates);
-    $("candidateList").innerHTML = candidates.length ? candidates.map(item => `
+    let noteHtml = "";
+    if (symbols().length === 0 && candidates.length > 0) {
+      noteHtml = `<div style="font-size: 13px; color: var(--amber); margin-bottom: 10px; font-weight: bold; background: #fffdf5; border: 1px solid #fef3c7; padding: 10px; border-radius: 6px;">💡 偵測到股票代號輸入為空，系統已自動載入跨產業指標股池，並依今日大盤環境動態篩選出潛力股進行排序：</div>`;
+    }
+
+    $("candidateList").innerHTML = noteHtml + (candidates.length ? candidates.map(item => `
       <article class="candidate">
         <strong>
           <span>${item.symbol} · ${item.action}</span>
@@ -424,7 +457,7 @@ async function recommendToday() {
         ${aiPredictorLine(item.ai_predictor)}
         ${calibratedModelPanel(item.model)}
       </article>
-    `).join("") : "<p>沒有候選資料，請縮短區間或確認股票代號。</p>";
+    `).join("") : "<p>沒有候選資料，請縮短區間或確認股票代號。</p>");
   } catch (err) {
     $("candidateList").innerHTML = `<p>候選分析失敗：${err.message}</p>`;
   } finally {
