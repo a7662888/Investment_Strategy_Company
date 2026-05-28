@@ -34,6 +34,41 @@ DEFAULT_SYMBOLS = [
     {"symbol": "2615.TW", "name": "萬海"},
 ]
 
+DISCOVERY_UNIVERSE = [
+    {"symbol": "2330.TW", "name": "台積電", "sector": "半導體"},
+    {"symbol": "2454.TW", "name": "聯發科", "sector": "半導體"},
+    {"symbol": "2303.TW", "name": "聯電", "sector": "半導體"},
+    {"symbol": "3711.TW", "name": "日月光投控", "sector": "半導體"},
+    {"symbol": "2379.TW", "name": "瑞昱", "sector": "IC設計"},
+    {"symbol": "3034.TW", "name": "聯詠", "sector": "IC設計"},
+    {"symbol": "2317.TW", "name": "鴻海", "sector": "電子代工"},
+    {"symbol": "2308.TW", "name": "台達電", "sector": "電源/AI伺服器"},
+    {"symbol": "2382.TW", "name": "廣達", "sector": "AI伺服器"},
+    {"symbol": "3231.TW", "name": "緯創", "sector": "AI伺服器"},
+    {"symbol": "2356.TW", "name": "英業達", "sector": "AI伺服器"},
+    {"symbol": "3017.TW", "name": "奇鋐", "sector": "散熱"},
+    {"symbol": "3443.TW", "name": "創意", "sector": "ASIC"},
+    {"symbol": "6669.TW", "name": "緯穎", "sector": "AI伺服器"},
+    {"symbol": "2327.TW", "name": "國巨", "sector": "被動元件"},
+    {"symbol": "8046.TW", "name": "南電", "sector": "ABF載板"},
+    {"symbol": "2002.TW", "name": "中鋼", "sector": "原物料"},
+    {"symbol": "1301.TW", "name": "台塑", "sector": "塑化"},
+    {"symbol": "1303.TW", "name": "南亞", "sector": "塑化"},
+    {"symbol": "2603.TW", "name": "長榮", "sector": "航運"},
+    {"symbol": "2609.TW", "name": "陽明", "sector": "航運"},
+    {"symbol": "2615.TW", "name": "萬海", "sector": "航運"},
+    {"symbol": "2881.TW", "name": "富邦金", "sector": "金融"},
+    {"symbol": "2882.TW", "name": "國泰金", "sector": "金融"},
+    {"symbol": "2891.TW", "name": "中信金", "sector": "金融"},
+    {"symbol": "2412.TW", "name": "中華電", "sector": "電信"},
+    {"symbol": "3045.TW", "name": "台灣大", "sector": "電信"},
+]
+
+MARKET_CONTEXT_SYMBOLS = [
+    {"symbol": "0050.TW", "name": "元大台灣50"},
+    {"symbol": "006208.TW", "name": "富邦台50"},
+]
+
 
 def to_epoch(date_text: str) -> int:
     return int(datetime.fromisoformat(date_text).replace(tzinfo=timezone.utc).timestamp())
@@ -1204,6 +1239,109 @@ def plan_next_session(symbol: str, rows: list[dict], position: dict | None) -> d
     }
 
 
+def market_context(end: str, lookback_days: int = 180) -> dict:
+    start = (datetime.fromisoformat(end) - timedelta(days=lookback_days)).date().isoformat()
+    end_exclusive = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
+    candidates = []
+    for item in MARKET_CONTEXT_SYMBOLS:
+        try:
+            rows = fetch_history(item["symbol"], start, end_exclusive)
+            if len(rows) < 80:
+                continue
+            analysis = analyze_candidate(item["symbol"], rows)
+            closes = [float(row["close"]) for row in rows]
+            last = closes[-1]
+            ma20 = moving_average(closes, 20)
+            ma60 = moving_average(closes, 60)
+            trend = "多頭" if ma20 and ma60 and last > ma20 > ma60 else "防守" if ma60 and last < ma60 else "盤整"
+            candidates.append(
+                {
+                    "symbol": item["symbol"],
+                    "name": item["name"],
+                    "last_date": rows[-1]["date"],
+                    "last_close": round(last, 2),
+                    "score": analysis["score"],
+                    "trend": trend,
+                    "reasons": analysis["reasons"][:3],
+                }
+            )
+        except Exception as exc:
+            candidates.append({"symbol": item["symbol"], "name": item["name"], "error": str(exc)})
+    valid = [item for item in candidates if "score" in item]
+    avg_score = sum(item["score"] for item in valid) / len(valid) if valid else 0
+    regime = "偏多" if avg_score >= 4 else "偏空/防守" if avg_score <= 0 else "中性震盪"
+    return {
+        "as_of": end,
+        "regime": regime,
+        "average_score": round(avg_score, 2),
+        "benchmarks": candidates,
+        "rule": "以 0050/006208 作台股大盤代理；只用截止日以前資料判讀環境。",
+    }
+
+
+def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> dict:
+    start = (datetime.fromisoformat(end) - timedelta(days=lookback_days)).date().isoformat()
+    end_exclusive = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
+    context = market_context(end)
+    candidates = []
+    for item in DISCOVERY_UNIVERSE:
+        try:
+            rows = fetch_history(item["symbol"], start, end_exclusive)
+            if len(rows) < 130:
+                continue
+            analysis = analyze_candidate(item["symbol"], rows)
+            model = analysis.get("model") or {}
+            calibrated = model.get("calibrated") or {}
+            calibrated_prob = float(model.get("calibrated_probability_up") or model.get("probability_up") or 50)
+            bucket_return = float(calibrated.get("avg_fwd_return") or 0)
+            bucket_hit_rate = float(calibrated.get("empirical_up_rate") or 0.5)
+            regime_bonus = 1.0 if context["regime"] == "偏多" and analysis["score"] >= 4 else 0.0
+            risk_penalty = 1.0 if model.get("volatility_20", 0) and float(model.get("volatility_20", 0)) > 0.045 else 0.0
+            discovery_score = (
+                analysis["score"]
+                + (calibrated_prob - 50.0) / 8.0
+                + bucket_return * 20.0
+                + (bucket_hit_rate - 0.5) * 6.0
+                + regime_bonus
+                - risk_penalty
+            )
+            reasons = [
+                f"Agent 綜合分數 {discovery_score:.2f}；技術分 {analysis['score']}，校準偏多 {calibrated_prob:.1f}%。",
+                f"所屬族群：{item['sector']}；大盤環境：{context['regime']}。",
+            ]
+            if calibrated:
+                reasons.append(
+                    f"同機率桶歷史上漲率 {bucket_hit_rate * 100:.1f}%，5日均報酬 {bucket_return * 100:.2f}%。"
+                )
+            reasons.extend(analysis["reasons"][:3])
+            candidates.append(
+                {
+                    "symbol": item["symbol"],
+                    "name": item["name"],
+                    "sector": item["sector"],
+                    "last_date": analysis["last_date"],
+                    "last_close": analysis["last_close"],
+                    "action": analysis["action"],
+                    "score": analysis["score"],
+                    "discovery_score": round(discovery_score, 3),
+                    "model": model,
+                    "reasons": reasons,
+                    "future_knowledge_used": False,
+                }
+            )
+        except Exception:
+            continue
+    candidates.sort(key=lambda row: row["discovery_score"], reverse=True)
+    return {
+        "as_of": end,
+        "market_context": context,
+        "universe_size": len(DISCOVERY_UNIVERSE),
+        "selected_symbols": [item["symbol"] for item in candidates[:limit]],
+        "candidates": candidates[:limit],
+        "rule": "先看大盤代理,再於候選池用趨勢/動能/波動/校準模型排序；不使用截止日之後資料。",
+    }
+
+
 def normalize_positions(raw_positions: list[dict]) -> dict[str, dict]:
     positions = {}
     for item in raw_positions:
@@ -1246,7 +1384,7 @@ class Handler(SimpleHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
         try:
             if parsed.path == "/api/symbols":
-                self.send_json({"symbols": DEFAULT_SYMBOLS})
+                self.send_json({"symbols": DEFAULT_SYMBOLS, "universe": DISCOVERY_UNIVERSE})
                 return
             if parsed.path == "/api/health":
                 self.send_json(
@@ -1271,6 +1409,11 @@ class Handler(SimpleHTTPRequestHandler):
                 end = query.get("end", [datetime.now().date().isoformat()])[0]
                 end_exclusive = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
                 self.send_json({"rows": fetch_history(symbol, start, end_exclusive)})
+                return
+            if parsed.path == "/api/discover":
+                end = query.get("end", [datetime.now().date().isoformat()])[0]
+                limit = int(query.get("limit", ["5"])[0])
+                self.send_json(discover_candidates(end, limit=limit))
                 return
             super().do_GET()
         except Exception as exc:

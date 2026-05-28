@@ -432,6 +432,40 @@ async function recommendToday() {
   }
 }
 
+async function discoverToday() {
+  try {
+    setBusy("discoverToday", true);
+    $("discoverStatus").textContent = "Agent 正在讀取大盤與候選池";
+    $("discoverList").innerHTML = "<p>篩選中</p>";
+    const res = await fetch(`/api/discover?end=${encodeURIComponent($("endDate").value)}&limit=5`);
+    const data = await readJson(res);
+    const context = data.market_context || {};
+    const selected = asArray(data.selected_symbols);
+    if (selected.length) {
+      $("symbolInput").value = selected.join(",");
+    }
+    $("discoverStatus").textContent = `大盤環境：${context.regime || "-"}；候選池 ${data.universe_size || 0} 檔；已套入 ${selected.length} 檔`;
+    $("discoverList").innerHTML = asArray(data.candidates).map(item => `
+      <article class="candidate">
+        <strong>
+          <span>${item.symbol} ${item.name || ""} · ${item.sector || ""}</span>
+          <span class="${item.discovery_score >= 5 ? "pos" : item.discovery_score <= 0 ? "neg" : "watch"}">Agent分 ${item.discovery_score}</span>
+        </strong>
+        <p>截至 ${item.last_date}，收盤 ${item.last_close}；${item.action}</p>
+        ${modelLine(item.model)}
+        <ul>${asArray(item.reasons).map(reason => `<li>${reason}</li>`).join("")}</ul>
+      </article>
+    `).join("");
+    recommendToday();
+    nextDayPlan();
+  } catch (err) {
+    $("discoverStatus").textContent = "Agent 選股失敗";
+    $("discoverList").innerHTML = `<p>${err.message}</p>`;
+  } finally {
+    setBusy("discoverToday", false);
+  }
+}
+
 async function nextDayPlan() {
   try {
     setBusy("nextDayPlan", true);
@@ -474,10 +508,12 @@ function bindActions() {
   $("refreshQuotes").addEventListener("click", refreshQuotes);
   $("runTraining").addEventListener("click", runTraining);
   $("recommendToday").addEventListener("click", recommendToday);
+  $("discoverToday").addEventListener("click", discoverToday);
   $("nextDayPlan").addEventListener("click", nextDayPlan);
 }
 
 bindActions();
 refreshQuotes();
+discoverToday();
 recommendToday();
 nextDayPlan();
