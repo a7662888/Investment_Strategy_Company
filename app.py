@@ -1708,62 +1708,43 @@ def discover_claude_candidates(end: str, limit: int = 5) -> list[dict]:
     if not all_data:
         return []
 
-    regime, policy = _claude_determine_regime(all_data)
+    # 單一真相源:直接呼叫共享 company.screener.agent_screen.claude_screen
+    # (校準模型 + 風險感知;一律回前 limit 檔、0-10 分、含 recommended 建議/觀望)
+    from company.screener.agent_screen import claude_screen
 
-    scored: list[dict] = []
-    for symbol, data in all_data.items():
-        closes  = data["closes"]
-        volumes = data["volumes"]
-        try:
-            ev   = model_evidence(symbol, closes, volumes)
-            prob = ev.get("probability_up", 50.0)
+    candidates = {sym: {"closes": d["closes"], "volumes": d["volumes"]}
+                  for sym, d in all_data.items()}
+    names = {sym: d["name"] for sym, d in all_data.items()}
+    sectors = {sym: d.get("sector", "") for sym, d in all_data.items()}
+    last_dates = {sym: d["last_date"] for sym, d in all_data.items()}
 
-            mom_20 = closes[-1] / closes[-21] - 1.0 if len(closes) > 21 else 0.0
-            ma20   = sum(closes[-20:]) / 20.0 if len(closes) >= 20 else closes[-1]
-            above_ma20 = closes[-1] > ma20
-
-            sr = [closes[i] / closes[i - 1] - 1.0 for i in range(len(closes) - 20, len(closes))] if len(closes) >= 21 else [0.0]
-            avg_sr = sum(sr) / len(sr)
-            vol20  = math.sqrt(sum((r - avg_sr) ** 2 for r in sr) / len(sr))
-
-            screen_score = prob + policy["momentum_tilt"] * mom_20 - policy["vol_penalty"] * vol20
-
-            # Extra momentum filter in bear/high-vol: exclude negative-momentum stocks
-            momentum_ok = mom_20 >= 0 if regime in ("BEAR_TREND", "HIGH_VOL") else True
-            qualifies = momentum_ok and (above_ma20 or not policy["require_above_ma20"])
-
-            reasons: list[str] = [
-                f"{policy['label']} · {policy['stance']}",
-                f"AI 模型偏多 {prob:.1f}%",
-            ]
-            if above_ma20:
-                reasons.append("站上 20 日均線")
-            if mom_20 > 0.05:
-                reasons.append(f"20 日動能 +{mom_20:.0%}")
-            elif mom_20 < -0.05:
-                reasons.append(f"20 日動能 {mom_20:.0%} ⚠️ 空頭跌勢")
-
-            scored.append({
-                "symbol":        symbol,
-                "name":          data["name"],
-                "sector":        data["sector"],
-                "last_date":     data["last_date"],
-                "last_close":    round(closes[-1], 2),
-                "score":         round(screen_score, 2),
-                "discovery_score": round(screen_score, 2),
-                "qualifies":     qualifies,
-                "reasons":       reasons,
-                "regime":        regime,
-                "regime_label":  policy["label"],
-                "future_knowledge_used": False,
-            })
-        except Exception as exc:
-            print(f"[Claude Discover] score {symbol}: {exc}")
-
-    qualified = [r for r in scored if r.pop("qualifies")]
-    qualified.sort(key=lambda r: r["score"], reverse=True)
-    max_picks = max(1, int(round(limit * policy["max_picks_factor"])))
-    return qualified[:max_picks]
+    res = claude_screen(candidates, top_n=limit, names=names)
+    ctx = res.get("context", {})
+    out: list[dict] = []
+    for p in res.get("picks", []):
+        recommended = bool(p.get("recommended"))
+        tag = "✅ 建議進場" if recommended else "👀 觀望:未達本日 regime 進場門檻"
+        reasons = [tag, f"{ctx.get('regime_label','')} · {ctx.get('stance','')}"]
+        reasons += p.get("reasons", [])
+        if p.get("calibrated_up_rate") is not None:
+            reasons.append(f"校準機率 {p['probability_up']:.0f}%(該桶歷史上漲率 {p['calibrated_up_rate']:.0%})")
+        out.append({
+            "symbol":          p["symbol"],
+            "name":            p.get("name", names.get(p["symbol"], p["symbol"])),
+            "sector":          sectors.get(p["symbol"], ""),
+            "last_date":       last_dates.get(p["symbol"], end),
+            "last_close":      p.get("close"),
+            "score":           p.get("score"),            # 0-10
+            "discovery_score": p.get("score"),
+            "recommended":     recommended,
+            "reasons":         reasons,
+            "regime":          ctx.get("regime"),
+            "regime_label":    ctx.get("regime_label"),
+            "target_exposure": ctx.get("target_exposure"),
+            "trail_stop":      ctx.get("trail_stop"),
+            "future_knowledge_used": False,
+        })
+    return out
 
 
 def normalize_positions(raw_positions: list[dict]) -> dict[str, dict]:
