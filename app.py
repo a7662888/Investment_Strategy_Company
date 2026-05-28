@@ -1261,10 +1261,23 @@ class Handler(SimpleHTTPRequestHandler):
                 body = self.read_body()
                 end_exclusive = (datetime.fromisoformat(body["end"]) + timedelta(days=1)).date().isoformat()
                 output = []
+                optimization = []
+                threshold_reviews = []
                 for symbol in body["symbols"]:
                     rows = fetch_history(symbol, body["start"], end_exclusive)
+                    threshold_reviews.append(evaluate_probability_thresholds(symbol, rows))
                     for role in body["roles"]:
-                        output.append(simulate(symbol, rows, role, float(body.get("initial_cash", 1_000_000))))
+                        baseline = simulate(symbol, rows, role, float(body.get("initial_cash", 1_000_000)))
+                        output.append(baseline)
+                        optimization.append(
+                            optimize_strategy_variants(
+                                symbol,
+                                rows,
+                                role,
+                                float(body.get("initial_cash", 1_000_000)),
+                                baseline,
+                            )
+                        )
                 
                 # Expose Model Training thought process & optimization
                 X_train = []
@@ -1305,15 +1318,20 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(
                     {
                         "results": output,
+                        "optimization": optimization,
+                        "threshold_reviews": threshold_reviews,
                         "model_training": {
+                            **model_training_summary(),
                             "available": True,
                             "weights": training_results["weights"] if training_results else {"bias": 0.0, "rsi": 0.15, "slope": 0.25, "macd_hist": 0.15},
                             "epoch_logs": training_results["epoch_logs"] if training_results else [],
                             "accuracy": training_results["accuracy"] if training_results else 50.0,
-                            "summary": "AI 預測模型已完成在線優化訓練！",
+                            "summary": "AI 預測模型已完成在線優化訓練，並產生策略參數競賽與機率門檻審計。",
                             "thinking_process": [
                                 "已從選定股票提取歷史 RSI、動能斜率與 MACD 因子。",
                                 "使用梯度下降優化器擬合歷史次日漲跌標籤。",
+                                "同步比較 C-1/C-2 多組保守門檻與動能均線組合，找出下一輪應測參數。",
+                                "逐日檢查校準機率門檻與未來 5 日結果，回報命中率與平均前向報酬。",
                                 "權重已持久化存檔，今日候選與明日計畫已套用最新優化結果。"
                             ]
                         },
