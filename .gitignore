@@ -5,3 +5,4 @@ model_artifacts/optimized_weights.json
 cloudflared*.log
 .env
 .DS_Store
+model_artifacts/strategy_archive.json

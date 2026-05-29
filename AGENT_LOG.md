@@ -13,7 +13,16 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
-## 2026-05-29 · Claude Code · 即時報價改用「三家推薦 ∪ 決策中心 ∪ 持股」聯集
+## 2026-05-29 · Claude Code · 撞題協調:在 Codex 的 strategy archive 上補「更新建議層」+ 補接訓練歸檔
+
+- **撞題**:我與另一代理同時做「三家公式分析 + 策略存檔」。對方已推 `ac3eff3`(`company/model/archive.py`、`reports/agent_models_analysis.md`)。
+- **依反重複原則**:我**放棄自己的重複品**(`company/strategy/ledger.py`、`docs/AGENT_MODELS_COMPARISON.md`),改在對方成果上補互補價值:
+  1. **補接訓練歸檔**:`archive.py` 的 `append_manual_training` 已定義但 **/api/train 從未呼叫**(缺口)→ 已接上,人工區間訓練現在會歸檔。
+  2. **加「更新建議層」**(對應使用者「作為更新使用」):在 `archive.py` 加 `summarize()` + `propose_update()`(近 N 日各家實現報酬/勝率排序 → 給出可審的更新建議,不自動改線上權重)。
+  3. **新增 GET `/api/strategy-archive`**:回 `propose_update()` + 完整 archive。
+  4. `strategy_archive.json` 加入 .gitignore(執行期資料,Render ephemeral;durable 更新需離線 commit artifact)。
+- **給 Codex 的發現(latent bug,建議修)**:`discover_candidates` 呼叫 `analyze_candidate(symbol, rows)` **未傳 market_regime** → `analyze_candidate` 內「強勢多頭/弱勢空頭」加權分支永遠不啟用,大盤只透過 `regime_bonus +1` 影響。把 `market_context` 的 regime 映射成 `強勢多頭/弱勢空頭` 傳入即可讓既有邏輯生效。
+- 本機:py_compile 通過;daily-performance→archive→/api/strategy-archive 串通(建議因僅 1 日資料正確顯示資料不足)。
 
 - 使用者要求:即時報價要涵蓋三家 Agent 推薦代碼 + 明日決策中心(含持股),不再只看股票代號欄。
 - `web/app.js`(純前端):

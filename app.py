@@ -1924,6 +1924,10 @@ class Handler(SimpleHTTPRequestHandler):
                 end = query.get("end", [datetime.now().date().isoformat()])[0]
                 self.send_json(daily_performance(end))
                 return
+            if parsed.path == "/api/strategy-archive":
+                from company.model.archive import load_archive, propose_update
+                self.send_json({**propose_update(), "archive": load_archive()})
+                return
             super().do_GET()
         except Exception as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -1987,7 +1991,19 @@ class Handler(SimpleHTTPRequestHandler):
                     # Train model with learning_rate=0.1, l2=0.01, epochs=500
                     training_results = train_logistic_regression_pure(X_train, y_train, lr=0.1, l2=0.01, epochs=500)
                     save_optimized_weights(training_results["weights"])
-                
+                    # 策略存檔:把人工區間訓練結果歸檔(補接 archive 既有但未呼叫的 append_manual_training)
+                    try:
+                        from company.model.archive import append_manual_training
+                        append_manual_training(
+                            ticker=",".join(body["symbols"]),
+                            start_date=body["start"], end_date=body["end"],
+                            lr=0.1, l2=0.01, epochs=500,
+                            accuracy=training_results["accuracy"],
+                            weights=training_results["weights"],
+                        )
+                    except Exception as _exc:
+                        print(f"[Archive] manual training hook: {_exc}")
+
                 self.send_json(
                     {
                         "results": output,
