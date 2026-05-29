@@ -1506,6 +1506,7 @@ def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> d
                     "action": analysis["action"],
                     "score": analysis["score"],
                     "discovery_score": round(discovery_score, 3),
+                    "probability_up": round(calibrated_prob, 1),   # 校準機率(供前端統一標準化比較)
                     "model": model,
                     "reasons": reasons,
                     "future_knowledge_used": False,
@@ -1670,6 +1671,7 @@ def discover_antigravity_candidates(end: str, limit: int = 5) -> list[dict]:
                 "last_close": round(closes[-1], 2),
                 "score": score,
                 "discovery_score": float(score),
+                "probability_up": round(prob, 1),   # 校準機率(供前端統一標準化比較)
                 "reasons": [f"Antigravity VCP 突破得分：{score} 分"] + reasons,
                 "future_knowledge_used": False,
             })
@@ -1737,6 +1739,7 @@ def discover_claude_candidates(end: str, limit: int = 5) -> list[dict]:
             "last_close":      p.get("close"),
             "score":           p.get("score"),            # 0-10
             "discovery_score": p.get("score"),
+            "probability_up":  p.get("probability_up"),   # 校準機率(供前端統一標準化比較)
             "recommended":     recommended,
             "reasons":         reasons,
             "regime":          ctx.get("regime"),

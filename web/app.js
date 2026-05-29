@@ -521,7 +521,7 @@ async function discoverToday() {
     }
 
     $("discoverStatus").textContent =
-      `Codex ${codexCands.length} 檔｜Antigravity ${antiCands.length} 檔｜Claude ${claudeCands.length} 檔`;
+      `Codex ${codexCands.length}｜Antigravity ${antiCands.length}｜Claude ${claudeCands.length} 檔 · 分數已標準化(校準機率基準 0–10,三家可比)`;
 
     $("codexList").innerHTML = codexCands.length
       ? codexCands.map(c => renderAgentCard(c, "codex")).join("")
@@ -545,10 +545,25 @@ async function discoverToday() {
   }
 }
 
+// 共同錨定校準機率 → 0–10 標準化分(三家同基準,才可跨家比較)
+// 50%→5、58%→7、62%→8、70%→10、42%→3,夾在 0–10
+function standardizedScore(item) {
+  let prob = item.probability_up;
+  if (prob === undefined || prob === null) {
+    const m = item.model || {};
+    prob = (m.calibrated_probability_up !== undefined && m.calibrated_probability_up !== null)
+      ? m.calibrated_probability_up : m.probability_up;
+  }
+  if (prob === undefined || prob === null) return null;
+  return Math.max(0, Math.min(10, 5 + (Number(prob) - 50) * 0.25));
+}
+
 function renderAgentCard(item, agentType) {
-  const scoreVal = item.discovery_score !== undefined ? item.discovery_score : item.score;
-  const score = Number(scoreVal || 0);
-  const cls = score >= 5 ? "pos" : score <= 0 ? "neg" : "watch";
+  const nativeVal = item.discovery_score !== undefined ? item.discovery_score : item.score;
+  const nativeScore = Number(nativeVal || 0);
+  const std = standardizedScore(item);                 // 標準化分(可比較)
+  const shown = std !== null ? std : nativeScore;
+  const cls = shown >= 6.5 ? "pos" : shown <= 4 ? "neg" : "watch";
   const symbol = item.symbol || "";
   const name = item.name || "";
   const sector = item.sector ? `<span class="pill">${item.sector}</span>` : "";
@@ -559,7 +574,9 @@ function renderAgentCard(item, agentType) {
   const dateClose = item.last_date
     ? `<p style="margin:4px 0;font-size:12px;color:var(--muted)">截至 ${item.last_date}，收盤 ${item.last_close || "-"}</p>`
     : "";
-  const scoreLabel = Number.isInteger(score) ? score : score.toFixed(1);
+  const nativeLabel = Number.isInteger(nativeScore) ? nativeScore : nativeScore.toFixed(1);
+  const scoreLabel = std !== null ? std.toFixed(1) : nativeLabel;
+  const scoreTitle = std !== null ? `標準化分(校準機率基準,三家同尺度可比較)。此家原始分：${nativeLabel}` : "原始分";
   // Check if this symbol is currently selected to show active state
   const currentSyms = $("symbolInput").value.split(",").map(s => s.trim()).filter(Boolean);
   const isSelected = currentSyms.includes(symbol);
@@ -567,7 +584,7 @@ function renderAgentCard(item, agentType) {
     title="點擊即可加入/移除 ${symbol}。可多選">
     <strong>
       <span>${symbol} ${name} ${sector} ${regimePill}</span>
-      <span class="${cls}">${scoreLabel}分</span>
+      <span class="${cls}" title="${scoreTitle}">${scoreLabel}分</span>
     </strong>
     ${dateClose}
     <ul style="margin:4px 0 0;padding-left:14px;font-size:12px;color:var(--muted)">${reasonsHtml}</ul>
