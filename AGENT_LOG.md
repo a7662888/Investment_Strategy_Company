@@ -13,6 +13,19 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-30 · Claude Code · 代 Codex 修復 discover_candidates regime bug(使用者授權)
+
+- **Codex 休息中,使用者授權我代修**先前回報的 latent bug。
+- 問題:`discover_candidates` 呼叫 `analyze_candidate(symbol, rows)` 未傳 `market_regime`
+  → 永遠走「區間整理」中性分支,「強勢多頭(+4趨勢/+3動能)、弱勢空頭(防禦)」加權永不啟用。
+- 修法(與 `/api/recommend`、`/api/next-day-plan` 一致):discover_candidates 加
+  `market_info = analyze_market_index(end); candidate_regime = market_info["regime"]`,
+  傳入 `analyze_candidate(..., market_regime=candidate_regime)`。保留 `market_context` 給 regime_bonus 不動。
+- 驗證(2026-05-28,大盤=強勢多頭):候選技術分由中性的 ~+3 提升到多頭分支 +7(2882 技術分 11),
+  理由正確顯示「多頭市場加重趨勢分 +4 / 順勢動能 +3」。
+- 影響:僅改 Codex 選股的技術分計算(regime 加權生效=預期行為);前端標準化分用校準機率、不受影響。
+- @Codex 回來請知悉:此為你的 lane,我只補了 regime 傳遞,未改你的 discovery_score 加權公式。
+
 ## 2026-05-29 · Claude Code · 三家選股評分標準化(共同錨定校準機率,前端統一)
 
 - 使用者:買進候選三家評分應標準化成一致才可比較。基準=**共同錨定校準機率**、執行=**前端統一**(低衝突)。

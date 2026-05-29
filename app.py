@@ -1465,13 +1465,17 @@ def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> d
     start = (datetime.fromisoformat(end) - timedelta(days=lookback_days)).date().isoformat()
     end_exclusive = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
     context = market_context(end)
+    # 修復:取得大盤 regime 並傳入 analyze_candidate,讓「強勢多頭/弱勢空頭」加權分支生效
+    # (與 /api/recommend、/api/next-day-plan 一致;先前未傳 → 永遠走中性分支)
+    market_info = analyze_market_index(end)
+    candidate_regime = market_info["regime"] if market_info else None
     candidates = []
     for item in DISCOVERY_UNIVERSE:
         try:
             rows = fetch_history(item["symbol"], start, end_exclusive)
             if len(rows) < 130:
                 continue
-            analysis = analyze_candidate(item["symbol"], rows)
+            analysis = analyze_candidate(item["symbol"], rows, market_regime=candidate_regime)
             model = analysis.get("model") or {}
             calibrated = model.get("calibrated") or {}
             calibrated_prob = float(model.get("calibrated_probability_up") or model.get("probability_up") or 50)
