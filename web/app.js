@@ -489,12 +489,14 @@ async function discoverToday() {
     const antiCands   = asArray(antiData);
     const claudeCands = asArray(claudeData);
 
-    // Auto-fill symbolInput from Codex's selected_symbols (or first of any agent)
-    const selected = asArray(codexData.selected_symbols);
-    if (selected.length) {
-      $("symbolInput").value = selected.join(",");
-    } else if (codexCands.length) {
-      $("symbolInput").value = codexCands.map(c => c.symbol).join(",");
+    // 預設:三家各取前 2 名(去重),取代過去只填 Codex 的清單
+    const topSyms = (arr) => asArray(arr).slice(0, 2).map(c => c.symbol).filter(Boolean);
+    const merged = [];
+    [...topSyms(codexCands), ...topSyms(antiCands), ...topSyms(claudeCands)].forEach(s => {
+      if (s && !merged.includes(s)) merged.push(s);
+    });
+    if (merged.length) {
+      $("symbolInput").value = merged.join(",");
     }
 
     $("discoverStatus").textContent =
@@ -607,6 +609,43 @@ async function nextDayPlan() {
   }
 }
 
+async function loadDailyPerformance() {
+  try {
+    $("dailyPerfStatus").textContent = "計算中…";
+    const end = encodeURIComponent($("endDate").value);
+    const res = await fetch(`/api/daily-performance?end=${end}`);
+    const data = await readJson(res);
+    const agents = asArray(data.agents);
+    if (!agents.length) {
+      $("dailyPerfStatus").textContent = data.error || "無資料";
+      $("dailyPerfPanel").innerHTML = "<p>暫無昨日績效資料。</p>";
+      return;
+    }
+    $("dailyPerfStatus").textContent = `選股日 ${data.pick_date} → 評估 ${data.eval_date}`;
+    $("dailyPerfPanel").innerHTML = agents.map(a => {
+      const avg = a.avg_return;
+      const cls = avg === null ? "watch" : avg >= 0 ? "pos" : "neg";
+      const avgText = avg === null ? "—" : pct(avg);
+      const picks = asArray(a.picks).map(p => {
+        const r = p.return;
+        const rc = r === null ? "watch" : r >= 0 ? "pos" : "neg";
+        return `<li><span>${p.symbol}</span> <span class="${rc}">${r === null ? "—" : pct(r)}</span></li>`;
+      }).join("");
+      return `<article class="candidate">
+        <strong>
+          <span>${a.agent}</span>
+          <span class="${cls}">平均 ${avgText}</span>
+        </strong>
+        <p style="font-size:12px;color:var(--muted)">前一交易日選股 ${a.n} 檔的實現報酬</p>
+        <ul style="list-style:none;padding-left:0;margin:6px 0 0;font-size:13px">${picks}</ul>
+      </article>`;
+    }).join("");
+  } catch (err) {
+    $("dailyPerfStatus").textContent = `失敗：${err.message}`;
+    $("dailyPerfPanel").innerHTML = `<p>每日績效載入失敗：${err.message}</p>`;
+  }
+}
+
 function bindActions() {
   $("refreshQuotes").addEventListener("click", refreshQuotes);
   $("runTraining").addEventListener("click", runTraining);
@@ -622,6 +661,7 @@ if (!$("endDate").value) {
 
 bindActions();
 refreshQuotes();
+loadDailyPerformance();
 discoverToday();
 recommendToday();
 nextDayPlan();

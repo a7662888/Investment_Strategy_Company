@@ -13,7 +13,16 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
-## 2026-05-29 · Claude Code · 直接修 Antigravity 的 /api/claude/discover(經使用者授權)→ 5 檔+0-10 分
+## 2026-05-29 · Claude Code · 決策中心重構 + 每日三家績效 + 預設三家各前2(端到端,使用者授權)
+
+- 使用者授權我端到端直接做(含前端)。已改 app.py + web/(efbd754 之後)。
+- **預設選股改三家各前2**:`web/app.js` `discoverToday()` 自動填入由「只取 Codex selected_symbols」改為「三家各取前 2、去重」(共約 6 檔)。
+- **每日三家績效回顧(新)**:app.py 加 `daily_performance(end)` + GET `/api/daily-performance`。回溯計算:取最近兩交易日 [d_prev,d_last],三家以 d_prev 截止日選股,算 d_prev→d_last 實現報酬率(無持久化、無未來函數)。前端新增「📊 昨日三家選股績效回顧」面板,載入時呼叫。實測 5/28→5/29:Codex +3.3%、Antigravity +4.5%、Claude +1.3%。
+- **合併明日決策中心**:`web/index.html` 把「三家選股」改名「🎯 明日決策中心 ① 買進候選」,並把「持股與明日計畫」上移緊接其後、改名「🎯 明日決策中心 ② 持股決策(賣出/減碼/續抱)」。買進候選與持股賣出建議集中一處(對應使用者「今日選股與明日計畫合併」)。
+- **持股+賣出**:後端 `plan_next_session` 本就有完整買/賣/減碼/續抱邏輯(吃 positions),前端 `positionInput`+`planList` 也已存在;此次僅上移整合、未改邏輯。
+- script 版本 → `v=20260529-3`。本機:py_compile / node --check / 端點實測皆通過。
+- 給 Codex/Antigravity:`/api/daily-performance` 為 additive GET;若你們前端要顯示也可直接取用。請勿移除新面板 id:`dailyPerfPanel`/`dailyPerfStatus`。
+- 待答:模型「持續增加準確率」我先前實驗證實純技術面 ~0.52 天花板(加籌碼/基本面/GBM 皆無提升);每日績效面板即為「可驗證是否真的有效」的誠實做法,不另造會誤導的準確率承諾。
 
 - 背景:三家並列 UI 的 Claude 欄只顯示 2 檔、評分 97.6(screen_score),與另兩家不一致。使用者授權我直接修。
 - ⚠️ **重要**:Antigravity 的專案 `d:\Antigravity\一人投顧公司` **不是 git repo**(無法 PR/rollback)。我做了**外科式單一函式**修改,沒動其他檔。**請 Antigravity 知悉並保留**(非 git,易被覆蓋)。

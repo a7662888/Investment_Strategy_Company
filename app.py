@@ -1747,6 +1747,89 @@ def discover_claude_candidates(end: str, limit: int = 5) -> list[dict]:
     return out
 
 
+def _close_on_or_before(rows: list[dict], date_str: str) -> float | None:
+    """回傳 rows 中日期 <= date_str 的最後一筆收盤(rows 已按日期升冪)。"""
+    chosen = None
+    for r in rows:
+        if r["date"] <= date_str:
+            chosen = float(r["close"])
+        else:
+            break
+    return chosen
+
+
+def daily_performance(end: str) -> dict:
+    """
+    每日三家獲利率回顧(回溯計算,無持久化、無未來函數)。
+    取得最近兩個交易日 [d_prev, d_last];以 d_prev 為截止日讓三家各自選股,
+    再計算這些標的 d_prev→d_last 的實現報酬率,三家平均對比。
+    """
+    end_excl = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
+    ref = fetch_history("2330.TW", "2020-01-01", end_excl)
+    if len(ref) < 2:
+        return {"error": "歷史資料不足", "agents": []}
+    d_last = ref[-1]["date"]
+    d_prev = ref[-2]["date"]
+    prev_excl = (datetime.fromisoformat(d_prev) + timedelta(days=1)).date().isoformat()
+
+    # 三家以 d_prev 為截止日選股(只用當日以前資料)
+    agents_spec = []
+    try:
+        codex = discover_candidates(d_prev, limit=5)
+        agents_spec.append(("🤖 Codex", [c["symbol"] for c in asarray_dicts(codex.get("candidates"))]))
+    except Exception as exc:
+        agents_spec.append(("🤖 Codex", []))
+    try:
+        anti = discover_antigravity_candidates(d_prev, limit=5)
+        agents_spec.append(("🌌 Antigravity", [c["symbol"] for c in (anti or [])]))
+    except Exception:
+        agents_spec.append(("🌌 Antigravity", []))
+    try:
+        claude = discover_claude_candidates(d_prev, limit=5)
+        agents_spec.append(("🧠 Claude", [c["symbol"] for c in (claude or []) if c.get("recommended", True)]))
+    except Exception:
+        agents_spec.append(("🧠 Claude", []))
+
+    # 計算每檔 d_prev→d_last 報酬(以 d_prev 收盤買進、d_last 收盤評估)
+    cache: dict[str, list[dict]] = {}
+    def sym_return(symbol: str) -> float | None:
+        if symbol not in cache:
+            try:
+                cache[symbol] = fetch_history(symbol, "2024-01-01", end_excl)
+            except Exception:
+                cache[symbol] = []
+        rows = cache[symbol]
+        p0 = _close_on_or_before(rows, d_prev)
+        p1 = _close_on_or_before(rows, d_last)
+        if p0 and p1 and p0 > 0:
+            return p1 / p0 - 1.0
+        return None
+
+    agents_out = []
+    for name, syms in agents_spec:
+        picks = []
+        rets = []
+        for s in syms:
+            r = sym_return(s)
+            picks.append({"symbol": s, "return": round(r, 5) if r is not None else None})
+            if r is not None:
+                rets.append(r)
+        avg = round(sum(rets) / len(rets), 5) if rets else None
+        agents_out.append({"agent": name, "n": len(rets), "avg_return": avg, "picks": picks})
+
+    return {
+        "pick_date": d_prev,
+        "eval_date": d_last,
+        "note": "前一交易日各家選股 → 最近交易日收盤的實現報酬(回溯計算,僅供研究)",
+        "agents": agents_out,
+        "future_knowledge_used": False,
+    }
+
+
+def asarray_dicts(value) -> list:
+    return value if isinstance(value, list) else []
+
+
 def normalize_positions(raw_positions: list[dict]) -> dict[str, dict]:
     positions = {}
     for item in raw_positions:
@@ -1829,6 +1912,10 @@ class Handler(SimpleHTTPRequestHandler):
                 end = query.get("end", [datetime.now().date().isoformat()])[0]
                 limit = int(query.get("limit", ["5"])[0])
                 self.send_json(discover_claude_candidates(end, limit=limit))
+                return
+            if parsed.path == "/api/daily-performance":
+                end = query.get("end", [datetime.now().date().isoformat()])[0]
+                self.send_json(daily_performance(end))
                 return
             super().do_GET()
         except Exception as exc:
