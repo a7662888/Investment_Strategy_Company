@@ -24,6 +24,19 @@ function positions() {
   }).filter(item => item.symbol);
 }
 
+// 三家 Agent 最近一次選股的所有推薦代碼(由 discoverToday 更新)
+let lastAgentPicks = [];
+
+// 即時報價的股票清單 = 三家 Agent 推薦 ∪ 明日決策中心代號 ∪ 持股(去重)
+function quoteSymbols() {
+  const set = [];
+  const add = (s) => { s = (s || "").trim(); if (s && !set.includes(s)) set.push(s); };
+  lastAgentPicks.forEach(add);
+  symbols().forEach(add);
+  positions().forEach(p => add(p.symbol));
+  return set;
+}
+
 function pct(value) {
   return `${(Number(value || 0) * 100).toFixed(2)}%`;
 }
@@ -281,7 +294,8 @@ function aiPredictorLine(pred) {
 async function refreshQuotes() {
   try {
     setBusy("refreshQuotes", true);
-    const qs = symbols().join(",");
+    const qsList = quoteSymbols();
+    const qs = (qsList.length ? qsList : symbols()).join(",");
     $("quoteTime").textContent = "更新中";
     const res = await fetch(`/api/quote?symbols=${encodeURIComponent(qs)}`);
     const data = await readJson(res);
@@ -489,6 +503,13 @@ async function discoverToday() {
     const antiCands   = asArray(antiData);
     const claudeCands = asArray(claudeData);
 
+    // 記錄三家所有推薦代碼(供即時報價取用)
+    lastAgentPicks = [];
+    [...codexCands, ...antiCands, ...claudeCands].forEach(c => {
+      const s = (c.symbol || "").trim();
+      if (s && !lastAgentPicks.includes(s)) lastAgentPicks.push(s);
+    });
+
     // 預設:三家各取前 2 名(去重),取代過去只填 Codex 的清單
     const topSyms = (arr) => asArray(arr).slice(0, 2).map(c => c.symbol).filter(Boolean);
     const merged = [];
@@ -512,6 +533,7 @@ async function discoverToday() {
       ? claudeCands.map(c => renderAgentCard(c, "claude")).join("")
       : "<p>無候選股 (目前 regime 建議持守現金)</p>";
 
+    refreshQuotes();   // 報價改用 三家推薦 ∪ 決策中心 ∪ 持股
     recommendToday();
     nextDayPlan();
   } catch (err) {
@@ -602,6 +624,7 @@ async function nextDayPlan() {
         ${calibratedModelPanel(item.model)}
       </article>`;
     }).join("") : "<p>沒有明日計畫資料，請確認股票代號或區間。</p>";
+    refreshQuotes();   // 持股/決策中心更新後,報價同步涵蓋
   } catch (err) {
     $("planList").innerHTML = `<p>明日計畫失敗：${err.message}</p>`;
   } finally {

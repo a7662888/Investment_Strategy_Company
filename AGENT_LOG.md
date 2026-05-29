@@ -13,7 +13,16 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
-## 2026-05-29 · Claude Code · 模型升級 triple-barrier 標籤 + Precision@TopK/IC 指標
+## 2026-05-29 · Claude Code · 即時報價改用「三家推薦 ∪ 決策中心 ∪ 持股」聯集
+
+- 使用者要求:即時報價要涵蓋三家 Agent 推薦代碼 + 明日決策中心(含持股),不再只看股票代號欄。
+- `web/app.js`(純前端):
+  - 新增 `lastAgentPicks`(discoverToday 記錄三家所有推薦代碼)與 `quoteSymbols()`(三家推薦 ∪ symbolInput ∪ positions,去重)。
+  - `refreshQuotes()` 改用 `quoteSymbols()`(空則退回 symbols())。
+  - discoverToday 末 + nextDayPlan 末各加 `refreshQuotes()`,選股/持股更新後報價同步。
+  - script 版本 → `v=20260529-4`。
+- 後端 `/api/quote` 本就支援逗號多代號,無需改;本機實測 4 代號回 TWSE MIS 即時報價。
+- 給 Codex/Antigravity:此為前端 additive 改動,未動 app.py / 端點。
 
 - 依使用者(參考 ChatGPT 建議)採納兩項,**未跑 XGBoost 定案實驗**(使用者明示不跑)。
 - `company/model/train.py`:
