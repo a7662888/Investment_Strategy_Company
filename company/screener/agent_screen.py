@@ -116,7 +116,16 @@ def claude_screen(candidates: dict[str, dict], top_n: int = 5,
         vols = c.get("volumes")
         if len(closes) < 130:
             continue
-        ev = score_series(closes, vols)
+        ev = score_series(
+            closes, vols,
+            symbol=sym,
+            dates=c.get("dates"),
+            foreign_net_buy=c.get("foreign_net_buy"),
+            trust_net_buy=c.get("trust_net_buy"),
+            margin_purchase=c.get("margin_purchase"),
+            short_sale=c.get("short_sale"),
+            revenue_yoy=c.get("revenue_yoy")
+        )
         if ev is None:
             continue
         last = closes[-1]

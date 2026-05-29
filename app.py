@@ -399,7 +399,7 @@ def sigmoid(value: float) -> float:
     return 1.0 / (1.0 + math.exp(-max(-30.0, min(30.0, value))))
 
 
-def model_evidence(symbol: str, closes: list[float], volumes: list[float] | None = None) -> dict:
+def model_evidence(symbol: str, closes: list[float], volumes: list[float] | None = None, dates: list[str] | None = None) -> dict:
     last = closes[-1]
     ma20 = moving_average(closes, 20)
     ma60 = moving_average(closes, 60)
@@ -447,9 +447,10 @@ def model_evidence(symbol: str, closes: list[float], volumes: list[float] | None
     try:
         from company.model.score import score_series
 
-        calibrated = score_series(closes, volumes)
+        calibrated = score_series(closes, volumes, symbol=symbol, dates=dates)
         if calibrated:
             evidence["calibrated_model"] = calibrated["name"]
+            evidence["probability_up"] = calibrated["probability_up"]
             evidence["calibrated_probability_up"] = calibrated["probability_up"]
             evidence["calibrated"] = calibrated["calibrated"]
             evidence["calibrated_reasons"] = calibrated["reasons"]
@@ -998,7 +999,7 @@ def analyze_candidate(symbol: str, rows: list[dict], market_regime: str | None =
     closes = [float(row["close"]) for row in rows]
     volumes = [float(row.get("volume", 0) or 0) for row in rows]
     last = closes[-1]
-    model = model_evidence(symbol, closes, volumes)
+    model = model_evidence(symbol, closes, volumes, dates=[row["date"] for row in rows])
     ma20 = moving_average(closes, 20)
     ma60 = moving_average(closes, 60)
     ma120 = moving_average(closes, 120)
@@ -1712,7 +1713,7 @@ def discover_claude_candidates(end: str, limit: int = 5) -> list[dict]:
     # (校準模型 + 風險感知;一律回前 limit 檔、0-10 分、含 recommended 建議/觀望)
     from company.screener.agent_screen import claude_screen
 
-    candidates = {sym: {"closes": d["closes"], "volumes": d["volumes"]}
+    candidates = {sym: {"closes": d["closes"], "volumes": d["volumes"], "dates": d["dates"]}
                   for sym, d in all_data.items()}
     names = {sym: d["name"] for sym, d in all_data.items()}
     sectors = {sym: d.get("sector", "") for sym, d in all_data.items()}

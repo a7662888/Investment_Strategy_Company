@@ -23,6 +23,10 @@ FEATURE_ORDER = [
     "vol_20",          # 20 日已實現波動
     "dist_from_high",  # 相對 120 日高點的位置(<=0)
     "vol_surge",       # 量能放大:近 5 日均量 / 60 日均量 - 1
+    "foreign_net_buy_ratio", # 外資近 20 日累計淨買超比率
+    "trust_net_buy_ratio",   # 投信近 20 日累計淨買超比率
+    "margin_balance_chg",    # 融資餘額 5 日變動比率
+    "revenue_yoy",           # 月營收年增率
 ]
 
 MIN_HISTORY = 130  # 需要足夠長以算 120 日均線與長動能
@@ -39,6 +43,10 @@ FEATURE_LABELS = {
     "vol_20": "近期波動風險",
     "dist_from_high": "距 120 日高點位置",
     "vol_surge": "量能放大程度",
+    "foreign_net_buy_ratio": "外資近20日淨買超",
+    "trust_net_buy_ratio": "投信近20日淨買超",
+    "margin_balance_chg": "融資餘額5日變動",
+    "revenue_yoy": "月營收年增率 (YoY)",
 }
 
 
@@ -83,7 +91,13 @@ def _macd_hist(closes: list[float], fast=12, slow=26, signal=9) -> float:
 
 
 def extract_features(
-    closes: list[float], volumes: list[float] | None = None
+    closes: list[float],
+    volumes: list[float] | None = None,
+    foreign_net_buy: list[float] | None = None,
+    trust_net_buy: list[float] | None = None,
+    margin_purchase: list[float] | None = None,
+    short_sale: list[float] | None = None,
+    revenue_yoy: list[float] | None = None,
 ) -> dict[str, float] | None:
     """從 ≤T 的序列算特徵;歷史不足回 None。"""
     if len(closes) < MIN_HISTORY:
@@ -109,6 +123,37 @@ def extract_features(
     else:
         vol_surge = 0.0
 
+    # 4 New Features with Safe Fallbacks
+    # 1. Foreign Net Buy Ratio (20-day cumulative net / 20-day volume)
+    foreign_net_buy_ratio = 0.0
+    if foreign_net_buy and volumes and len(foreign_net_buy) >= 20 and len(volumes) >= 20:
+        v_sum = sum(volumes[-20:])
+        if v_sum > 0:
+            foreign_net_buy_ratio = sum(foreign_net_buy[-20:]) / v_sum
+
+    # 2. Trust Net Buy Ratio (20-day cumulative net / 20-day volume)
+    trust_net_buy_ratio = 0.0
+    if trust_net_buy and volumes and len(trust_net_buy) >= 20 and len(volumes) >= 20:
+        v_sum = sum(volumes[-20:])
+        if v_sum > 0:
+            trust_net_buy_ratio = sum(trust_net_buy[-20:]) / v_sum
+
+    # 3. Margin Balance Change (5-day change / 20-day average Volume in board lots)
+    margin_balance_chg = 0.0
+    if margin_purchase and volumes and len(margin_purchase) >= 6 and len(volumes) >= 20:
+        m_diff = margin_purchase[-1] - margin_purchase[-6]
+        avg_vol = sum(volumes[-20:]) / 20.0
+        if avg_vol > 0:
+            margin_balance_chg = m_diff / (avg_vol / 1000.0)
+
+    # 4. Revenue YoY
+    rev_yoy_val = 0.0
+    if revenue_yoy and len(revenue_yoy) > 0:
+        for val in reversed(revenue_yoy):
+            if val is not None and not math.isnan(val):
+                rev_yoy_val = float(val)
+                break
+
     return {
         "ma_ratio_20": last / ma20 - 1 if ma20 else 0.0,
         "ma_ratio_60": last / ma60 - 1 if ma60 else 0.0,
@@ -121,6 +166,10 @@ def extract_features(
         "vol_20": vol20,
         "dist_from_high": last / high120 - 1 if high120 else 0.0,
         "vol_surge": max(-1.0, min(3.0, vol_surge)),
+        "foreign_net_buy_ratio": foreign_net_buy_ratio,
+        "trust_net_buy_ratio": trust_net_buy_ratio,
+        "margin_balance_chg": margin_balance_chg,
+        "revenue_yoy": rev_yoy_val,
     }
 
 

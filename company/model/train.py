@@ -1,25 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-訓練可解釋 logistic 隔日偏多機率模型,並以**滾動 walk-forward** 做樣本外校準。
+訓練可解釋多分類 XGBoost 三欄式機率模型，並以滾動 walk-forward 做樣本外校準。
 
 流程:
-  1. 跨產業多檔真實資料(FinMind,company.data.single_stock)→ 逐日抽 PIT 特徵。
-  2. 標籤 = triple-barrier(波動縮放的獲利/停損門檻 + H 日時間門檻;特徵只用 ≤T)。
-     另報 IC 與 Precision@TopK 評估橫斷面選股有效性。
-  3. 滾動 walk-forward:每個 OOS fold 只用「該年以前」資料訓練 → 預測該年(真正樣本外);
-     池化所有 fold 的 OOS 預測,建校準表(機率桶→實際上漲率/前向報酬)。
-  4. production 模型用全部資料擬合(最即時),feature pipeline 與 fold 相同。
-  5. 存純 JSON artifact 給 score.py(純 stdlib)上線用。schema 與舊版相容。
+  1. 跨產業多檔真實資料 → 逐日抽取 PIT 特徵（包含均線、動能、籌碼面、融資券與月營收）。
+  2. 標籤採用三欄式標記 (Triple-Barrier): 利潤上限 (2xATR), 停損下限 (1.5xATR), 時間到期 (5天)。
+  3. 滾動 walk-forward: 每個 OOS fold 只用「該年以前」資料訓練 -> 預測該年(樣本外);
+     計算每日 Precision@TopK 與 Spearman Rank IC。
+  4. Production 模型用全部資料擬合，並注入決策樹預期值 (Saabas attribution 用)。
+  5. 存入 JSON 格式 xgb_v2.json 給 score.py 上線。
 
 用法:python -m company.model.train
 """
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
+import math
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
+import xgboost as xgb
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -27,8 +31,8 @@ sys.path.insert(0, str(ROOT))
 from company.data import single_stock as ss
 from company.model.features import FEATURE_ORDER, MIN_HISTORY, extract_features, to_vector
 
-ARTIFACT = ROOT / "model_artifacts" / "logit_v1.json"
-# 跨產業流動性較佳的標的(失敗的會自動略過)
+ARTIFACT = ROOT / "model_artifacts" / "xgb_v2.json"
+
 TRAIN_SYMBOLS = [
     "2330", "2317", "2454", "2308", "2303", "3711",  # 半導體/電子
     "2002", "1301", "1303",                            # 傳產/塑化/鋼
@@ -38,9 +42,7 @@ TRAIN_SYMBOLS = [
     "2327", "2379", "3034",                            # 被動/IC 設計
 ]
 START, END = "2020-01-01", "2026-05-28"
-HORIZON = 5            # 垂直(時間)門檻 = 5 個交易日
-TB_MULT = 1.0         # 上下門檻 = ± TB_MULT × (日波動 × √H);越大越濾雜訊
-# 滾動 OOS folds:每段只用該段開始日以前資料訓練
+HORIZON = 5 # max holding period
 FOLDS = [("2023-01-01", "2024-01-01"),
          ("2024-01-01", "2025-01-01"),
          ("2025-01-01", "2027-01-01")]
@@ -49,85 +51,120 @@ FOLDS = [("2023-01-01", "2024-01-01"),
 def _series(symbol: str):
     data = ss.load(symbol, START, END)
     days = data.prices.trading_days
-    closes, highs, lows, vols, dates = [], [], [], [], []
+    closes, vols, dates = [], [], []
+    foreign_nets, trust_nets = [], []
+    margin_purchases, short_sales = [], []
+    revenue_yoys = []
+    
     for d in days:
         bar = data.prices.bar(symbol, d)
         if bar is None:
             continue
+        view = data.view(d)
         closes.append(float(bar["close"]))
-        highs.append(float(bar["high"]))
-        lows.append(float(bar["low"]))
         vols.append(float(bar["volume"]))
         dates.append(d)
-    return closes, highs, lows, vols, dates
-
-
-def _daily_vol(closes: list[float], i: int, window: int = 20) -> float:
-    """i 日(含)以前的 window 日報酬標準差(只用過去資料)。"""
-    if i < window:
-        return 0.0
-    rets = [closes[j] / closes[j - 1] - 1.0 for j in range(i - window + 1, i + 1)]
-    avg = sum(rets) / len(rets)
-    return (sum((r - avg) ** 2 for r in rets) / len(rets)) ** 0.5
-
-
-def triple_barrier_label(closes, highs, lows, i, horizon, mult) -> int:
-    """
-    Triple-barrier(López de Prado):以波動縮放的上/下門檻 + 時間門檻。
-    回傳 1(先觸上界=獲利)/ 0(先觸下界=停損);時間到都沒觸 → 以期末報酬符號標記。
-    用日內高/低價判斷觸界,較貼近實務。只用 i 日以前資料定門檻(無未來函數)。
-    """
-    entry = closes[i]
-    sigma = _daily_vol(closes, i) * (horizon ** 0.5)
-    if sigma <= 0:
-        sigma = 0.01
-    upper = entry * (1.0 + mult * sigma)
-    lower = entry * (1.0 - mult * sigma)
-    end = min(i + horizon, len(closes) - 1)
-    for j in range(i + 1, end + 1):
-        if highs[j] >= upper:
-            return 1
-        if lows[j] <= lower:
-            return 0
-    # 時間門檻:期末報酬符號
-    return 1 if closes[end] / entry - 1.0 > 0 else 0
+        foreign_nets.append(view.foreign_net_daily())
+        trust_nets.append(view.trust_net_daily())
+        margin_purchases.append(view.margin_purchase_bal())
+        short_sales.append(view.short_sale_bal())
+        revenue_yoys.append(view.rev_yoy())
+        
+    return closes, vols, dates, foreign_nets, trust_nets, margin_purchases, short_sales, revenue_yoys
 
 
 def build_dataset():
     rows = []
     for sym in TRAIN_SYMBOLS:
         try:
-            closes, highs, lows, vols, dates = _series(sym)
+            closes, vols, dates, foreign, trust, margin, short, rev = _series(sym)
         except Exception as e:
             print(f"  [略過] {sym}: {e}")
             continue
         n = len(closes)
+        
+        # 加載 StockData 用以取得每日 High & Low 價格，並計算 14 日 ATR
+        data = ss.load(sym, START, END)
+        highs = []
+        lows = []
+        for d in dates:
+            bar = data.prices.bar(sym, d)
+            highs.append(float(bar["high"]))
+            lows.append(float(bar["low"]))
+            
+        # 計算 14 日 ATR
+        tr = [0.0] * n
+        for j in range(n):
+            if j == 0:
+                tr[j] = highs[j] - lows[j]
+            else:
+                tr[j] = max(highs[j] - lows[j], abs(highs[j] - closes[j-1]), abs(lows[j] - closes[j-1]))
+        
+        atr = [0.0] * n
+        for j in range(n):
+            if j < 14:
+                atr[j] = sum(tr[:j+1]) / (j + 1)
+            else:
+                atr[j] = sum(tr[j-13:j+1]) / 14.0
+        
         added = 0
         for i in range(MIN_HISTORY, n - HORIZON):
-            feats = extract_features(closes[: i + 1], vols[: i + 1])
+            feats = extract_features(
+                closes[: i + 1],
+                vols[: i + 1],
+                foreign[: i + 1],
+                trust[: i + 1],
+                margin[: i + 1],
+                short[: i + 1],
+                rev[: i + 1]
+            )
             if feats is None:
                 continue
-            label = triple_barrier_label(closes, highs, lows, i, HORIZON, TB_MULT)
-            fwd = closes[i + HORIZON] / closes[i] - 1.0  # 校準/IC 用的前向報酬
-            rows.append((dates[i], to_vector(feats), label, fwd))
+                
+            cur_close = closes[i]
+            cur_atr = atr[i]
+            if cur_atr <= 0:
+                cur_atr = cur_close * 0.02
+                
+            upper_barrier = cur_close + 2.0 * cur_atr
+            lower_barrier = cur_close - 1.5 * cur_atr
+            
+            # 三欄式標記 (0: DOWN, 1: NO_SIGNAL, 2: UP)
+            label = 1 # 預設無信號 (時間到期)
+            fwd_ret = closes[i + HORIZON] / cur_close - 1.0
+            
+            for k in range(1, HORIZON + 1):
+                h_val = highs[i + k]
+                l_val = lows[i + k]
+                
+                if h_val >= upper_barrier:
+                    label = 2 # 觸及利潤上限 (UP)
+                    fwd_ret = upper_barrier / cur_close - 1.0
+                    break
+                elif l_val <= lower_barrier:
+                    label = 0 # 觸及停損下限 (DOWN)
+                    fwd_ret = lower_barrier / cur_close - 1.0
+                    break
+            
+            rows.append((dates[i], to_vector(feats), label, fwd_ret))
             added += 1
         print(f"  {sym}: +{added}(累計 {len(rows)})")
     return rows
 
 
-def sigmoid(z):
-    return 1.0 / (1.0 + np.exp(-np.clip(z, -30, 30)))
-
-
-def fit_logistic(X, y, l2=1.0, lr=0.3, epochs=4000):
-    n, d = X.shape
-    w = np.zeros(d)
-    b = 0.0
-    for _ in range(epochs):
-        p = sigmoid(X @ w + b)
-        w -= lr * (X.T @ (p - y) / n + l2 * w / n)
-        b -= lr * float(np.mean(p - y))
-    return w, b
+def fit_xgb(X, y):
+    model = xgb.XGBClassifier(
+        objective="multi:softprob",
+        num_class=3,
+        max_depth=3,
+        n_estimators=100,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42
+    )
+    model.fit(X, y)
+    return model
 
 
 def auc(y_true, scores):
@@ -148,47 +185,60 @@ def _standardize(Xtr, Xte):
     return (Xtr - means) / stds, (Xte - means) / stds, means, stds
 
 
-def _rank(a: np.ndarray) -> np.ndarray:
-    order = np.argsort(a)
-    r = np.empty_like(order, dtype=float)
-    r[order] = np.arange(len(a))
-    return r
+def add_expected_values(node: dict) -> float:
+    if "leaf" in node:
+        node["expected_value"] = float(node["leaf"])
+        return node["expected_value"]
+        
+    covers = [float(child.get("cover", 1.0)) for child in node["children"]]
+    total_cover = sum(covers)
+    
+    val = 0.0
+    for child, cov in zip(node["children"], covers):
+        child_val = add_expected_values(child)
+        if total_cover > 0:
+            val += child_val * cov / total_cover
+        else:
+            val += child_val / len(node["children"])
+            
+    node["expected_value"] = val
+    return val
 
 
-def _spearman(a: np.ndarray, b: np.ndarray) -> float:
-    if len(a) < 3 or np.std(a) == 0 or np.std(b) == 0:
-        return 0.0
-    ra, rb = _rank(a), _rank(b)
-    return float(np.corrcoef(ra, rb)[0, 1])
-
-
-def cross_sectional_metrics(dates, probs, fwd, topk=3):
-    """
-    每日橫斷面計算:
-      IC      = 當日各股 預測機率 vs 前向報酬 的 Spearman rank 相關,跨日平均
-      ICIR    = 日 IC 平均 / 標準差(穩定度)
-      P@TopK  = 當日機率最高 K 檔中,前向報酬 > 0 的比例,跨日平均
-    """
-    ics, precs = [], []
-    for d in np.unique(dates):
-        m = dates == d
-        if m.sum() < 3:
+def compute_oos_daily_metrics(dates_te, p_up, y_te, fwd_te):
+    unique_dates = np.unique(dates_te)
+    prec_3_list, prec_5_list = [], []
+    ic_list = []
+    
+    for d in unique_dates:
+        mask = dates_te == d
+        # 我們需要該日至少有 5 檔股票的預測才能計算 IC 與 TopK
+        if mask.sum() < 5:
             continue
-        p, f = probs[m], fwd[m]
-        ics.append(_spearman(p, f))
-        k = min(topk, len(p))
-        top_idx = np.argsort(p)[-k:]
-        precs.append(float((f[top_idx] > 0).mean()))
-    if not ics:
-        return {"ic_mean": None, "ic_ir": None, "precision_at_topk": None, "n_days": 0}
-    ic_arr = np.array(ics)
-    return {
-        "ic_mean": round(float(ic_arr.mean()), 4),
-        "ic_ir": round(float(ic_arr.mean() / ic_arr.std()), 4) if ic_arr.std() > 0 else None,
-        "precision_at_topk": round(float(np.mean(precs)), 4),
-        "topk": topk,
-        "n_days": len(ics),
-    }
+        p_d = p_up[mask]
+        fwd_d = fwd_te[mask]
+        
+        # 降序排序
+        order = np.argsort(p_d)[::-1]
+        
+        # Precision@Top3 (未來實際有上漲的比率)
+        top3_idx = order[:3]
+        prec_3 = (fwd_d[top3_idx] > 0).mean()
+        prec_3_list.append(prec_3)
+        
+        # Precision@Top5
+        top5_idx = order[:5]
+        prec_5 = (fwd_d[top5_idx] > 0).mean()
+        prec_5_list.append(prec_5)
+        
+        # Spearman Rank IC
+        s1 = pd.Series(p_d)
+        s2 = pd.Series(fwd_d)
+        ic = s1.corr(s2, method="spearman")
+        if not np.isnan(ic):
+            ic_list.append(ic)
+            
+    return np.mean(prec_3_list) if prec_3_list else 0.0, np.mean(prec_5_list) if prec_5_list else 0.0, np.mean(ic_list) if ic_list else 0.0
 
 
 def main():
@@ -199,86 +249,125 @@ def main():
 
     dates = np.array([str(r[0].date()) for r in rows])
     X = np.array([r[1] for r in rows], dtype=float)
-    y = np.array([r[2] for r in rows], dtype=float)
+    y = np.array([r[2] for r in rows], dtype=int)
     fwd = np.array([r[3] for r in rows], dtype=float)
     print(f"  總樣本 {len(X)};跨 {len(set(d[:4] for d in dates))} 個年度")
 
     # --- 滾動 walk-forward:池化 OOS 預測 ---
-    oos_p, oos_y, oos_fwd, oos_d = [], [], [], []
+    oos_p, oos_y, oos_fwd, oos_pred_class = [], [], [], []
+    oos_dates = []
     fold_aucs = []
+    
     for fstart, fend in FOLDS:
         tr = dates < fstart
         te = (dates >= fstart) & (dates < fend)
         if te.sum() < 100 or tr.sum() < 500:
             continue
         Xtr_s, Xte_s, _, _ = _standardize(X[tr], X[te])
-        w, b = fit_logistic(Xtr_s, y[tr])
-        p = sigmoid(Xte_s @ w + b)
-        oos_p.append(p); oos_y.append(y[te]); oos_fwd.append(fwd[te]); oos_d.append(dates[te])
-        a = auc(y[te], p)
+        model = fit_xgb(Xtr_s, y[tr])
+        
+        # 預測所有類別的機率
+        p_all = model.predict_proba(Xte_s)
+        p_up = p_all[:, 2] # Class 2 (UP) 的機率
+        pred_cls = np.argmax(p_all, axis=1)
+        
+        oos_p.append(p_up)
+        oos_y.append(y[te])
+        oos_fwd.append(fwd[te])
+        oos_pred_class.append(pred_cls)
+        oos_dates.append(dates[te])
+        
+        y_te_binary = (y[te] == 2).astype(int)
+        a = auc(y_te_binary, p_up)
         fold_aucs.append({"oos": f"{fstart}~{fend}", "n": int(te.sum()), "auc": round(a, 4)})
         print(f"  fold {fstart}~{fend}: n={int(te.sum())} OOS_AUC={a:.4f}")
 
-    oos_p = np.concatenate(oos_p); oos_y = np.concatenate(oos_y)
-    oos_fwd = np.concatenate(oos_fwd); oos_d = np.concatenate(oos_d)
-    xsec = cross_sectional_metrics(oos_d, oos_p, oos_fwd, topk=3)
+    oos_p = np.concatenate(oos_p)
+    oos_y = np.concatenate(oos_y)
+    oos_fwd = np.concatenate(oos_fwd)
+    oos_pred_class = np.concatenate(oos_pred_class)
+    oos_dates = np.concatenate(oos_dates)
+
+    # 計算 Precision@TopK 與 Spearman Rank IC
+    prec3, prec5, mean_ic = compute_oos_daily_metrics(oos_dates, oos_p, oos_y, oos_fwd)
+    print(f"\n[樣本外評估指標 (OOS)]")
+    print(f"  Spearman Rank IC: {mean_ic:.4f}")
+    print(f"  Precision@Top3:   {prec3:.1%}")
+    print(f"  Precision@Top5:   {prec5:.1%}")
 
     # --- production 模型:用全部資料擬合(最即時)---
     Xtr_s, _, means, stds = _standardize(X, X)
-    w, b = fit_logistic(Xtr_s, y)
+    model = fit_xgb(Xtr_s, y)
 
+    # 決策樹預期值注入與 JSON 導出
+    temp_fd, temp_path = tempfile.mkstemp(suffix=".json")
+    os.close(temp_fd)
+    
+    try:
+        model.get_booster().dump_model(temp_path, dump_format="json", with_stats=True)
+        with open(temp_path, "r", encoding="utf-8") as f:
+            trees = json.load(f)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+    # 為每棵樹節點計算expected_value
+    for tree in trees:
+        add_expected_values(tree)
+
+    oos_y_binary = (oos_y == 2).astype(int)
     metrics = {
-        "pooled_oos_auc": round(auc(oos_y, oos_p), 4),
-        "pooled_oos_accuracy": round(float(((oos_p > 0.5) == oos_y).mean()), 4),
-        "pooled_oos_brier": round(float(np.mean((oos_p - oos_y) ** 2)), 4),
-        "base_rate_up": round(float(y.mean()), 4),
+        "pooled_oos_auc": round(auc(oos_y_binary, oos_p), 4),
+        "pooled_oos_accuracy": round(float((oos_pred_class == oos_y).mean()), 4),
+        "pooled_oos_brier": round(float(np.mean((oos_p - oos_y_binary) ** 2)), 4),
+        "base_rate_up": round(float(oos_y_binary.mean()), 4),
         "fold_aucs": fold_aucs,
-        "ic_mean": xsec["ic_mean"],
-        "ic_ir": xsec["ic_ir"],
-        "precision_at_topk": xsec["precision_at_topk"],
-        "topk": xsec.get("topk"),
-        "ic_n_days": xsec["n_days"],
+        "precision_top3": round(prec3, 4),
+        "precision_top5": round(prec5, 4),
+        "spearman_rank_ic": round(mean_ic, 4),
         "n_train_total": int(len(X)),
         "n_oos_total": int(len(oos_p)),
         "n_symbols": len(set(TRAIN_SYMBOLS)),
     }
 
     # --- 校準表(池化 OOS)---
+    base_rate = float(oos_y_binary.mean())
+    if base_rate > 0:
+        oos_p_scaled = np.clip(oos_p / base_rate * 0.50, 0.01, 0.99)
+    else:
+        oos_p_scaled = oos_p
+
     edges = [0.0, 0.45, 0.50, 0.55, 0.60, 1.01]
     buckets = []
     for lo, hi in zip(edges[:-1], edges[1:]):
-        mask = (oos_p >= lo) & (oos_p < hi)
+        mask = (oos_p_scaled >= lo) & (oos_p_scaled < hi)
         cnt = int(mask.sum())
         buckets.append({
             "lo": round(lo, 3), "hi": round(hi, 3), "count": cnt,
-            "empirical_up_rate": round(float(oos_y[mask].mean()), 4) if cnt else None,
+            "empirical_up_rate": round(float(oos_y_binary[mask].mean()), 4) if cnt else None,
             "avg_fwd_return": round(float(oos_fwd[mask].mean()), 5) if cnt else None,
         })
 
     artifact = {
-        "name": "claude_logit_calibrated_v1",
+        "name": "claude_xgb_calibrated_v2",
         "horizon_days": HORIZON,
         "feature_order": FEATURE_ORDER,
-        "weights": {k: round(float(wi), 5) for k, wi in zip(FEATURE_ORDER, w)},
-        "bias": round(float(b), 5),
+        "trees": trees,
         "means": {k: round(float(m), 6) for k, m in zip(FEATURE_ORDER, means)},
         "stds": {k: round(float(s), 6) for k, s in zip(FEATURE_ORDER, stds)},
         "calibration_buckets": buckets,
         "metrics": metrics,
         "train_symbols": TRAIN_SYMBOLS,
         "train_window": [START, END],
-        "labeling": f"triple_barrier(H={HORIZON}, mult={TB_MULT}×日波動×√H)",
-        "validation": "rolling walk-forward,池化 OOS 校準;production 以全資料擬合",
+        "validation": "rolling walk-forward,池化 OOS 校準;production 以全資料擬合, XGBoost 3分類與Saabas預期值",
         "future_knowledge_used": False,
-        "note": "標籤改用 triple-barrier(獲利/停損/時間三門檻,波動縮放)濾雜訊;特徵只用截止日以前資料;"
-                "機率經滾動樣本外校準;另報 IC 與 Precision@TopK(橫斷面選股有效性)。",
+        "note": "XGBoost 3分類多因子樹集成模型;特徵只用截止日以前資料;機率經滾動樣本外校準;附帶Saabas歸因expected_value欄位。",
     }
+    
     ARTIFACT.parent.mkdir(exist_ok=True)
     ARTIFACT.write_text(json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\n[D] OOS AUC={metrics['pooled_oos_auc']} 準確率={metrics['pooled_oos_accuracy']} "
-          f"基準上漲={metrics['base_rate_up']}")
-    print(f"[選股有效性] IC={metrics['ic_mean']} ICIR={metrics['ic_ir']} "
-          f"Precision@Top{metrics['topk']}={metrics['precision_at_topk']}({metrics['ic_n_days']} 日)")
+    
+    print(f"\n[D] 指標:{ {k: v for k, v in metrics.items() if k != 'fold_aucs'} }")
     print("[校準表(池化 OOS)]")
     for bk in buckets:
         print(f"  機率 {bk['lo']}~{bk['hi']}: n={bk['count']} "

@@ -89,7 +89,31 @@ def _score_one(sym: str, data: StockData, as_of: pd.Timestamp, policy: dict) -> 
         return None
     closes = h["close"].astype(float).tolist()
     vols = h["volume"].astype(float).tolist()
-    ev = score_series(closes, vols)
+    
+    days = h.index
+    fn_series = data._foreign_net.reindex(days).fillna(0.0).tolist()
+    tn_series = data._trust_net.reindex(days).fillna(0.0).tolist()
+    
+    if len(data._margin) > 0 and "MarginPurchaseTodayBalance" in data._margin.columns:
+        mp_series = data._margin["MarginPurchaseTodayBalance"].reindex(days).ffill().fillna(0.0).tolist()
+        ss_series = data._margin["ShortSaleTodayBalance"].reindex(days).ffill().fillna(0.0).tolist()
+    else:
+        mp_series = [0.0] * len(days)
+        ss_series = [0.0] * len(days)
+        
+    ry_series = data._rev_yoy.reindex(days).ffill().fillna(0.0).tolist()
+    dates_str = [d.strftime("%Y-%m-%d") for d in days]
+    
+    ev = score_series(
+        closes, vols,
+        symbol=sym,
+        dates=dates_str,
+        foreign_net_buy=fn_series,
+        trust_net_buy=tn_series,
+        margin_purchase=mp_series,
+        short_sale=ss_series,
+        revenue_yoy=ry_series
+    )
     if ev is None:
         return None
     last = closes[-1]

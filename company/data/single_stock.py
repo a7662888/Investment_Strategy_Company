@@ -54,6 +54,7 @@ def fetch_and_cache(
         "per": "TaiwanStockPER",
         "chips": "TaiwanStockInstitutionalInvestorsBuySell",
         "revenue": "TaiwanStockMonthRevenue",
+        "margin": "TaiwanStockMarginPurchaseShortSale",
     }
     # 月營收需多抓 2 年前資料,YoY 才能從分析起點就算得出來
     rev_start = f"{int(start[:4]) - 2}{start[4:]}"
@@ -64,8 +65,13 @@ def fetch_and_cache(
             paths[key] = p
             continue
         ds_start = rev_start if key == "revenue" else start
-        df = _fetch(ds, symbol, ds_start, end, token)
-        df.to_csv(p, index=False, encoding="utf-8-sig")
+        try:
+            df = _fetch(ds, symbol, ds_start, end, token)
+            df.to_csv(p, index=False, encoding="utf-8-sig")
+        except Exception as e:
+            # If fetch fails (e.g. rate limit), output empty fallback file if it doesn't exist
+            if not p.exists():
+                pd.DataFrame().to_csv(p, index=False, encoding="utf-8-sig")
         paths[key] = p
     return paths
 
@@ -74,7 +80,7 @@ class StockData:
     """單股全期間資料 + PIT 切片來源。"""
 
     def __init__(self, symbol: str, price: pd.DataFrame, per: pd.DataFrame,
-                 chips: pd.DataFrame, revenue: pd.DataFrame):
+                 chips: pd.DataFrame, revenue: pd.DataFrame, margin: pd.DataFrame):
         self.symbol = symbol
 
         # 價格:轉成 PriceData(沿用既有 PIT 與成交介面)
@@ -91,13 +97,26 @@ class StockData:
             self._per = self._per.sort_values("date").set_index("date")
 
         # 法人:彙總每日淨買超(所有法人別 buy-sell 加總)
-        if len(chips):
+        if len(chips) and "date" in chips.columns:
             c = chips.copy()
             c["date"] = pd.to_datetime(c["date"])
             c["net"] = c["buy"] - c["sell"]
             self._chip_net = c.groupby("date")["net"].sum().sort_index()
+            # 外資與投信單獨提取
+            foreign = c[c["name"] == "Foreign_Investor"]
+            self._foreign_net = foreign.groupby("date")["net"].sum().sort_index() if not foreign.empty else pd.Series(dtype=float)
+            trust = c[c["name"] == "Investment_Trust"]
+            self._trust_net = trust.groupby("date")["net"].sum().sort_index() if not trust.empty else pd.Series(dtype=float)
         else:
             self._chip_net = pd.Series(dtype=float)
+            self._foreign_net = pd.Series(dtype=float)
+            self._trust_net = pd.Series(dtype=float)
+
+        # 融資融券
+        self._margin = margin.copy()
+        if len(self._margin) and "date" in self._margin.columns:
+            self._margin["date"] = pd.to_datetime(self._margin["date"])
+            self._margin = self._margin.sort_values("date").set_index("date")
 
         # 月營收 → YoY,以揭露日為索引
         self._rev_yoy = self._build_revenue_yoy(revenue)
@@ -155,6 +174,49 @@ class StockView:
         sub = s.loc[s.index <= self.as_of].tail(lookback)
         return float(sub.sum())
 
+    def foreign_net_daily(self) -> float:
+        s = self._data._foreign_net
+        if len(s) == 0:
+            return 0.0
+        return float(s.loc[self.as_of]) if self.as_of in s.index else 0.0
+
+    def trust_net_daily(self) -> float:
+        s = self._data._trust_net
+        if len(s) == 0:
+            return 0.0
+        return float(s.loc[self.as_of]) if self.as_of in s.index else 0.0
+
+    def margin_purchase_bal(self) -> float:
+        s = self._data._margin
+        if len(s) == 0 or "MarginPurchaseTodayBalance" not in s.columns:
+            return 0.0
+        sub = s.loc[s.index <= self.as_of]
+        return float(sub["MarginPurchaseTodayBalance"].iloc[-1]) if len(sub) else 0.0
+
+    def short_sale_bal(self) -> float:
+        s = self._data._margin
+        if len(s) == 0 or "ShortSaleTodayBalance" not in s.columns:
+            return 0.0
+        sub = s.loc[s.index <= self.as_of]
+        return float(sub["ShortSaleTodayBalance"].iloc[-1]) if len(sub) else 0.0
+
+    def margin_balance_chg_5(self) -> float:
+        s = self._data._margin
+        if len(s) == 0 or "MarginPurchaseTodayBalance" not in s.columns:
+            return 0.0
+        sub = s.loc[s.index <= self.as_of]
+        if len(sub) < 6:
+            return 0.0
+        cur_bal = float(sub["MarginPurchaseTodayBalance"].iloc[-1])
+        prev_bal = float(sub["MarginPurchaseTodayBalance"].iloc[-6])
+        h = self.history(lookback=20)
+        if len(h) == 0:
+            return 0.0
+        avg_vol = h["volume"].mean()
+        if avg_vol == 0:
+            return 0.0
+        return (cur_bal - prev_bal) / (avg_vol / 1000.0)
+
     def rev_yoy(self) -> Optional[float]:
         s = self._data._rev_yoy
         if len(s) == 0:
@@ -166,5 +228,15 @@ class StockView:
 def load(symbol: str, start: str, end: str, cache_dir: str = "data_cache",
          token: Optional[str] = None) -> StockData:
     paths = fetch_and_cache(symbol, start, end, cache_dir, token)
-    frames = {k: pd.read_csv(v) for k, v in paths.items()}
-    return StockData(symbol, frames["price"], frames["per"], frames["chips"], frames["revenue"])
+    frames = {}
+    for k, v in paths.items():
+        try:
+            frames[k] = pd.read_csv(v)
+        except Exception:
+            frames[k] = pd.DataFrame()
+            
+    margin_df = frames.get("margin")
+    if margin_df is None or margin_df.empty:
+        margin_df = pd.DataFrame(columns=["date", "MarginPurchaseTodayBalance", "ShortSaleTodayBalance"])
+        
+    return StockData(symbol, frames["price"], frames["per"], frames["chips"], frames["revenue"], margin_df)
