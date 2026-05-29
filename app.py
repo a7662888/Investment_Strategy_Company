@@ -1818,6 +1818,12 @@ def daily_performance(end: str) -> dict:
         avg = round(sum(rets) / len(rets), 5) if rets else None
         agents_out.append({"agent": name, "n": len(rets), "avg_return": avg, "picks": picks})
 
+    try:
+        from company.model.archive import append_daily_performance
+        append_daily_performance(d_prev, d_last, agents_out)
+    except Exception as e:
+        print(f"[DailyPerformance] Failed to archive daily performance: {e}")
+
     return {
         "pick_date": d_prev,
         "eval_date": d_last,
