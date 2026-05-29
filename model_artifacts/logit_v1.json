@@ -15,19 +15,19 @@
     "vol_surge"
   ],
   "weights": {
-    "ma_ratio_20": -0.32903,
-    "ma_ratio_60": 0.42836,
-    "ma20_over_ma60": -0.28008,
-    "ma60_over_ma120": 0.0916,
-    "mom_20": -0.06698,
-    "mom_60": 0.00293,
-    "rsi14_z": 0.02272,
-    "macd_hist_norm": 0.11908,
-    "vol_20": 0.09064,
-    "dist_from_high": 0.04155,
-    "vol_surge": 0.0228
+    "ma_ratio_20": -0.24332,
+    "ma_ratio_60": 0.40025,
+    "ma20_over_ma60": -0.28273,
+    "ma60_over_ma120": 0.10642,
+    "mom_20": -0.07074,
+    "mom_60": -0.01022,
+    "rsi14_z": 0.01788,
+    "macd_hist_norm": 0.08178,
+    "vol_20": 0.07476,
+    "dist_from_high": 0.02836,
+    "vol_surge": 0.03539
   },
-  "bias": 0.06583,
+  "bias": 0.09162,
   "means": {
     "ma_ratio_20": 0.007961,
     "ma_ratio_60": 0.024479,
@@ -58,61 +58,66 @@
     {
       "lo": 0.0,
       "hi": 0.45,
-      "count": 272,
-      "empirical_up_rate": 0.4779,
-      "avg_fwd_return": 0.00958
+      "count": 230,
+      "empirical_up_rate": 0.4783,
+      "avg_fwd_return": 0.00895
     },
     {
       "lo": 0.45,
       "hi": 0.5,
-      "count": 5756,
-      "empirical_up_rate": 0.5092,
-      "avg_fwd_return": 0.00318
+      "count": 4644,
+      "empirical_up_rate": 0.52,
+      "avg_fwd_return": 0.00256
     },
     {
       "lo": 0.5,
       "hi": 0.55,
-      "count": 8628,
-      "empirical_up_rate": 0.5191,
-      "avg_fwd_return": 0.00482
+      "count": 9328,
+      "empirical_up_rate": 0.5242,
+      "avg_fwd_return": 0.00468
     },
     {
       "lo": 0.55,
       "hi": 0.6,
-      "count": 1379,
-      "empirical_up_rate": 0.5693,
-      "avg_fwd_return": 0.01452
+      "count": 1792,
+      "empirical_up_rate": 0.5703,
+      "avg_fwd_return": 0.01306
     },
     {
       "lo": 0.6,
       "hi": 1.01,
-      "count": 212,
-      "empirical_up_rate": 0.5708,
-      "avg_fwd_return": 0.01425
+      "count": 253,
+      "empirical_up_rate": 0.5889,
+      "avg_fwd_return": 0.01756
     }
   ],
   "metrics": {
-    "pooled_oos_auc": 0.515,
-    "pooled_oos_accuracy": 0.5141,
-    "pooled_oos_brier": 0.2499,
-    "base_rate_up": 0.5163,
+    "pooled_oos_auc": 0.5128,
+    "pooled_oos_accuracy": 0.5176,
+    "pooled_oos_brier": 0.2497,
+    "base_rate_up": 0.5227,
     "fold_aucs": [
       {
         "oos": "2023-01-01~2024-01-01",
         "n": 4780,
-        "auc": 0.49
+        "auc": 0.4885
       },
       {
         "oos": "2024-01-01~2025-01-01",
         "n": 4840,
-        "auc": 0.5259
+        "auc": 0.5307
       },
       {
         "oos": "2025-01-01~2027-01-01",
         "n": 6627,
-        "auc": 0.5271
+        "auc": 0.5239
       }
     ],
+    "ic_mean": 0.0213,
+    "ic_ir": 0.0682,
+    "precision_at_topk": 0.5199,
+    "topk": 3,
+    "ic_n_days": 813,
     "n_train_total": 28332,
     "n_oos_total": 16247,
     "n_symbols": 20
@@ -143,7 +148,8 @@
     "2020-01-01",
     "2026-05-28"
   ],
+  "labeling": "triple_barrier(H=5, mult=1.0×日波動×√H)",
   "validation": "rolling walk-forward,池化 OOS 校準;production 以全資料擬合",
   "future_knowledge_used": false,
-  "note": "特徵只用截止日以前資料;機率經滾動樣本外校準;每桶附歷史上漲率與前向報酬作依據。"
+  "note": "標籤改用 triple-barrier(獲利/停損/時間三門檻,波動縮放)濾雜訊;特徵只用截止日以前資料;機率經滾動樣本外校準;另報 IC 與 Precision@TopK(橫斷面選股有效性)。"
 }

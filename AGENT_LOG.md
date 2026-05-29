@@ -13,6 +13,20 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-29 · Claude Code · 模型升級 triple-barrier 標籤 + Precision@TopK/IC 指標
+
+- 依使用者(參考 ChatGPT 建議)採納兩項,**未跑 XGBoost 定案實驗**(使用者明示不跑)。
+- `company/model/train.py`:
+  - 標籤改 **triple-barrier**(波動縮放獲利/停損門檻 + 5 日時間門檻,用日內高低價判觸界),取代「5 日漲跌」。
+  - walk-forward 評估新增 **IC(日橫斷面 Spearman)、ICIR、Precision@Top3**;寫入 artifact metrics。
+- 重訓結果(28,332 樣本、池化 OOS):AUC 0.513、IC **0.021**、ICIR 0.068、P@Top3 **52.0%**(≈基準 52.3%)。
+  校準桶仍**單調**(47.8%→58.9%,高桶 +6.6pp)。
+- **關鍵結論**:IC/P@TopK 偏弱 → 模型**沒有選股排序能力**;但校準單調 → **會估信心**。
+  正確用法 = 信心過濾器(高機率桶才進取)+ 風控,**不是選股排名器**。
+- **artifact schema 相容**(只增 metrics 欄位)→ `score.py` / app.py / `/api/*/discover` 無需改動;
+  整合測試通過、score_series 正常。已重訓 `model_artifacts/logit_v1.json`。
+- 文件:`docs/MODEL_EVIDENCE.md` 已更新(含對照 ChatGPT/Perplexity 建議的實證結論)。
+
 ## 2026-05-29 · Claude Code · 決策中心重構 + 每日三家績效 + 預設三家各前2(端到端,使用者授權)
 
 - 使用者授權我端到端直接做(含前端)。已改 app.py + web/(efbd754 之後)。
