@@ -64,11 +64,28 @@ DISCOVERY_UNIVERSE = [
     {"symbol": "3045.TW", "name": "台灣大", "sector": "電信"},
 ]
 
+# ---------------------------------------------------------------------------
+# Name Map for Taiwan Stocks
+# ---------------------------------------------------------------------------
+NAME_MAP = {
+    "2330": "台積電", "2317": "鴻海", "2454": "聯發科", "2308": "台達電", "2303": "聯電",
+    "3711": "日月光", "2002": "中鋼", "1301": "台塑", "1303": "南亞", "2412": "中華電",
+    "3045": "台灣大", "2881": "富邦金", "2882": "國泰金", "2891": "中信金", "2603": "長榮",
+    "2609": "陽明", "2615": "萬海", "2327": "國巨", "2379": "瑞昱", "3034": "聯詠",
+}
+
+for item in DISCOVERY_UNIVERSE:
+    _code = item["symbol"].split(".")[0]
+    NAME_MAP[_code] = item["name"]
+
 # 選股股池:優先載入每月重算的 active_universe.json(依流動性+跨產業分散選 60 檔);
 # 檔案不存在(或載入失敗)時 fallback 到上方靜態清單。每月離線跑 run_universe_refresh.py 後 commit 更新。
 try:
     from company.data.universe import load_active_universe
     DISCOVERY_UNIVERSE = load_active_universe(fallback=DISCOVERY_UNIVERSE)
+    for item in DISCOVERY_UNIVERSE:
+        _code = item["symbol"].split(".")[0]
+        NAME_MAP[_code] = item["name"]
 except Exception as _exc:
     print(f"[Universe] load_active_universe 失敗,沿用靜態清單:{_exc}")
 
@@ -1946,11 +1963,11 @@ class Handler(SimpleHTTPRequestHandler):
                 except Exception:
                     universe = []
                     for ticker in DISCOVERY_UNIVERSE:
-                        code = ticker.split(".")[0]
+                        code = ticker["symbol"].split(".")[0]
                         universe.append({
-                            "symbol": ticker,
-                            "name": NAME_MAP.get(code, ticker),
-                            "sector": "一般類股"
+                            "symbol": ticker["symbol"],
+                            "name": NAME_MAP.get(code, ticker.get("name", ticker["symbol"])),
+                            "sector": ticker.get("sector", "一般類股")
                         })
                 self.send_json(universe)
                 return
