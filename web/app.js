@@ -597,12 +597,15 @@ function toggleSymbol(symbol, cardEl) {
   const idx = syms.indexOf(symbol);
   if (idx === -1) {
     syms.push(symbol);
-    cardEl.classList.add("agent-card--selected");
+    if (cardEl && cardEl.classList) cardEl.classList.add("agent-card--selected");
   } else {
     syms.splice(idx, 1);
-    cardEl.classList.remove("agent-card--selected");
+    if (cardEl && cardEl.classList) cardEl.classList.remove("agent-card--selected");
   }
   input.value = syms.join(",");
+  if ($("universeGrid")) {
+    loadUniverse();
+  }
 }
 
 // Keep backward-compat alias for candidate cards rendered by recommendToday
@@ -705,4 +708,88 @@ loadDailyPerformance();
 discoverToday();
 recommendToday();
 nextDayPlan();
+
+async function loadUniverse() {
+  try {
+    const res = await fetch("/api/universe");
+    const data = await readJson(res);
+    const universe = asArray(data);
+    $("universeCount").textContent = `${universe.length} 檔週選標的`;
+    
+    $("universeGrid").innerHTML = universe.map(stock => {
+      const isSelected = $("symbolInput").value.split(",").map(s => s.trim()).filter(Boolean).includes(stock.symbol);
+      return `
+        <div class="universe-card ${isSelected ? 'selected' : ''}" 
+             style="
+               background: ${isSelected ? 'rgba(0, 240, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)'};
+               border: 1px solid ${isSelected ? 'var(--green)' : 'var(--line)'};
+               border-left: 4px solid ${isSelected ? 'var(--green)' : 'var(--line)'};
+               border-radius: 6px;
+               padding: 8px 12px;
+               cursor: pointer;
+               font-size: 13px;
+               transition: all 0.2s ease;
+             "
+             onclick="toggleSymbol('${stock.symbol}', this)"
+             title="點擊以選取/取消選取 ${stock.symbol}"
+        >
+          <div style="display: flex; justify-content: space-between; font-weight: bold;">
+            <span>${stock.name}</span>
+            <span style="font-family: monospace; color: var(--muted);">${stock.symbol}</span>
+          </div>
+          <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">
+            ${stock.sector || "一般類股"}
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    $("universeCount").textContent = `載入失敗: ${err.message}`;
+  }
+}
+
+async function loadMarketNews() {
+  try {
+    const end = encodeURIComponent($("endDate").value);
+    const res = await fetch(`/api/news?date=${end}`);
+    const data = await readJson(res);
+    const news = asArray(data.news);
+    
+    if (news.length > 0) {
+      $("focusNewsPanel").style.display = "block";
+      $("focusNewsGrid").innerHTML = news.map(item => {
+        let badgeColor = '#666';
+        if (item.category === '大盤市場') badgeColor = '#00f0ff';
+        if (item.category === '個股焦點') badgeColor = '#00ff66';
+        if (item.category === '環境特徵') badgeColor = '#ffb700';
+        if (item.category === '社群情緒') badgeColor = '#ff0055';
+        
+        return `
+          <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--line); border-radius: 6px; padding: 10px; font-size: 13px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span class="pill" style="border-color: ${badgeColor}; color: ${badgeColor}; font-size: 10px; padding: 1px 5px; border-radius: 3px; font-weight: bold;">
+                ${item.category}
+              </span>
+              <span style="font-size: 11px; color: var(--muted); font-family: monospace;">
+                ${item.time}
+              </span>
+            </div>
+            <div style="color: var(--text); line-height: 1.4;">
+              ${item.title}
+            </div>
+          </div>
+        `;
+      }).join("");
+    } else {
+      $("focusNewsPanel").style.display = "none";
+    }
+  } catch (err) {
+    console.error("Error loading market news:", err);
+    $("focusNewsPanel").style.display = "none";
+  }
+}
+
+loadUniverse();
+loadMarketNews();
+$("endDate").addEventListener("change", loadMarketNews);
 

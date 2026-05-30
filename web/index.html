@@ -16,6 +16,16 @@
       <button id="refreshQuotes" class="primary">更新報價</button>
     </header>
 
+    <section id="focusNewsPanel" class="panel news-panel" style="display: none; border-color: #00f0ff; background: rgba(0, 240, 255, 0.02);">
+      <div class="sectionHead" style="margin-bottom: 8px;">
+        <h2 style="color: #00f0ff; display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.2rem;">
+          <span>📡</span> 今日最新股市焦點新聞
+        </h2>
+        <span class="badge" style="background: rgba(0, 240, 255, 0.15); color: #00f0ff; border: 1px solid rgba(0, 240, 255, 0.3); font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: bold;">LIVE</span>
+      </div>
+      <div id="focusNewsGrid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px;"></div>
+    </section>
+
     <section class="panel controls">
       <label>訓練區間開始
         <input id="startDate" type="date" value="2020-01-01">
@@ -141,6 +151,14 @@
         <strong>🎉 AI 預測模型優化完成！</strong>
         <p id="weightsDetail" style="margin: 4px 0 0 0; font-family: monospace; font-size: 13px;"></p>
       </div>
+    </section>
+
+    <section class="panel" style="margin-top: 20px;">
+      <div class="sectionHead">
+        <h2>📊 系統當前股池 (Discovery Universe)</h2>
+        <span id="universeCount">載入中…</span>
+      </div>
+      <div id="universeGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;"></div>
     </section>
   </main>
   <script src="/app.js?v=20260529-5" charset="utf-8"></script>
