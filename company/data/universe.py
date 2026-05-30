@@ -17,9 +17,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
 
-from company.data.single_stock import _fetch
 
 ROOT = Path(__file__).resolve().parents[2]
 POOL_PATH = ROOT / "model_artifacts" / "active_pool.json"        # 母池 100(月)
@@ -86,6 +84,8 @@ def _as_tw(code: str) -> str:
 
 def _fetch_metrics(code: str, as_of: str, lookback: int = 70, token: Optional[str] = None) -> Optional[dict]:
     """一次抓近期量價,回傳 {turnover(近60日平均成交額), mom60(60日動能)};只用 ≤ as_of。失敗回 None。"""
+    import pandas as pd
+    from company.data.single_stock import _fetch
     start = (datetime.fromisoformat(as_of) - timedelta(days=lookback * 2 + 60)).date().isoformat()
     try:
         df = _fetch("TaiwanStockPrice", code, start, as_of, token)
