@@ -68,6 +68,43 @@ function modelLine(model) {
   `;
 }
 
+function renderShapBars(contributions) {
+  if (!contributions || contributions.length === 0) return "";
+  const top = contributions.slice(0, 5);
+  const maxVal = Math.max(...top.map(c => Math.abs(c.contribution || 0))) || 0.01;
+  
+  const rows = top.map(c => {
+    const val = Number(c.contribution || 0);
+    const widthPct = Math.min(100, (Math.abs(val) / maxVal * 100)).toFixed(0) + "%";
+    const isPos = val >= 0;
+    
+    const leftBar = isPos ? "" : `<div style="background: #10b981; height: 8px; border-radius: 4px; width: ${widthPct}; margin-left: auto;"></div>`;
+    const rightBar = isPos ? `<div style="background: #ef4444; height: 8px; border-radius: 4px; width: ${widthPct};"></div>` : "";
+    const valClass = isPos ? "pos" : "neg";
+    const valSign = val >= 0 ? "+" : "";
+    
+    return `
+      <div style="display: grid; grid-template-columns: 100px 1fr 10px 1fr 60px; gap: 8px; align-items: center; font-family: monospace; font-size: 11px; margin-top: 4px;">
+        <span style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font-weight: bold; color: var(--ink);" title="${c.label}">${c.label}</span>
+        <div style="display: flex; align-items: center; justify-content: flex-end;">${leftBar}</div>
+        <div style="background: var(--line); width: 2px; height: 12px; margin: 0 auto;"></div>
+        <div style="display: flex; align-items: center;">${rightBar}</div>
+        <span class="${valClass}" style="text-align: right; font-weight: bold;">${valSign}${val.toFixed(3)}</span>
+      </div>
+    `;
+  }).join("");
+  
+  return `
+    <div class="shap-container" style="margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 8px;">
+      <div style="font-size: 12px; font-weight: 700; color: #1e3a8a; display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <span>📊 Saabas (TreeSHAP) 特徵貢獻度</span>
+        <span style="font-size: 10px; color: var(--muted); font-weight: 400;">(左偏空 綠 | 右偏多 紅)</span>
+      </div>
+      ${rows}
+    </div>
+  `;
+}
+
 function calibratedModelPanel(model) {
   if (!model || !model.calibrated_probability_up) return "";
   
@@ -127,6 +164,7 @@ function calibratedModelPanel(model) {
       </div>
       
       ${calEvidenceHtml}
+      ${renderShapBars(model.contributions)}
     </div>
   `;
 }
@@ -340,7 +378,10 @@ async function runTraining() {
         roles: roles(),
         start: $("startDate").value,
         end: $("endDate").value,
-        initial_cash: 1000000
+        initial_cash: 1000000,
+        fee: Number($("feeRate").value),
+        tax: Number($("taxRate").value),
+        slippage: Number($("slippageRate").value)
       })
     });
     const data = await readJson(res);
@@ -391,6 +432,7 @@ async function runTraining() {
           // Re-render recommendations & plans using the new weights!
           recommendToday();
           nextDayPlan();
+          saveSnapshot("train");
         }
       }
       setTimeout(printEpochLog, 300);
@@ -472,6 +514,9 @@ async function recommendToday() {
         ${calibratedModelPanel(item.model)}
       </article>
     `).join("") : "<p>沒有候選資料，請縮短區間或確認股票代號。</p>");
+    
+    // Update portfolio allocation
+    updatePortfolioAllocation(data.market_index, candidates);
   } catch (err) {
     $("candidateList").innerHTML = `<p>候選分析失敗：${err.message}</p>`;
   } finally {
@@ -606,6 +651,11 @@ function toggleSymbol(symbol, cardEl) {
   if ($("universeGrid")) {
     loadUniverse();
   }
+  
+  // Instantly trigger updates
+  refreshQuotes();
+  recommendToday();
+  nextDayPlan();
 }
 
 // Keep backward-compat alias for candidate cards rendered by recommendToday
@@ -645,6 +695,7 @@ async function nextDayPlan() {
       </article>`;
     }).join("") : "<p>沒有明日計畫資料，請確認股票代號或區間。</p>";
     refreshQuotes();   // 持股/決策中心更新後,報價同步涵蓋
+    saveSnapshot("plan");
   } catch (err) {
     $("planList").innerHTML = `<p>明日計畫失敗：${err.message}</p>`;
   } finally {
@@ -789,7 +840,171 @@ async function loadMarketNews() {
   }
 }
 
+// --- 1. Smart Portfolio Allocator ---
+function updatePortfolioAllocation(marketIndex, candidates) {
+  const panel = $("portfolioAllocationPanel");
+  if (!panel) return;
+  if (!marketIndex || !candidates || candidates.length === 0) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "block";
+  
+  const regime = marketIndex.regime || "區間整理";
+  let stockExposure = 50;
+  if (regime.includes("強勢多頭")) stockExposure = 90;
+  else if (regime.includes("弱勢空頭")) stockExposure = 20;
+  else if (regime.includes("高波動震盪")) stockExposure = 40;
+  else if (regime.includes("區間整理")) stockExposure = 60;
+  
+  $("portfolioRegimeLabel").textContent = `當前狀態：${regime}`;
+  $("stockExposureVal").textContent = `${stockExposure}%`;
+  $("stockExposureBar").style.width = `${stockExposure}%`;
+  $("cashExposureVal").textContent = `${100 - stockExposure}%`;
+  $("cashExposureBar").style.width = `${100 - stockExposure}%`;
+  $("regimeStanceText").textContent = `分析官觀點：${marketIndex.regime_note || "大盤整理中，建議均衡配置。"}`;
+  
+  // Top 5 allocation
+  const topCands = candidates.slice(0, 5);
+  const scores = topCands.map(c => {
+    const std = standardizedScore(c);
+    return Math.max(0.1, std !== null ? std : (c.score || 1));
+  });
+  const totalScore = scores.reduce((a, b) => a + b, 0) || 1;
+  
+  const grid = $("stockAllocationsGrid");
+  grid.innerHTML = topCands.map((c, i) => {
+    const score = scores[i];
+    const weightOfStockPortion = score / totalScore;
+    const finalWeight = weightOfStockPortion * stockExposure;
+    
+    return `
+      <div style="font-size: 13px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+          <span><strong>${c.symbol} ${c.name || ""}</strong> <span style="font-size: 11px; color: var(--muted);">(${c.sector || "一般類股"})</span></span>
+          <span style="font-family: monospace;">權重：<strong style="color: var(--blue); font-size: 13px;">${finalWeight.toFixed(1)}%</strong> (相對佔比 ${(weightOfStockPortion*100).toFixed(0)}%)</span>
+        </div>
+        <div style="height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
+          <div style="height: 100%; background: var(--blue); width: ${(weightOfStockPortion * 100).toFixed(0)}%;"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// --- 2. Historical Simulation Snapshots ---
+function saveSnapshot(actionType) {
+  try {
+    const dateVal = $("endDate").value;
+    const regimeText = $("portfolioRegimeLabel").textContent.replace("當前狀態：", "") || "中性震盪";
+    const picks = lastAgentPicks.slice(0, 5).join(",") || symbols().slice(0, 3).join(",");
+    const pos = $("positionInput").value || "無持倉";
+    
+    let accuracy = "未優化";
+    const banner = $("weightsDetail");
+    if (banner && banner.textContent.includes("準確率")) {
+      const parts = banner.textContent.split("準確率:");
+      if (parts.length > 1) {
+        accuracy = parts[1].trim();
+      }
+    }
+    
+    const snapshot = {
+      timestamp: new Date().toLocaleString(),
+      targetDate: dateVal,
+      regime: regimeText,
+      picks: picks,
+      positions: pos,
+      accuracy: accuracy
+    };
+    
+    let list = [];
+    const saved = localStorage.getItem("quant_snapshots");
+    if (saved) {
+      list = JSON.parse(saved);
+    }
+    list.unshift(snapshot); // prepend new ones
+    localStorage.setItem("quant_snapshots", JSON.stringify(list));
+    renderSnapshots();
+  } catch (err) {
+    console.error("Failed to save snapshot:", err);
+  }
+}
+
+function renderSnapshots() {
+  const rowsEl = $("snapshotRows");
+  if (!rowsEl) return;
+  const saved = localStorage.getItem("quant_snapshots");
+  if (!saved) {
+    rowsEl.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--muted);">尚無覆盤快照。當您執行「明日計畫」或「開始區間訓練」時將自動記錄快照。</td></tr>`;
+    return;
+  }
+  const list = JSON.parse(saved);
+  if (list.length === 0) {
+    rowsEl.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--muted);">尚無覆盤快照。當您執行「明日計畫」或「開始區間訓練」時將自動記錄快照。</td></tr>`;
+    return;
+  }
+  rowsEl.innerHTML = list.map((item, idx) => `
+    <tr>
+      <td>${item.timestamp}</td>
+      <td><strong>${item.targetDate}</strong></td>
+      <td>${item.regime}</td>
+      <td><span style="font-family: monospace; font-size: 12px;">${item.picks}</span></td>
+      <td title="${item.positions}">${item.positions.length > 30 ? item.positions.slice(0, 30) + "..." : item.positions}</td>
+      <td>${item.accuracy}</td>
+      <td>
+        <button class="danger" onclick="deleteSnapshot(${idx})" style="height: 24px; line-height: 22px; padding: 0 6px; font-size: 11px; border-color: var(--red); color: var(--red); background: #fef2f2;">刪除</button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+window.deleteSnapshot = function(idx) {
+  const saved = localStorage.getItem("quant_snapshots");
+  if (saved) {
+    const list = JSON.parse(saved);
+    list.splice(idx, 1);
+    localStorage.setItem("quant_snapshots", JSON.stringify(list));
+    renderSnapshots();
+  }
+};
+
+// --- 3. Bind Sliders and History Buttons ---
+$("feeRate").addEventListener("input", (e) => {
+  $("feeRateVal").textContent = (e.target.value * 100).toFixed(4) + "%";
+});
+$("taxRate").addEventListener("input", (e) => {
+  $("taxRateVal").textContent = (e.target.value * 100).toFixed(2) + "%";
+});
+$("slippageRate").addEventListener("input", (e) => {
+  $("slippageRateVal").textContent = (e.target.value * 100).toFixed(2) + "%";
+});
+
+$("clearSnapshots").addEventListener("click", () => {
+  if (confirm("確定要清除所有歷史快照日誌嗎？")) {
+    localStorage.removeItem("quant_snapshots");
+    renderSnapshots();
+  }
+});
+
+$("exportSnapshots").addEventListener("click", () => {
+  const saved = localStorage.getItem("quant_snapshots");
+  if (!saved || JSON.parse(saved).length === 0) {
+    alert("沒有任何日誌可以匯出。");
+    return;
+  }
+  const blob = new Blob([saved], {type: "application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `solopreneur_quant_snapshots_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// --- 4. Initialization Runs ---
 loadUniverse();
 loadMarketNews();
+renderSnapshots();
 $("endDate").addEventListener("change", loadMarketNews);
 

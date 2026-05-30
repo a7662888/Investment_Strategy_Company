@@ -45,6 +45,27 @@
       <button id="nextDayPlan" class="primary">明日計畫</button>
     </section>
 
+    <section class="panel friction-controls" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px;">
+      <label>交易手續費率 (Commission)
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+          <input id="feeRate" type="range" min="0" max="0.005" step="0.0001" value="0.001425" style="flex: 1; height: 24px; padding: 0; cursor: pointer;">
+          <span id="feeRateVal" style="font-family: monospace; font-size: 13px; width: 65px; text-align: right;">0.1425%</span>
+        </div>
+      </label>
+      <label>證券交易稅率 (Tax)
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+          <input id="taxRate" type="range" min="0" max="0.01" step="0.0005" value="0.003" style="flex: 1; height: 24px; padding: 0; cursor: pointer;">
+          <span id="taxRateVal" style="font-family: monospace; font-size: 13px; width: 65px; text-align: right;">0.30%</span>
+        </div>
+      </label>
+      <label>交易滑價率 (Slippage)
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+          <input id="slippageRate" type="range" min="0" max="0.005" step="0.0005" value="0.001" style="flex: 1; height: 24px; padding: 0; cursor: pointer;">
+          <span id="slippageRateVal" style="font-family: monospace; font-size: 13px; width: 65px; text-align: right;">0.10%</span>
+        </div>
+      </label>
+    </section>
+
     <section class="panel">
       <div class="sectionHead">
         <h2>📊 昨日三家選股績效回顧</h2>
@@ -70,6 +91,47 @@
         <div class="agent-col agent-claude">
           <div class="agent-col-head">🧠 Claude Agent<span class="agent-sub">智能 Regime 風險感知</span></div>
           <div id="claudeList"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="portfolioAllocationPanel" style="display: none; border-color: #3b82f6; background: rgba(59, 130, 246, 0.01); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <div class="sectionHead">
+        <h2 style="color: #2563eb; display: flex; align-items: center; gap: 8px;"><span style="color:#2563eb">⚖️</span> 智慧投資組合配置建議 (Smart Portfolio Allocation)</h2>
+        <span id="portfolioRegimeLabel" class="pill" style="font-weight: bold; background: #e0f2fe; color: #0369a1; border-color: #bae6fd;"></span>
+      </div>
+      <div style="display: grid; grid-template-columns: 1.2fr 2fr; gap: 20px; align-items: start;">
+        <!-- Regime exposure recommendation -->
+        <div style="background: rgba(255, 255, 255, 0.8); border: 1px solid var(--line); border-radius: 8px; padding: 14px;">
+          <h3 style="font-size: 14px; margin: 0 0 10px 0; color: var(--ink); border-bottom: 1px solid var(--line); padding-bottom: 6px;">資金曝險分配建議</h3>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                <span>股票部位目標 (Stock Portion)</span>
+                <strong id="stockExposureVal" style="color: var(--blue);">0%</strong>
+              </div>
+              <div style="height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden;">
+                <div id="stockExposureBar" style="height: 100%; background: var(--blue); width: 0%; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                <span>保留現金比例 (Cash Portion)</span>
+                <strong id="cashExposureVal" style="color: var(--green);">100%</strong>
+              </div>
+              <div style="height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden;">
+                <div id="cashExposureBar" style="height: 100%; background: var(--green); width: 100%; transition: width 0.3s ease;"></div>
+              </div>
+            </div>
+          </div>
+          <p id="regimeStanceText" style="font-size: 12px; margin-top: 12px; color: var(--muted); line-height: 1.5; font-style: italic;"></p>
+        </div>
+        <!-- Individual Stock allocations -->
+        <div style="background: rgba(255, 255, 255, 0.8); border: 1px solid var(--line); border-radius: 8px; padding: 14px;">
+          <h3 style="font-size: 14px; margin: 0 0 10px 0; color: var(--ink); border-bottom: 1px solid var(--line); padding-bottom: 6px;">推薦股配比明細</h3>
+          <div id="stockAllocationsGrid" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- will be populated dynamically -->
+          </div>
         </div>
       </div>
     </section>
@@ -159,6 +221,34 @@
         <span id="universeCount">載入中…</span>
       </div>
       <div id="universeGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;"></div>
+    </section>
+
+    <section class="panel" style="margin-top: 20px; border-color: #3b82f6; background: #fafcff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+      <div class="sectionHead">
+        <h2 style="color: #2563eb; display: flex; align-items: center; gap: 8px;"><span>⏱️</span> 歷史日誌快照與覆盤終端 (Simulation Snapshots Log)</h2>
+        <div>
+          <button id="exportSnapshots" class="primary" style="height: 30px; font-size: 12px; padding: 0 12px;">匯出 JSON</button>
+          <button id="clearSnapshots" style="height: 30px; font-size: 12px; padding: 0 12px; color: var(--red); border-color: var(--red); background: #fef2f2;">清除歷史</button>
+        </div>
+      </div>
+      <div class="tableWrap">
+        <table style="font-size: 13px;">
+          <thead>
+            <tr>
+              <th>時間</th>
+              <th>目標日</th>
+              <th>大盤狀態</th>
+              <th>推薦代號</th>
+              <th>持倉狀態</th>
+              <th>模型準確度</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="snapshotRows">
+            <tr><td colspan="7" style="text-align: center; color: var(--muted);">尚無覆盤快照。當您執行「明日計畫」或「開始區間訓練」時將自動記錄快照。</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </main>
   <script src="/app.js?v=20260529-5" charset="utf-8"></script>

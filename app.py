@@ -482,6 +482,7 @@ def model_evidence(symbol: str, closes: list[float], volumes: list[float] | None
             evidence["calibrated_evidence"] = calibrated["evidence"]
             evidence["horizon_days"] = calibrated.get("horizon_days")
             evidence["note"] = calibrated["note"]
+            evidence["contributions"] = calibrated.get("contributions", [])
     except Exception:
         pass
     return evidence
@@ -698,7 +699,7 @@ def strategy_learning_review(role: str, rows: list[dict], total_return: float, d
     }
 
 
-def simulate_strategy_variant(rows: list[dict], role: str, initial_cash: float, params: dict) -> dict:
+def simulate_strategy_variant(rows: list[dict], role: str, initial_cash: float, params: dict, fee: float = 0.0, tax: float = 0.0, slippage: float = 0.0) -> dict:
     closes = [float(row["close"]) for row in rows]
     cash = initial_cash
     shares = 0
@@ -711,11 +712,11 @@ def simulate_strategy_variant(rows: list[dict], role: str, initial_cash: float, 
         close = float(row["close"])
         if pending == "buy" and shares == 0:
             allocation = float(params.get("allocation", 0.65 if role == "C-1" else 0.9))
-            shares = int((cash * allocation) // open_price)
-            cash -= shares * open_price
+            shares = int((cash * allocation) // (open_price * (1.0 + fee + slippage)))
+            cash -= shares * open_price * (1.0 + fee + slippage)
             trades += 1
         elif pending == "sell" and shares > 0:
-            cash += shares * open_price
+            cash += shares * open_price * (1.0 - fee - tax - slippage)
             shares = 0
             trades += 1
 
@@ -756,7 +757,7 @@ def simulate_strategy_variant(rows: list[dict], role: str, initial_cash: float, 
     }
 
 
-def optimize_strategy_variants(symbol: str, rows: list[dict], role: str, initial_cash: float, baseline: dict) -> dict:
+def optimize_strategy_variants(symbol: str, rows: list[dict], role: str, initial_cash: float, baseline: dict, fee: float = 0.0, tax: float = 0.0, slippage: float = 0.0) -> dict:
     if role == "C-1":
         variants = [
             {"buy_discount": 0.05, "sell_premium": 0.04, "allocation": 0.60},
@@ -770,7 +771,7 @@ def optimize_strategy_variants(symbol: str, rows: list[dict], role: str, initial
             {"fast_ma": 20, "slow_ma": 60, "rsi_cap": 72, "allocation": 0.75},
         ]
 
-    evaluated = [simulate_strategy_variant(rows, role, initial_cash, params) for params in variants]
+    evaluated = [simulate_strategy_variant(rows, role, initial_cash, params, fee=fee, tax=tax, slippage=slippage) for params in variants]
     evaluated.sort(key=lambda item: (item["total_return"], item["max_drawdown"]), reverse=True)
     best = evaluated[0] if evaluated else None
     baseline_return = float(baseline.get("total_return", 0))
@@ -841,7 +842,7 @@ def evaluate_probability_thresholds(symbol: str, rows: list[dict]) -> dict:
     }
 
 
-def simulate(symbol: str, rows: list[dict], role: str, initial_cash: float) -> dict:
+def simulate(symbol: str, rows: list[dict], role: str, initial_cash: float, fee: float = 0.0, tax: float = 0.0, slippage: float = 0.0) -> dict:
     closes = [float(row["close"]) for row in rows]
     cash = initial_cash
     shares = 0
@@ -854,11 +855,11 @@ def simulate(symbol: str, rows: list[dict], role: str, initial_cash: float) -> d
         close = float(row["close"])
         if pending == "buy" and shares == 0:
             allocation = 0.65 if role == "C-1" else 0.9
-            shares = int((cash * allocation) // open_price)
-            cash -= shares * open_price
+            shares = int((cash * allocation) // (open_price * (1.0 + fee + slippage)))
+            cash -= shares * open_price * (1.0 + fee + slippage)
             trades += 1
         elif pending == "sell" and shares > 0:
-            cash += shares * open_price
+            cash += shares * open_price * (1.0 - fee - tax - slippage)
             shares = 0
             trades += 1
 
@@ -2061,6 +2062,9 @@ class Handler(SimpleHTTPRequestHandler):
             if self.path == "/api/train":
                 body = self.read_body()
                 end_exclusive = (datetime.fromisoformat(body["end"]) + timedelta(days=1)).date().isoformat()
+                fee = float(body.get("fee", 0.0))
+                tax = float(body.get("tax", 0.0))
+                slippage = float(body.get("slippage", 0.0))
                 output = []
                 optimization = []
                 threshold_reviews = []
@@ -2068,7 +2072,7 @@ class Handler(SimpleHTTPRequestHandler):
                     rows = fetch_history(symbol, body["start"], end_exclusive)
                     threshold_reviews.append(evaluate_probability_thresholds(symbol, rows))
                     for role in body["roles"]:
-                        baseline = simulate(symbol, rows, role, float(body.get("initial_cash", 1_000_000)))
+                        baseline = simulate(symbol, rows, role, float(body.get("initial_cash", 1_000_000)), fee=fee, tax=tax, slippage=slippage)
                         output.append(baseline)
                         optimization.append(
                             optimize_strategy_variants(
@@ -2077,6 +2081,9 @@ class Handler(SimpleHTTPRequestHandler):
                                 role,
                                 float(body.get("initial_cash", 1_000_000)),
                                 baseline,
+                                fee=fee,
+                                tax=tax,
+                                slippage=slippage,
                             )
                         )
                 
