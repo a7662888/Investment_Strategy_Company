@@ -13,6 +13,17 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-30 · Claude Code · 股池更新自動排程(GitHub Actions)
+
+- 使用者:月更/週更股池設成自動排程。改用 **GitHub Actions**(雲端、免開電腦、push 自動觸發 Render 部署)。
+- 新增 `.github/workflows/`:
+  - `universe-monthly.yml`:每月 1 日 16:00 UTC → `run_universe_refresh.py both`(母池100+週選30)→ 自動 commit `active_pool.json`+`active_universe.json` → push。
+  - `universe-weekly.yml`:每週日 16:00 UTC → `run_universe_refresh.py weekly`(讀母池→週選30)→ commit `active_universe.json` → push。
+  - 皆 `workflow_dispatch`(可手動觸發)、`permissions: contents:write`、`concurrency: universe-refresh`(月/週不互撞)、無變化則不 commit、commit 訊息帶 `[skip ci]`。
+- **使用者一次性設定(選填)**:GitHub repo → Settings → Secrets → 加 `FINMIND_TOKEN`,抓取更穩(不加也能跑,匿名較易被限流)。
+- 注意:推 workflow 檔需憑證有 `workflow` scope;若我 push 失敗會回報由使用者推。
+- 給 Codex/Antigravity:此為新增 CI infra,未動你們程式;Actions 會以 github-actions[bot] 自動更新兩個 json。
+
 ## 2026-05-30 · Claude Code · 三層漏斗股池:母池100(月)→週選30→每日推薦
 
 - 使用者升級需求:母池 100(月更,成交額排序+產業分散+可加權)→ 每週前 30 → 每天三家從 30 推薦。
