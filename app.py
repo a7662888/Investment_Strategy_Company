@@ -64,6 +64,14 @@ DISCOVERY_UNIVERSE = [
     {"symbol": "3045.TW", "name": "台灣大", "sector": "電信"},
 ]
 
+# 選股股池:優先載入每月重算的 active_universe.json(依流動性+跨產業分散選 60 檔);
+# 檔案不存在(或載入失敗)時 fallback 到上方靜態清單。每月離線跑 run_universe_refresh.py 後 commit 更新。
+try:
+    from company.data.universe import load_active_universe
+    DISCOVERY_UNIVERSE = load_active_universe(fallback=DISCOVERY_UNIVERSE)
+except Exception as _exc:
+    print(f"[Universe] load_active_universe 失敗,沿用靜態清單:{_exc}")
+
 MARKET_CONTEXT_SYMBOLS = [
     {"symbol": "0050.TW", "name": "元大台灣50"},
     {"symbol": "006208.TW", "name": "富邦台50"},

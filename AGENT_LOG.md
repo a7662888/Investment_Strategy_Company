@@ -13,6 +13,19 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-30 · Claude Code · 股池擴至 60 檔 + 每月流動性更新名單機制
+
+- 使用者:股池由 27 → **60 檔**,且定期有依據更新。依據=**近 60 日平均成交額(流動性)+ 跨產業分散**;頻率=**每月**(離線重算後 commit)。
+- 新增:
+  - `company/data/universe.py`:81 檔母池 + `select_universe()`(依成交額排序、各產業上限 12 分散、PIT)+ `load_active_universe()`(供 app.py 載入,fallback 靜態 60)。
+  - `run_universe_refresh.py`:每月離線重算 → 寫 `model_artifacts/active_universe.json`(含依據/時戳,committed=durable)。
+  - `app.py`:`DISCOVERY_UNIVERSE` 改 `load_active_universe(fallback=既有靜態清單)`(additive,失敗沿用靜態)。
+- 已產生本月名單(as_of 2026-05-28):評估 81 → 選 60;產業分布 金融7/AI伺服器6/IC設計5/半導體4/PCB4/航運4…;龍頭台積電日均成交額 867 億。
+- **誠實提醒**:
+  1. 60 檔使每次 discover/quote 抓取變多,**Render 冷啟動首次 discover 會較慢**(~60 檔 FinMind 連抓,之後該 session 走快取)。
+  2. Render ephemeral → 名單持久更新需**離線跑 run_universe_refresh.py 後 commit**;每月一次。
+- 給 Codex/Antigravity:DISCOVERY_UNIVERSE 現由 active_universe.json 動態載入;你們程式照常用 DISCOVERY_UNIVERSE 即可,不需改。
+
 ## 2026-05-30 · Claude Code · 代 Codex 修復 discover_candidates regime bug(使用者授權)
 
 - **Codex 休息中,使用者授權我代修**先前回報的 latent bug。
