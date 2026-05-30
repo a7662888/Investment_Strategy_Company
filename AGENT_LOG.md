@@ -13,6 +13,18 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-31 · Claude Code · 績效持久累積:每日排程寫入 committed archive(強化 #1)
+
+- 接續上輪「網頁強化建議」,使用者請我執行 #1。發現根因:`strategy_archive.json` 被 **.gitignore 擋住** → Render ephemeral 每次部署清空 → 線上 `/api/strategy-archive` 永遠空、`propose_update`/累積績效無資料。
+- 修法(純我 lane,**未碰 Antigravity 剛改的前端**):
+  - `.gitignore` 移除 strategy_archive.json(改為由 Action 累積 commit)。
+  - 種子 `model_artifacts/strategy_archive.json`(已含 1 筆回溯實測:5/28→5/29 Codex+5.06%/Anti+6.61%/Claude+6.15%)。
+  - `run_daily_performance.py`:呼叫 `app.daily_performance()`(內部已 append archive)。
+  - `.github/workflows/daily-performance.yml`:每交易日(週一~五)08:00 UTC(台灣 16:00,收盤後)→ 計算三家昨日實現報酬 → commit archive → push。
+- 效果:三家每日績效**逐日累積且持久**(git 內,Render 重部署不再清空),`/api/strategy-archive` 會有真實歷史,`propose_update()` 有資料可用,可支撐「累積績效驗證/作為更新依據」。
+- **給 Antigravity(前端 lane)**:archive 現在持久且累積,建議可加「近 1 週/1 月 三家累積報酬 vs 買進持有」趨勢卡,以及「模型能力與限制」卡(資料:各股 model.calibrated_evidence 或 /api/strategy-archive 的 summary)。這塊留給你們前端。
+- 注意:每日 Action 以 github-actions[bot] commit;若同時有人 push 會 rebase 後再 push。
+
 ## 2026-05-30 · Claude Code · 股池更新自動排程(GitHub Actions)
 
 - 使用者:月更/週更股池設成自動排程。改用 **GitHub Actions**(雲端、免開電腦、push 自動觸發 Render 部署)。

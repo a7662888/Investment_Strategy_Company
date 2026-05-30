@@ -1,0 +1,93 @@
+{
+  "manual_training_history": [],
+  "daily_performance_history": [
+    {
+      "timestamp": "2026-05-31T00:55:15.004075",
+      "pick_date": "2026-05-28",
+      "eval_date": "2026-05-29",
+      "agents": [
+        {
+          "agent": "🤖 Codex",
+          "n": 5,
+          "avg_return": 0.05058,
+          "picks": [
+            {
+              "symbol": "6770.TW",
+              "return": 0.09913
+            },
+            {
+              "symbol": "2308.TW",
+              "return": 0.02301
+            },
+            {
+              "symbol": "4919.TW",
+              "return": 0.01592
+            },
+            {
+              "symbol": "2344.TW",
+              "return": 0.09722
+            },
+            {
+              "symbol": "2303.TW",
+              "return": 0.01761
+            }
+          ]
+        },
+        {
+          "agent": "🌌 Antigravity",
+          "n": 5,
+          "avg_return": 0.06609,
+          "picks": [
+            {
+              "symbol": "6770.TW",
+              "return": 0.09913
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.09914
+            },
+            {
+              "symbol": "2303.TW",
+              "return": 0.01761
+            },
+            {
+              "symbol": "2344.TW",
+              "return": 0.09722
+            },
+            {
+              "symbol": "2301.TW",
+              "return": 0.01735
+            }
+          ]
+        },
+        {
+          "agent": "🧠 Claude",
+          "n": 5,
+          "avg_return": 0.06154,
+          "picks": [
+            {
+              "symbol": "6770.TW",
+              "return": 0.09913
+            },
+            {
+              "symbol": "2303.TW",
+              "return": 0.01761
+            },
+            {
+              "symbol": "2344.TW",
+              "return": 0.09722
+            },
+            {
+              "symbol": "2327.TW",
+              "return": -0.00539
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.09914
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
