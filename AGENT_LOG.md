@@ -13,6 +13,19 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-05-30 · Claude Code · 三層漏斗股池:母池100(月)→週選30→每日推薦
+
+- 使用者升級需求:母池 100(月更,成交額排序+產業分散+可加權)→ 每週前 30 → 每天三家從 30 推薦。
+- 重構 `company/data/universe.py`(RAW 候選 115、44 產業):
+  - `refresh_all()` 單次抓取 → 同時產 **母池100**(成交額排序+產業上限20)與 **週選30**(加權複合分=成交額×0.6+動能×0.4 百分位+產業上限8)。
+  - `refresh_weekly_from_pool()`:週更只重抓母池100算複合分選30(較省 API)。
+  - `load_active_universe()` 回**週選30**(fallback:母池→DEFAULT_30)。
+- `run_universe_refresh.py` 支援 `both`(月)/`weekly`(週)模式。產 `active_pool.json`(100)+`active_universe.json`(30),committed=durable。
+- app.py `DISCOVERY_UNIVERSE` 現為**週選 30**(每日 discover 只掃 30 → 比 60 更快,順帶緩解冷啟動)。
+- 本期(as_of 2026-05-28):母池100(金融12/ICデ8/AI6…),週選30 前3 聯發科/國巨/欣興(動能強者被加權拉前)。
+- 更新節奏:**每月** `python run_universe_refresh.py both` + commit;**每週** `python run_universe_refresh.py weekly` + commit。
+- 給 Codex/Antigravity:DISCOVERY_UNIVERSE 動態載入週30,程式照用即可,不需改。
+
 ## 2026-05-30 · Claude Code · 股池擴至 60 檔 + 每月流動性更新名單機制
 
 - 使用者:股池由 27 → **60 檔**,且定期有依據更新。依據=**近 60 日平均成交額(流動性)+ 跨產業分散**;頻率=**每月**(離線重算後 commit)。
