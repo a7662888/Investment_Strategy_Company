@@ -88,6 +88,94 @@
           ]
         }
       ]
+    },
+    {
+      "timestamp": "2026-06-01T13:43:13.741063",
+      "pick_date": "2026-05-29",
+      "eval_date": "2026-06-01",
+      "agents": [
+        {
+          "agent": "🤖 Codex",
+          "n": 5,
+          "avg_return": 0.03154,
+          "picks": [
+            {
+              "symbol": "6770.TW",
+              "return": -0.01917
+            },
+            {
+              "symbol": "2308.TW",
+              "return": -0.01022
+            },
+            {
+              "symbol": "2360.TW",
+              "return": 0.02381
+            },
+            {
+              "symbol": "2344.TW",
+              "return": 0.06329
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.1
+            }
+          ]
+        },
+        {
+          "agent": "🌌 Antigravity",
+          "n": 5,
+          "avg_return": 0.04261,
+          "picks": [
+            {
+              "symbol": "3481.TW",
+              "return": 0.1
+            },
+            {
+              "symbol": "2303.TW",
+              "return": 0.01038
+            },
+            {
+              "symbol": "2344.TW",
+              "return": 0.06329
+            },
+            {
+              "symbol": "2360.TW",
+              "return": 0.02381
+            },
+            {
+              "symbol": "2317.TW",
+              "return": 0.01557
+            }
+          ]
+        },
+        {
+          "agent": "🧠 Claude",
+          "n": 5,
+          "avg_return": 0.04499,
+          "picks": [
+            {
+              "symbol": "6770.TW",
+              "return": -0.01917
+            },
+            {
+              "symbol": "2303.TW",
+              "return": 0.01038
+            },
+            {
+              "symbol": "2344.TW",
+              "return": 0.06329
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.1
+            },
+            {
+              "symbol": "2327.TW",
+              "return": 0.07046
+            }
+          ]
+        }
+      ]
     }
   ]
 }
