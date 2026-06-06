@@ -7,8 +7,10 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 ## Canonical Repository
 
 - GitHub: https://github.com/a7662888/Investment_Strategy_Company
-- Local path: `C:\Users\User\OneDrive\應用程式\remotely-save\Obsidian Vault\secondbrain\Codex\investment-strategy-company`
+- **Canonical 本機工作副本(唯一可 commit/push)**: `D:\secondbrain\Codex\investment-strategy-company`
+- **唯讀鏡像(僅可 `git pull` 對齊,不得 commit)**: `E:\OneDrive\Obsidian Vault\Codex\investment-strategy-company` 及任何 OneDrive/remotely-save 同步副本
 - Branch: `main`
+- 鐵則:只從 canonical(D:) commit/push;OneDrive 同步資料夾放 `.git` 有物件損毀風險,不在鏡像做 git 寫入。(2026-06-06 解除 D:/E: split-brain 後鎖定)
 
 ## Runtime
 
@@ -19,6 +21,9 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 - Local URL: `http://127.0.0.1:8770`
 - Render URL: `https://investment-strategy-company.onrender.com`
 - Render health check: `https://investment-strategy-company.onrender.com/api/health`
+- **唯一 canonical Render 服務**: `srv-d8br2am7r5hc738rv320`(綁定上述公開網址)。Auto-Deploy 須維持 On。
+- **待退役的重複服務**: `srv-d8dfm2cp3tds73fibem0` — 與 canonical 看同一 repo,造成 Render 端 split-brain;確認 `srv-d8br2` 部署正常後應 Suspend/刪除。(2026-06-06 發現)
+- 鐵則:一個 app 只保留一個 Render 服務;公開域名綁死在 `srv-d8br2`,不要再開新服務分岔。
 - Temporary tunnel URL: `https://unix-legendary-douglas-anticipated.trycloudflare.com`
 - Separate detected tunnel: `D:\secondbrain\投資策略顧問公司` uses `http://localhost:8501`; do not modify it from this repo unless explicitly requested.
 
