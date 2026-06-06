@@ -1300,6 +1300,189 @@ def analyze_candidate(symbol: str, rows: list[dict], market_regime: str | None =
     }
 
 
+GRADE_ORDER = {"C": 0, "B": 1, "A": 2}
+
+
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
+def _grade_label(grade: str) -> str:
+    return {
+        "A": "A級 · 可執行",
+        "B": "B級 · 觀察",
+        "C": "C級 · 禁買",
+    }.get(grade, grade)
+
+
+def _downgrade_grade(current: str, target: str) -> str:
+    return target if GRADE_ORDER.get(target, 0) < GRADE_ORDER.get(current, 0) else current
+
+
+def codex_tomorrow_decision_v2(
+    symbol: str,
+    rows: list[dict],
+    analysis: dict,
+    market_info: dict | None = None,
+    sector: str = "",
+) -> dict:
+    """Codex's own tomorrow-decision overlay: gate risk first, rank opportunity last."""
+    closes = [float(row["close"]) for row in rows]
+    volumes = [float(row.get("volume", 0) or 0) for row in rows]
+    highs = [float(row.get("high", row["close"]) or row["close"]) for row in rows]
+    lows = [float(row.get("low", row["close"]) or row["close"]) for row in rows]
+    last = closes[-1]
+    prev = closes[-2] if len(closes) > 1 else last
+    day_change_pct = (last / prev - 1.0) * 100.0 if prev > 0 else 0.0
+    ma20 = moving_average(closes, 20)
+    ma60 = moving_average(closes, 60)
+    avg_vol20 = sum(volumes[-20:]) / 20 if len(volumes) >= 20 else 0.0
+    volume_ratio20 = volumes[-1] / avg_vol20 if avg_vol20 > 0 else 1.0
+    day_range = highs[-1] - lows[-1]
+    close_location = (last - lows[-1]) / day_range if day_range > 0 else 0.5
+    dev_ma20 = last / ma20 - 1.0 if ma20 else 0.0
+    dev_ma60 = last / ma60 - 1.0 if ma60 else 0.0
+    model = analysis.get("model") or {}
+    calibrated = model.get("calibrated") or {}
+    prob = float(model.get("calibrated_probability_up") or model.get("probability_up") or 50.0)
+    bucket_return = float(calibrated.get("avg_fwd_return") or 0.0)
+    hit_rate = float(calibrated.get("empirical_up_rate") or 0.5)
+    volatility20 = float(model.get("volatility_20") or 0.0)
+    momentum20 = float(model.get("momentum_20") or 0.0)
+    rsi14 = float(model.get("rsi14") or 50.0)
+
+    risk_level = (market_info or {}).get("risk_level")
+    market_state = risk_level or "UNKNOWN"
+    new_position_permission = "normal"
+    grade = analysis.get("grade", "B")
+    vetoes: list[str] = []
+    downgrades: list[str] = []
+
+    if risk_level in ("BLACK", "RED"):
+        grade = "C"
+        new_position_permission = "blocked"
+        vetoes.append(f"Market risk is {risk_level}; Codex v2 blocks all new positions.")
+    elif risk_level == "YELLOW":
+        grade = _downgrade_grade(grade, "B")
+        new_position_permission = "reduced"
+        downgrades.append("Market risk is YELLOW; Codex v2 caps new ideas at B observation.")
+
+    if day_change_pct <= -4.5:
+        grade = "C"
+        vetoes.append(f"Single-day loss {day_change_pct:.2f}% <= -4.5%.")
+    if ma20 and last < ma20:
+        grade = "C"
+        vetoes.append("Close is below MA20; trend structure is broken.")
+    if ma60 and last < ma60:
+        grade = "C"
+        vetoes.append("Close is below MA60; medium-term structure is broken.")
+    if day_change_pct < 0 and volume_ratio20 >= 1.8:
+        grade = "C"
+        vetoes.append(f"Down day with volume {volume_ratio20:.1f}x 20-day average.")
+    if day_change_pct <= -2.0 and close_location <= 0.25:
+        grade = "C"
+        vetoes.append(f"Closed near session low ({close_location:.0%} of range) on a weak day.")
+
+    overheat = False
+    if dev_ma20 >= 0.12:
+        overheat = True
+        downgrades.append(f"Price is {dev_ma20:.1%} above MA20; overheat penalty.")
+    if dev_ma60 >= 0.30:
+        overheat = True
+        downgrades.append(f"Price is {dev_ma60:.1%} above MA60; extended-run penalty.")
+    if rsi14 >= 75:
+        overheat = True
+        downgrades.append(f"RSI {rsi14:.1f} is overheated.")
+    if overheat and grade == "A":
+        grade = "B"
+
+    model_edge = _clamp((prob - 55.0) * 0.12, -0.8, 0.8)
+    calibrated_edge = _clamp(bucket_return * 8.0 + (hit_rate - 0.5) * 1.5, -0.8, 0.8)
+    momentum_quality = _clamp(momentum20 * 6.0, -1.5, 1.8)
+    structure_score = 0.0
+    if ma20 and last > ma20:
+        structure_score += 0.8
+    if ma60 and last > ma60:
+        structure_score += 0.7
+    if ma20 and ma60 and ma20 > ma60:
+        structure_score += 0.5
+
+    opportunity_score = structure_score + momentum_quality + model_edge + calibrated_edge
+    risk_score = 0.0
+    risk_score += _clamp(volatility20 * 45.0, 0.0, 2.5)
+    risk_score += _clamp(max(0.0, volume_ratio20 - 1.0) * 0.5, 0.0, 1.5)
+    risk_score += _clamp(max(0.0, dev_ma20 - 0.10) * 10.0, 0.0, 1.5)
+    risk_score += _clamp(max(0.0, dev_ma60 - 0.25) * 5.0, 0.0, 1.5)
+    risk_score += 3.0 if vetoes else 0.0
+    risk_score += 1.0 if risk_level == "YELLOW" else 0.0
+    risk_score += 4.0 if risk_level in ("RED", "BLACK") else 0.0
+
+    final_score = opportunity_score - risk_score
+    if grade == "C":
+        action = "Codex v2: 禁買"
+        final_score = min(final_score, -5.0)
+    elif grade == "B":
+        action = "Codex v2: 觀察，不自動進場"
+    else:
+        action = "Codex v2: 可執行候選"
+
+    message = (
+        f"Codex v2 says {symbol} is grade {grade}. "
+        f"Market={market_state}, permission={new_position_permission}, "
+        f"opportunity={opportunity_score:.2f}, risk={risk_score:.2f}. "
+        "Model probability is auxiliary only."
+    )
+    return {
+        "model_name": "Codex Tomorrow Decision Model v2",
+        "market_state": market_state,
+        "new_position_permission": new_position_permission,
+        "grade": grade,
+        "grade_label": _grade_label(grade),
+        "action": action,
+        "opportunity_score": round(opportunity_score, 3),
+        "risk_score": round(risk_score, 3),
+        "final_score": round(final_score, 3),
+        "model_probability_weight": "auxiliary",
+        "vetoes": vetoes,
+        "downgrades": downgrades,
+        "metrics": {
+            "day_change_pct": round(day_change_pct, 3),
+            "volume_ratio20": round(volume_ratio20, 3),
+            "close_location": round(close_location, 3),
+            "dev_ma20": round(dev_ma20, 4),
+            "dev_ma60": round(dev_ma60, 4),
+            "volatility20": round(volatility20, 4),
+            "momentum20": round(momentum20, 4),
+            "rsi14": round(rsi14, 2),
+        },
+        "message_to_agents": message,
+        "future_knowledge_used": False,
+    }
+
+
+def apply_codex_v2_overlay(
+    symbol: str,
+    rows: list[dict],
+    analysis: dict,
+    market_info: dict | None = None,
+    sector: str = "",
+) -> dict:
+    overlay = codex_tomorrow_decision_v2(symbol, rows, analysis, market_info=market_info, sector=sector)
+    merged = dict(analysis)
+    merged["raw_technical_score"] = analysis.get("score")
+    merged["codex_score"] = overlay["final_score"]
+    merged["grade"] = overlay["grade"]
+    merged["grade_label"] = overlay["grade_label"]
+    merged["action"] = overlay["action"]
+    merged["codex_decision_model"] = overlay
+    reasons = list(analysis.get("reasons", []))
+    v2_reasons = [f"Codex v2: {item}" for item in overlay["vetoes"] + overlay["downgrades"]]
+    if not v2_reasons:
+        v2_reasons.append("Codex v2: no hard veto; opportunity is ranked after risk gates.")
+    merged["reasons"] = v2_reasons + reasons
+    return merged
+
+
 OPTIMIZED_WEIGHTS_PATH = PROJECT / "model_artifacts" / "optimized_weights.json"
 
 def load_optimized_weights() -> dict | None:
@@ -1517,8 +1700,9 @@ def generate_ai_prediction(closes: list[float], rsi: float, macd_hist: float) ->
     }
 
 
-def plan_next_session(symbol: str, rows: list[dict], position: dict | None, market_regime: str | None = None, risk_level: str | None = None) -> dict:
+def plan_next_session(symbol: str, rows: list[dict], position: dict | None, market_regime: str | None = None, risk_level: str | None = None, market_info: dict | None = None) -> dict:
     analysis = analyze_candidate(symbol, rows, market_regime=market_regime, risk_level=risk_level)
+    analysis = apply_codex_v2_overlay(symbol, rows, analysis, market_info=market_info or {"risk_level": risk_level})
     closes = [float(row["close"]) for row in rows]
     last = closes[-1]
     ma20 = moving_average(closes, 20)
@@ -1566,6 +1750,7 @@ def plan_next_session(symbol: str, rows: list[dict], position: dict | None, mark
         "grade_label": analysis["grade_label"],
         "reasons": reasons,
         "model": analysis["model"],
+        "codex_decision_model": analysis.get("codex_decision_model"),
         "ai_predictor": generate_ai_prediction(closes, rsi, hist_val),
         "rule": "收盤後產生明日計畫，不做當沖；買賣僅作研究與模擬用途。",
         "future_knowledge_used": False,
@@ -1628,22 +1813,23 @@ def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> d
             if len(rows) < 130:
                 continue
             analysis = analyze_candidate(item["symbol"], rows, market_regime=candidate_regime, risk_level=risk_level)
+            analysis = apply_codex_v2_overlay(
+                item["symbol"],
+                rows,
+                analysis,
+                market_info=market_info,
+                sector=item.get("sector", ""),
+            )
             model = analysis.get("model") or {}
             calibrated = model.get("calibrated") or {}
             calibrated_prob = float(model.get("calibrated_probability_up") or model.get("probability_up") or 50)
             bucket_return = float(calibrated.get("avg_fwd_return") or 0)
             bucket_hit_rate = float(calibrated.get("empirical_up_rate") or 0.5)
-            regime_bonus = 1.0 if context["regime"] == "偏多" and analysis["score"] >= 4 else 0.0
-            risk_penalty = 1.0 if model.get("volatility_20", 0) and float(model.get("volatility_20", 0)) > 0.045 else 0.0
-            discovery_score = (
-                analysis["score"]
-                + (calibrated_prob - 50.0) / 8.0
-                + bucket_return * 20.0
-                + (bucket_hit_rate - 0.5) * 6.0
-                + regime_bonus
-                - risk_penalty
-            )
+            codex_v2 = analysis.get("codex_decision_model") or {}
+            discovery_score = float(codex_v2.get("final_score", analysis.get("codex_score", analysis["score"])))
             reasons = [
+                f"Codex v2 final score {discovery_score:.2f}; raw technical {analysis.get('raw_technical_score', analysis['score'])}; calibrated probability {calibrated_prob:.1f}% is auxiliary.",
+                codex_v2.get("message_to_agents", ""),
                 f"Agent 綜合分數 {discovery_score:.2f}；技術分 {analysis['score']}，校準偏多 {calibrated_prob:.1f}%。",
                 f"所屬族群：{item['sector']}；大盤環境：{context['regime']}。",
             ]
@@ -1666,20 +1852,21 @@ def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> d
                     "discovery_score": round(discovery_score, 3),
                     "probability_up": round(calibrated_prob, 1),   # 校準機率(供前端統一標準化比較)
                     "model": model,
+                    "codex_decision_model": codex_v2,
                     "reasons": reasons,
                     "future_knowledge_used": False,
                 }
             )
         except Exception:
             continue
-    candidates.sort(key=lambda row: row["discovery_score"], reverse=True)
+    candidates.sort(key=lambda row: (GRADE_ORDER.get(row.get("grade"), 0), row["discovery_score"]), reverse=True)
     return {
         "as_of": end,
         "market_context": context,
         "universe_size": len(DISCOVERY_UNIVERSE),
-        "selected_symbols": [item["symbol"] for item in candidates[:limit]],
+        "selected_symbols": [item["symbol"] for item in candidates if item.get("grade") != "C"][:limit],
         "candidates": candidates[:limit],
-        "rule": "先看大盤代理,再於候選池用趨勢/動能/波動/校準模型排序；不使用截止日之後資料。",
+        "rule": "Codex v2: market circuit breaker -> new-position permission -> hard vetoes -> A/B/C grade -> opportunity ranking; model probability is auxiliary.",
     }
 
 
@@ -2427,11 +2614,12 @@ class Handler(SimpleHTTPRequestHandler):
                     try:
                         rows = fetch_history(symbol, start, end_exclusive)
                         if len(rows) >= 80:
-                            candidates.append(analyze_candidate(symbol, rows, market_regime=market_regime, risk_level=risk_level))
+                            analysis = analyze_candidate(symbol, rows, market_regime=market_regime, risk_level=risk_level)
+                            candidates.append(apply_codex_v2_overlay(symbol, rows, analysis, market_info=market_info))
                     except Exception as e:
                         print(f"Error recommending for {symbol}: {e}")
                 
-                candidates.sort(key=lambda item: item["score"], reverse=True)
+                candidates.sort(key=lambda item: (GRADE_ORDER.get(item.get("grade"), 0), item.get("codex_score", item["score"])), reverse=True)
                 self.send_json({
                     "as_of": end,
                     "market_index": market_info,
@@ -2455,7 +2643,7 @@ class Handler(SimpleHTTPRequestHandler):
                     try:
                         rows = fetch_history(symbol, start, end_exclusive)
                         if len(rows) >= 80:
-                            plans.append(plan_next_session(symbol, rows, positions.get(symbol), market_regime=market_regime, risk_level=risk_level))
+                            plans.append(plan_next_session(symbol, rows, positions.get(symbol), market_regime=market_regime, risk_level=risk_level, market_info=market_info))
                     except Exception as e:
                         print(f"Error planning next day for {symbol}: {e}")
                 

@@ -77,8 +77,20 @@ def test_health_endpoint():
         server.shutdown()
 
 
+def test_codex_v2_blocks_new_positions_on_red_market():
+    rows = _fake_rows()
+    analysis = appmod.analyze_candidate("9999.TW", rows, risk_level="RED")
+    overlaid = appmod.apply_codex_v2_overlay("9999.TW", rows, analysis, {"risk_level": "RED"})
+    assert overlaid["grade"] == "C"
+    assert overlaid["action"] == "Codex v2: 禁買"
+    assert overlaid["codex_decision_model"]["new_position_permission"] == "blocked"
+    assert overlaid["codex_decision_model"]["vetoes"]
+    print("✅ Codex v2 RED market blocks new positions")
+
+
 if __name__ == "__main__":
     test_plan_schema_and_calibrated()
     test_held_position()
+    test_codex_v2_blocks_new_positions_on_red_market()
     test_health_endpoint()
     print("✅ app 整合測試全數通過")
