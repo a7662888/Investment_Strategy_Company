@@ -20,6 +20,10 @@ class ValueChipParams:
     min_yoy: float = 0.0        # 營收 YoY 下限
     chip_lookback: int = 20
     stop_loss: float = 0.15     # 自成本跌破 15% 停損
+    initial_entry: float = 0.5  # 首次符合條件只建半倉,避免一次接滿
+    add_on_exposure: float = 1.0
+    pullback_min: float = 0.05  # 自成本回落 5% 才開始考慮加碼
+    pullback_max: float = 0.10  # 回落超過 10% 先觀望,避免接刀
 
 
 class ValueChipOperator(Operator):
@@ -47,22 +51,50 @@ class ValueChipOperator(Operator):
         # 持倉中:停損 / 估值過高 / 逢低加碼 / 法人轉賣
         if state.exposure > 0:
             cost_drawdown = (close / state.avg_cost - 1.0) if state.avg_cost > 0 else 0.0
+            sig["cost_drawdown"] = round(cost_drawdown, 4)
             if state.avg_cost and cost_drawdown <= -self.p.stop_loss:
                 return Decision(0.0, f"自加權成本 {state.avg_cost:.0f} 跌破 {self.p.stop_loss:.0%},停損出場", sig)
             if per is not None and per >= self.p.expensive_pe:
                 return Decision(0.0, f"PER {per:.1f} 過高(>{self.p.expensive_pe:.0f}),獲利了結", sig)
-            
-            # 逢低加碼條件: 目前非滿倉、基本面籌碼良好、價格較加權成本回落 5% 到 12% 之間
-            if state.exposure < 0.7 and cheap and growing and bought and (-0.12 <= cost_drawdown <= -0.05):
-                return Decision(1.0, f"價格較成本 {state.avg_cost:.1f} 回落 {cost_drawdown * 100:+.1f}%，基本面良好，觸發逢低加碼至滿倉", sig)
-                
             if inst < 0:
                 return Decision(0.3, f"法人 20 日轉賣超({inst:,.0f}),減碼至 3 成倉", sig)
+
+            # 逢低加碼只給價值籌碼派: 非滿倉、基本面/籌碼仍好,且回檔在計畫區間內。
+            # 大盤 RED/BLACK 的禁買禁加碼由外層市場燈號覆蓋。
+            in_pullback_zone = -self.p.pullback_max <= cost_drawdown <= -self.p.pullback_min
+            can_add = state.exposure < self.p.add_on_exposure and cheap and growing and bought and in_pullback_zone
+            sig["pullback_zone"] = bool(in_pullback_zone)
+            sig["can_value_add_on"] = bool(can_add)
+            if can_add:
+                sig["add_on_type"] = "value_pullback"
+                return Decision(
+                    self.p.add_on_exposure,
+                    (
+                        f"價格較成本 {state.avg_cost:.1f} 回落 {cost_drawdown * 100:+.1f}%，"
+                        f"PER {per:.1f} 仍合理、營收YoY {(yoy or 0):+.0%}、法人買超，"
+                        "執行價值型逢低加碼至滿倉"
+                    ),
+                    sig,
+                )
+            if cost_drawdown < -self.p.pullback_max:
+                return Decision(
+                    state.exposure,
+                    (
+                        f"價格較成本回落 {cost_drawdown * 100:+.1f}%，超過逢低加碼區間，"
+                        "未破停損前先續抱不加碼"
+                    ),
+                    sig,
+                )
             return Decision(state.exposure, f"基本面/籌碼良好(PER {per},法人買超),續抱", sig)
 
         # 空手:便宜 + 成長 + 法人買超 (半倉試單)
         if cheap and growing and bought:
-            return Decision(0.5, f"PER {per:.1f} 合理、營收YoY {(yoy or 0):+.0%}、法人買超，半倉進場試單", sig)
+            sig["entry_type"] = "initial_half_position"
+            return Decision(
+                self.p.initial_entry,
+                f"PER {per:.1f} 合理、營收YoY {(yoy or 0):+.0%}、法人買超，半倉進場試單",
+                sig,
+            )
         why = []
         if not cheap:
             why.append(f"PER {per} 偏貴" if per else "無PER")
