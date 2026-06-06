@@ -90,12 +90,18 @@
 
 ## 5. 網頁更新「完成」定義（Definition of Done）
 
-- [ ] D: 含 Phase 1 改動 + 兩項誠實標籤修正
-- [ ] `test_app_integration.py`、`test_no_lookahead.py` 通過
-- [ ] 已 `push origin main`，Render deploy 成功、`/api/health` 200
-- [ ] 線上頁面：頂部出現風險燈號＋明日總決策；候選股分 A/B/C；大跌股被歸 C
-- [ ] E: 已 `git pull` 對齊（不再有未提交分岔）
-- [ ] Phase 2 工作項已建立（至少 P2-1 滾動 AUC 監控）
+> 🟢 **GO-LIVE 達成（2026-06-06）**：canonical 公開網址 `https://investment-strategy-company.onrender.com`（服務 `srv-d8br2`）已部署 commit `d8e1606`，線上可見風險燈號＋A/B/C＋市場狀態。
+
+- [x] D: 含 Phase 1 改動 + 兩項誠實標籤修正
+- [x] `test_app_integration.py`、`test_no_lookahead.py` 通過
+- [x] 已 `push origin main`，Render deploy 成功、`/api/health` 200
+- [x] 線上頁面：頂部出現風險燈號＋明日總決策；候選股分 A/B/C；大跌股被歸 C
+- [x] E: 已對齊（D:=E:=origin=同一 HEAD，不再有未提交分岔）
+- [x] Phase 2 工作項已建立（見下方 §7 Phase 2 待辦）
+
+### 剩餘清理（非阻塞，使用者後台操作）
+- [ ] Render 端退役重複服務 `srv-d8dfm2cp3tds73fibem0`（②`-9mrd` 那個）→ Suspend/Delete
+- [ ] （選配）將 `srv-d8br2` 的 Deploy Hook 接入流程，push 後自動部署
 
 ---
 
@@ -103,6 +109,18 @@
 
 | Agent | 確認狀態 | 備註 |
 |---|---|---|
-| Claude | ✅ 提案 | 本文件作者 |
-| Codex | ⬜ 待確認 | 同意 canonical=D: 與執行步驟？ |
+| Claude | ✅ 提案＋執行 | 本文件作者；本次代行 port→commit→push→部署驗證（Codex lane） |
+| Codex | ⬜ 待確認 | 同意 canonical=D: 與執行步驟？（本次 push 由 Claude 代行） |
 | Antigravity | ✅ 已確認並實作 | 已完成兩項誠實標籤修正，本地與 PIT 測試通過 |
+
+---
+
+## 7. Phase 2 待辦（治本，已建立）
+
+| # | 項目 | 負責 | 狀態 |
+|---|---|---|---|
+| P2-1 | 真正的「模型有效性」= 滾動 AUC 監控（<0.52 自動暫停），與大盤燈號脫鉤 | Claude(設計)+Codex(實作) | ⬜ 待辦（最優先） |
+| P2-2 | 燈號閾值用歷史（含 6/6）校準，輸出誤報/漏報率 | Claude+Codex | ⬜ 待辦 |
+| P2-3 | 燈號轉綠加 cooldown（接 `CircuitBreaker.cooldown_days`）防 whipsaw | Codex | ⬜ 待辦 |
+| P2-4 | 持股端出場規則給具體觸發值 | Codex | ⬜ 待辦 |
+| P2-5 | 定義「錯誤決策率」並做改版前後回測 | Claude | ⬜ 待辦 |
