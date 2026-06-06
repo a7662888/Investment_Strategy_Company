@@ -700,7 +700,8 @@ async function discoverToday() {
     });
 
     // 預設:三家各取前 2 名(去重),取代過去只填 Codex 的清單
-    const topSyms = (arr) => asArray(arr).slice(0, 2).map(c => c.symbol).filter(Boolean);
+    const executablePick = (c) => c && c.symbol && c.grade !== "C";
+    const topSyms = (arr) => asArray(arr).filter(executablePick).slice(0, 2).map(c => c.symbol).filter(Boolean);
     const merged = [];
     [...topSyms(codexCands), ...topSyms(antiCands), ...topSyms(claudeCands)].forEach(s => {
       if (s && !merged.includes(s)) merged.push(s);
@@ -756,6 +757,10 @@ function renderAgentCard(item, agentType) {
   const symbol = item.symbol || "";
   const name = item.name || "";
   const sector = item.sector ? `<span class="pill">${item.sector}</span>` : "";
+  const gradePill = item.grade_label ? `<span class="pill">${item.grade_label}</span>` : "";
+  const codexPill = item.codex_score !== undefined && item.codex_score !== null
+    ? `<span class="pill">Codex v2 ${Number(item.codex_score).toFixed(1)}</span>`
+    : "";
   const regimePill = item.regime_label
     ? `<span class="pill" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">${item.regime_label}</span>`
     : "";
@@ -775,6 +780,7 @@ function renderAgentCard(item, agentType) {
       <span>${symbol} ${name} ${sector} ${regimePill}</span>
       <span class="${cls}" title="${scoreTitle}">${scoreLabel}分</span>
     </strong>
+    <div style="margin:3px 0;font-size:12px">${gradePill}${codexPill}</div>
     ${dateClose}
     <ul style="margin:4px 0 0;padding-left:14px;font-size:12px;color:var(--muted)">${reasonsHtml}</ul>
   </article>`;
