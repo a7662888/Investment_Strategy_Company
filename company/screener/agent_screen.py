@@ -88,7 +88,8 @@ def _equal_weight_index(candidates: dict[str, dict]) -> list[float]:
 
 def claude_screen(candidates: dict[str, dict], top_n: int = 5,
                   market_index_closes: list[float] | None = None,
-                  names: dict[str, str] | None = None) -> dict:
+                  names: dict[str, str] | None = None,
+                  risk_level: str | None = None) -> dict:
     """
     candidates: {symbol: {"closes": [...], "volumes": [...](選填)}}
     回傳 {context, policy, picks, note, agent}。
@@ -133,9 +134,56 @@ def claude_screen(candidates: dict[str, dict], top_n: int = 5,
         ma20 = _ma(closes, 20) or last
         above_ma20 = last > ma20
         vol20 = _vol(closes, 20)
+        
+        prev_close = closes[-2] if len(closes) > 1 else last
+        day_change = (last / prev_close - 1) * 100.0 if prev_close > 0 else 0.0
+        ma5 = _ma(closes, 5)
+        broke_ma5 = last < ma5 if ma5 else False
+        ma60 = _ma(closes, 60)
+
+        # 判定分級
+        if day_change <= -4.5:
+            grade = "C"
+            grade_label = "🔴 C級 · 禁買"
+            reasons_list = [f"⚠️ 當日價格重挫 ({day_change:.2f}%)，量價型態走壞，系統判定為 C 級禁買以防範接刀風險"] + ev.get("reasons", [])[:2]
+        elif risk_level in ("RED", "BLACK"):
+            grade = "C"
+            grade_label = "🔴 C級 · 禁買"
+            reasons_list = [f"⚠️ 大盤風險級別為 {risk_level}，系統性停止新買進，個股強制降為 C 級禁買"] + ev.get("reasons", [])[:2]
+        elif ma60 and last < ma60:
+            grade = "C"
+            grade_label = "🔴 C級 · 禁買"
+            reasons_list = [f"⚠️ 個股跌破 60 日均線 (季線)，趨勢轉空，系統判定為 C 級禁買"] + ev.get("reasons", [])[:2]
+        elif day_change <= -3.0 and broke_ma5:
+            grade = "B"
+            grade_label = "🟡 B級 · 觀察反彈"
+            reasons_list = [f"⚠️ 當日價格下跌 ({day_change:.2f}%) 且跌破 5 日線，系統判定為 B 級觀察防範短線走弱"] + ev.get("reasons", [])[:2]
+        elif risk_level == "YELLOW":
+            grade = "B"
+            grade_label = "🟡 B級 · 觀察反彈"
+            reasons_list = [f"⚠️ 大盤風險級別為 YELLOW，新買進減半，個股限額觀察"] + ev.get("reasons", [])[:2]
+        elif ma20 and last < ma20:
+            grade = "B"
+            grade_label = "🟡 B級 · 觀察反彈"
+            reasons_list = [f"個股價格低於 20 日均線，尚未站穩短線多頭結構"] + ev.get("reasons", [])[:2]
+        else:
+            grade = "A"
+            grade_label = "🟢 A級 · 可執行"
+            reasons_list = ev.get("reasons", [])[:2]
+
         prob = ev["probability_up"]
         sscore = prob + policy["mom_tilt"] * mom20 - policy["vol_pen"] * vol20
-        qualifies = prob >= policy["min_prob"] and (above_ma20 or not policy["require_uptrend"])
+        
+        # 進行分數與資格處罰
+        if grade == "C":
+            qualifies = False
+            sscore -= 30.0
+        elif grade == "B":
+            qualifies = False
+            sscore -= 15.0
+        else:
+            qualifies = prob >= policy["min_prob"] and (above_ma20 or not policy["require_uptrend"])
+
         cal = ev.get("calibrated")
         scored.append({
             "symbol": sym, "name": names.get(sym, sym), "close": round(last, 1),
@@ -143,7 +191,9 @@ def claude_screen(candidates: dict[str, dict], top_n: int = 5,
             "momentum_20": round(mom20, 4), "volatility_20": round(vol20, 4),
             "above_ma20": above_ma20, "qualifies": qualifies,
             "calibrated_up_rate": cal.get("empirical_up_rate") if cal else None,
-            "reasons": ev.get("reasons", [])[:2],
+            "reasons": reasons_list,
+            "grade": grade,
+            "grade_label": grade_label,
         })
 
     # 0–10 評分(與另兩家一致)

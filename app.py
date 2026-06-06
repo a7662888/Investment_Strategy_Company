@@ -990,8 +990,85 @@ def analyze_market_index(end_date: str) -> dict | None:
             avg = sum(returns) / len(returns)
             volatility = math.sqrt(sum((item - avg) ** 2 for item in returns) / len(returns))
             
+        # 獲取美股 ADR/費半進行夜盤預警
+        tsm_change = 0.0
+        sox_change = 0.0
+        adr_shock = False
+        adr_msg = ""
+        try:
+            tsm_start = (datetime.fromisoformat(end_date) - timedelta(days=10)).date().isoformat()
+            tsm_rows = fetch_history("TSM", tsm_start, end_exclusive)
+            sox_rows = fetch_history("^SOX", tsm_start, end_exclusive)
+            if len(tsm_rows) >= 2:
+                tsm_change = (float(tsm_rows[-1]["close"]) / float(tsm_rows[-2]["close"]) - 1.0) * 100.0
+            if len(sox_rows) >= 2:
+                sox_change = (float(sox_rows[-1]["close"]) / float(sox_rows[-2]["close"]) - 1.0) * 100.0
+            if tsm_change < -3.0 or sox_change < -3.5:
+                adr_shock = True
+                adr_msg = f"⚠️ 偵測到美股 ADR / 半導體指數隔夜暴跌 (TSM: {tsm_change:+.2f}%, SOX: {sox_change:+.2f}%)，啟動大盤預警熔斷機制，本會話策略全面轉守避險。 "
+        except Exception as e:
+            print(f"Error fetching TSM or SOX for overnight check: {e}")
+
+        # 判定風險級別與部位指引
+        risk_level = "GREEN"
+        risk_label = "🟢 綠色 · 正常選股"
+        risk_stance = "多頭常態，可正常選股操作，滿倉追蹤"
+        buy_exposure = "100%"
+        hold_exposure = "常態續抱，按既有策略移動停損"
+        open_guide = "依各 Agent 推薦名單開盤限額進場"
+        decision_reasons = []
+
+        # 收集決策因子
+        if change_pct < 0:
+            decision_reasons.append(f"大盤當日收盤下跌 {change_pct:.2f}%")
+        else:
+            decision_reasons.append(f"大盤當日收盤上漲 +{change_pct:.2f}%")
+
+        if tsm_change != 0.0:
+            decision_reasons.append(f"台積電 ADR (TSM) 隔夜變動 {tsm_change:+.2f}%")
+        if sox_change != 0.0:
+            decision_reasons.append(f"費城半導體指數 (^SOX) 隔夜變動 {sox_change:+.2f}%")
+
+        if last < ma20 if ma20 else False:
+            decision_reasons.append("大盤價格已跌破 20 日均線 (短期走弱)")
+        if ma20 and ma60 and ma20 < ma60:
+            decision_reasons.append("大盤 20 日線低於 60 日線 (中期趨勢偏空)")
+
+        # 判定燈號
+        # ⚠️ 暫定閾值 (PROVISIONAL THRESHOLDS) — 尚未以歷史(含 2026-06-06 夜盤崩跌)校準誤報/漏報率。
+        #    Phase 2 (P2-2) 需用回測校準後取代下列手寫數值，目前僅作安全側偏保守用途。
+        # 1. 黑色 (急停): 自身大跌 <= -4% 或 ADR/費半暴跌 <= -5%
+        if change_pct <= -4.0 or tsm_change <= -5.0 or sox_change <= -5.0:
+            risk_level = "BLACK"
+            risk_label = "⚫ 黑色 · 系統性急停"
+            risk_stance = "大盤或美股半導體出現極端恐慌性暴跌，觸發系統性熔斷"
+            buy_exposure = "0%"
+            hold_exposure = "全面避險，既有持股嚴格停損，禁止新開倉"
+            open_guide = "開盤絕不進場、絕不低接攤平！僅處理持股避險"
+            
+        # 2. 紅色 (停止買進): 自身大跌 <= -2.5% 或 ADR/費半大跌 <= -3% 或已進入均線空頭結構
+        elif change_pct <= -2.5 or tsm_change <= -3.0 or sox_change <= -3.5 or (last < ma20 < ma60 if ma20 and ma60 else False):
+            risk_level = "RED"
+            risk_label = "🔴 紅色 · 停止新買進"
+            risk_stance = "市場風險顯著升高，短期均線偏空，停止建新倉"
+            buy_exposure = "0%"
+            hold_exposure = "既有持股考慮減碼，收緊移動停損"
+            open_guide = "停止所有買進指令，不得追價，以防範接刀風險"
+
+        # 3. 黃色 (減半觀察): 波動度高或破 MA20
+        elif volatility > 0.025 or (last < ma20 if ma20 else False):
+            risk_level = "YELLOW"
+            risk_label = "🟡 黃色 · 減半觀察"
+            risk_stance = "大盤進入整理或波動放大，建議保守操作"
+            buy_exposure = "50% 以下"
+            hold_exposure = "嚴格限額，縮小每筆交易部位，防範高檔震盪"
+            open_guide = "小量試水溫，僅選 A 級個股，移動停損收緊"
+
         # 判定 Regime
-        if ma20 and ma60 and ma120 and last > ma20 > ma60 > ma120 and ma20_rising:
+        if adr_shock or risk_level in ("RED", "BLACK"):
+            regime = "弱勢空頭"
+            regime_note = adr_msg + f"市場風險級別已升至 {risk_level}，系統強制切換至防禦狀態並加重安全邊際評分。"
+        elif ma20 and ma60 and ma120 and last > ma20 > ma60 > ma120 and ma20_rising:
             regime = "強勢多頭"
             regime_note = "大盤均線多頭排列且向上，系統已自動加重強勢動能股評分。"
         elif ma20 and ma60 and ma120 and last < ma20 < ma60 < ma120 and not ma20_rising:
@@ -1014,21 +1091,33 @@ def analyze_market_index(end_date: str) -> dict | None:
             "ma60": round(ma60, 2) if ma60 else None,
             "ma120": round(ma120, 2) if ma120 else None,
             "regime": regime,
-            "regime_note": regime_note
+            "regime_note": regime_note,
+            "risk_level": risk_level,
+            "risk_label": risk_label,
+            "risk_stance": risk_stance,
+            "buy_exposure": buy_exposure,
+            "hold_exposure": hold_exposure,
+            "open_guide": open_guide,
+            "decision_reasons": decision_reasons
         }
     except Exception as e:
         print(f"Error analyzing market index ^TWII: {e}")
         return None
 
 
-def analyze_candidate(symbol: str, rows: list[dict], market_regime: str | None = None) -> dict:
+def analyze_candidate(symbol: str, rows: list[dict], market_regime: str | None = None, risk_level: str | None = None) -> dict:
     closes = [float(row["close"]) for row in rows]
     volumes = [float(row.get("volume", 0) or 0) for row in rows]
     last = closes[-1]
+    prev_close = closes[-2] if len(closes) > 1 else last
+    day_change_pct = (last / prev_close - 1) * 100.0 if prev_close > 0 else 0.0
+
     model = model_evidence(symbol, closes, volumes, dates=[row["date"] for row in rows])
+    ma5 = moving_average(closes, 5)
     ma20 = moving_average(closes, 20)
     ma60 = moving_average(closes, 60)
     ma120 = moving_average(closes, 120)
+    broke_ma5 = last < ma5 if ma5 else False
     momentum_20 = last / closes[-21] - 1 if len(closes) > 21 else 0
     volatility = 0.0
     if len(closes) > 21:
@@ -1158,11 +1247,43 @@ def analyze_candidate(symbol: str, rows: list[dict], market_regime: str | None =
         f"趨勢 {model['trend_points']}、動能 {model['momentum_points']}、風險 {model['risk_points']}"
     )
 
+    # 防接刀與大盤預警過濾器懲罰 (⚠️ 暫定閾值，待 Phase 2 校準)
+    # 判定分級
+    if day_change_pct <= -4.5:
+        score -= 10
+        grade = "C"
+        grade_label = "🔴 C級 · 禁買"
+        reasons.append(f"⚠️ 當日價格重挫 ({day_change_pct:.2f}%)，量價型態走壞，系統判定為 C 級禁買以防範接刀風險")
+    elif risk_level in ("RED", "BLACK"):
+        score -= 10
+        grade = "C"
+        grade_label = "🔴 C級 · 禁買"
+        reasons.append(f"⚠️ 大盤風險級別為 {risk_level}，系統性停止新買進，個股強制降為 C 級禁買")
+    elif day_change_pct <= -3.0 and broke_ma5:
+        score -= 5
+        grade = "B"
+        grade_label = "🟡 B級 · 觀察反彈"
+        reasons.append(f"⚠️ 當日價格下跌 ({day_change_pct:.2f}%) 且跌破 5 日線，系統判定為 B 級觀察防範短線走弱")
+    elif risk_level == "YELLOW":
+        score -= 3
+        grade = "B"
+        grade_label = "🟡 B級 · 觀察反彈"
+        reasons.append(f"⚠️ 大盤風險級別為 YELLOW，新買進減半，個股限額觀察")
+    elif ma20 and last < ma20:
+        grade = "B"
+        grade_label = "🟡 B級 · 觀察反彈"
+        reasons.append(f"個股價格低於 20 日均線，尚未站穩短線多頭結構")
+    else:
+        grade = "A"
+        grade_label = "🟢 A級 · 可執行"
+
     action = "觀察"
-    if score >= 5:
-        action = "研究買進候選"
-    elif score <= -2:
+    if grade == "C":
         action = "避開或檢查賣出風險"
+    elif score >= 5 and grade == "A":
+        action = "研究買進候選"
+    else:
+        action = "觀察"
 
     return {
         "symbol": symbol,
@@ -1170,6 +1291,8 @@ def analyze_candidate(symbol: str, rows: list[dict], market_regime: str | None =
         "last_close": round(last, 2),
         "score": score,
         "action": action,
+        "grade": grade,
+        "grade_label": grade_label,
         "reasons": reasons,
         "model": model,
         "ai_predictor": generate_ai_prediction(closes, rsi, hist_val),
@@ -1394,8 +1517,8 @@ def generate_ai_prediction(closes: list[float], rsi: float, macd_hist: float) ->
     }
 
 
-def plan_next_session(symbol: str, rows: list[dict], position: dict | None, market_regime: str | None = None) -> dict:
-    analysis = analyze_candidate(symbol, rows, market_regime=market_regime)
+def plan_next_session(symbol: str, rows: list[dict], position: dict | None, market_regime: str | None = None, risk_level: str | None = None) -> dict:
+    analysis = analyze_candidate(symbol, rows, market_regime=market_regime, risk_level=risk_level)
     closes = [float(row["close"]) for row in rows]
     last = closes[-1]
     ma20 = moving_average(closes, 20)
@@ -1439,6 +1562,8 @@ def plan_next_session(symbol: str, rows: list[dict], position: dict | None, mark
         "unrealized_gain": round(gain, 6) if held else None,
         "score": analysis["score"],
         "action": action,
+        "grade": analysis["grade"],
+        "grade_label": analysis["grade_label"],
         "reasons": reasons,
         "model": analysis["model"],
         "ai_predictor": generate_ai_prediction(closes, rsi, hist_val),
@@ -1495,13 +1620,14 @@ def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> d
     # (與 /api/recommend、/api/next-day-plan 一致;先前未傳 → 永遠走中性分支)
     market_info = analyze_market_index(end)
     candidate_regime = market_info["regime"] if market_info else None
+    risk_level = market_info.get("risk_level") if market_info else None
     candidates = []
     for item in DISCOVERY_UNIVERSE:
         try:
             rows = fetch_history(item["symbol"], start, end_exclusive)
             if len(rows) < 130:
                 continue
-            analysis = analyze_candidate(item["symbol"], rows, market_regime=candidate_regime)
+            analysis = analyze_candidate(item["symbol"], rows, market_regime=candidate_regime, risk_level=risk_level)
             model = analysis.get("model") or {}
             calibrated = model.get("calibrated") or {}
             calibrated_prob = float(model.get("calibrated_probability_up") or model.get("probability_up") or 50)
@@ -1535,6 +1661,8 @@ def discover_candidates(end: str, limit: int = 5, lookback_days: int = 320) -> d
                     "last_close": analysis["last_close"],
                     "action": analysis["action"],
                     "score": analysis["score"],
+                    "grade": analysis.get("grade", "B"),
+                    "grade_label": analysis.get("grade_label", "B級"),
                     "discovery_score": round(discovery_score, 3),
                     "probability_up": round(calibrated_prob, 1),   # 校準機率(供前端統一標準化比較)
                     "model": model,
@@ -1652,6 +1780,10 @@ def discover_antigravity_candidates(end: str, limit: int = 5) -> list[dict]:
     lookback = 320
     start = (datetime.fromisoformat(end) - timedelta(days=lookback)).date().isoformat()
     end_excl = (datetime.fromisoformat(end) + timedelta(days=1)).date().isoformat()
+    
+    market_info = analyze_market_index(end)
+    risk_level = market_info.get("risk_level") if market_info else None
+    
     candidates = []
     for item in DISCOVERY_UNIVERSE:
         try:
@@ -1693,6 +1825,56 @@ def discover_antigravity_candidates(end: str, limit: int = 5) -> list[dict]:
                 score -= 3
                 reasons.append("波動發散扣分 (短期 vol > 2× 長期 vol)")
 
+            # A/B/C 分級與安全懲罰邏輯
+            last = closes[-1]
+            prev_close = closes[-2] if len(closes) > 1 else last
+            day_change_pct = (last / prev_close - 1) * 100.0 if prev_close > 0 else 0.0
+            ma5 = moving_average(closes, 5)
+            broke_ma5 = last < ma5 if ma5 else False
+            ma20 = moving_average(closes, 20)
+            ma60 = moving_average(closes, 60)
+            # A/B/C 分級與安全懲罰邏輯 (⚠️ 暫定閾值，待 Phase 2 校準)
+            if day_change_pct <= -4.5:
+                score -= 10
+                grade = "C"
+                grade_label = "🔴 C級 · 禁買"
+                reasons.append(f"⚠️ 當日價格重挫 ({day_change_pct:.2f}%)，量價型態走壞，系統判定為 C 級禁買以防範接刀風險")
+            elif risk_level in ("RED", "BLACK"):
+                score -= 10
+                grade = "C"
+                grade_label = "🔴 C級 · 禁買"
+                reasons.append(f"⚠️ 大盤風險級別為 {risk_level}，系統性停止新買進，個股強制降為 C 級禁買")
+            elif ma60 and last < ma60:
+                score -= 8
+                grade = "C"
+                grade_label = "🔴 C級 · 禁買"
+                reasons.append(f"⚠️ 個股跌破 60 日均線 (季線)，趨勢轉空，系統判定為 C 級禁買")
+            elif day_change_pct <= -3.0 and broke_ma5:
+                score -= 5
+                grade = "B"
+                grade_label = "🟡 B級 · 觀察反彈"
+                reasons.append(f"⚠️ 當日價格下跌 ({day_change_pct:.2f}%) 且跌破 5 日線，系統判定為 B 級觀察防範短線走弱")
+            elif risk_level == "YELLOW":
+                score -= 3
+                grade = "B"
+                grade_label = "🟡 B級 · 觀察反彈"
+                reasons.append(f"⚠️ 大盤風險級別為 YELLOW，新買進減半，個股限額觀察")
+            elif ma20 and last < ma20:
+                grade = "B"
+                grade_label = "🟡 B級 · 觀察反彈"
+                reasons.append(f"個股價格低於 20 日均線，尚未站穩短線多頭結構")
+            else:
+                grade = "A"
+                grade_label = "🟢 A級 · 可執行"
+
+            action = "觀察"
+            if grade == "C":
+                action = "避開或檢查賣出風險"
+            elif score >= 5 and grade == "A":
+                action = "研究買進候選"
+            else:
+                action = "觀察"
+
             candidates.append({
                 "symbol": item["symbol"],
                 "name": item["name"],
@@ -1700,9 +1882,12 @@ def discover_antigravity_candidates(end: str, limit: int = 5) -> list[dict]:
                 "last_date": rows[-1]["date"],
                 "last_close": round(closes[-1], 2),
                 "score": score,
+                "grade": grade,
+                "grade_label": grade_label,
+                "action": action,
                 "discovery_score": float(score),
                 "probability_up": round(prob, 1),   # 校準機率(供前端統一標準化比較)
-                "reasons": [f"Antigravity VCP 突破得分：{score} 分"] + reasons,
+                "reasons": [f"Antigravity VCP 突破分級：{grade_label}"] + reasons,
                 "future_knowledge_used": False,
             })
         except Exception as exc:
@@ -1751,16 +1936,30 @@ def discover_claude_candidates(end: str, limit: int = 5) -> list[dict]:
     sectors = {sym: d.get("sector", "") for sym, d in all_data.items()}
     last_dates = {sym: d["last_date"] for sym, d in all_data.items()}
 
-    res = claude_screen(candidates, top_n=limit, names=names)
+    market_info = analyze_market_index(end)
+    risk_level = market_info.get("risk_level") if market_info else None
+
+    res = claude_screen(candidates, top_n=limit, names=names, risk_level=risk_level)
     ctx = res.get("context", {})
     out: list[dict] = []
     for p in res.get("picks", []):
         recommended = bool(p.get("recommended"))
+        grade = p.get("grade", "B")
+        grade_label = p.get("grade_label", "B級")
         tag = "✅ 建議進場" if recommended else "👀 觀望:未達本日 regime 進場門檻"
         reasons = [tag, f"{ctx.get('regime_label','')} · {ctx.get('stance','')}"]
         reasons += p.get("reasons", [])
         if p.get("calibrated_up_rate") is not None:
             reasons.append(f"校準機率 {p['probability_up']:.0f}%(該桶歷史上漲率 {p['calibrated_up_rate']:.0%})")
+            
+        action = "觀察"
+        if grade == "C":
+            action = "避開或檢查賣出風險"
+        elif recommended and grade == "A":
+            action = "研究買進候選"
+        else:
+            action = "觀察"
+
         out.append({
             "symbol":          p["symbol"],
             "name":            p.get("name", names.get(p["symbol"], p["symbol"])),
@@ -1771,6 +1970,9 @@ def discover_claude_candidates(end: str, limit: int = 5) -> list[dict]:
             "discovery_score": p.get("score"),
             "probability_up":  p.get("probability_up"),   # 校準機率(供前端統一標準化比較)
             "recommended":     recommended,
+            "grade":           grade,
+            "grade_label":     grade_label,
+            "action":          action,
             "reasons":         reasons,
             "regime":          ctx.get("regime"),
             "regime_label":    ctx.get("regime_label"),
@@ -2168,6 +2370,7 @@ class Handler(SimpleHTTPRequestHandler):
                 # 分析大盤與 Regime
                 market_info = analyze_market_index(end)
                 market_regime = market_info["regime"] if market_info else None
+                risk_level = market_info.get("risk_level") if market_info else None
                 
                 symbols_to_scan = body.get("symbols") or []
                 symbols_to_scan = [s.strip() for s in symbols_to_scan if s.strip()]
@@ -2180,7 +2383,7 @@ class Handler(SimpleHTTPRequestHandler):
                     try:
                         rows = fetch_history(symbol, start, end_exclusive)
                         if len(rows) >= 80:
-                            candidates.append(analyze_candidate(symbol, rows, market_regime=market_regime))
+                            candidates.append(analyze_candidate(symbol, rows, market_regime=market_regime, risk_level=risk_level))
                     except Exception as e:
                         print(f"Error recommending for {symbol}: {e}")
                 
@@ -2201,18 +2404,19 @@ class Handler(SimpleHTTPRequestHandler):
                 # 分析大盤與 Regime
                 market_info = analyze_market_index(end)
                 market_regime = market_info["regime"] if market_info else None
+                risk_level = market_info.get("risk_level") if market_info else None
                 
                 plans = []
                 for symbol in body["symbols"]:
                     try:
                         rows = fetch_history(symbol, start, end_exclusive)
                         if len(rows) >= 80:
-                            plans.append(plan_next_session(symbol, rows, positions.get(symbol), market_regime=market_regime))
+                            plans.append(plan_next_session(symbol, rows, positions.get(symbol), market_regime=market_regime, risk_level=risk_level))
                     except Exception as e:
                         print(f"Error planning next day for {symbol}: {e}")
                 
                 plans.sort(key=lambda item: (not item["held"], -item["score"]))
-                self.send_json({"as_of": end, "plans": plans, "rule": "after_close_next_session_plan_only"})
+                self.send_json({"as_of": end, "plans": plans, "rule": "after_close_next_session_plan_only", "market_index": market_info})
                 return
             self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         except Exception as exc:

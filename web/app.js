@@ -58,12 +58,31 @@ function setBusy(buttonId, busy) {
   if (button) button.disabled = busy;
 }
 
-function modelLine(model) {
+function getModelConfidence(prob) {
+  if (prob === undefined || prob === null) return "未知";
+  const dist = Math.abs(prob - 50);
+  if (dist >= 10) return "高";
+  if (dist >= 5) return "中";
+  return "低";
+}
+
+// 注意：此處反映的是「大盤風險狀態」，非「模型本身的預測有效性」。
+// 模型自身有效性(滾動 AUC 監控)屬 Phase 2 (P2-1)，與大盤燈號脫鉤，尚未上線。
+function getMarketState(riskLevel) {
+  if (riskLevel === "RED" || riskLevel === "BLACK") {
+    return "<span class='neg' style='font-weight: bold;'>避險/轉守 (大盤急停或空頭)</span>";
+  }
+  return "<span class='pos' style='font-weight: bold;'>正常 (正常交易)</span>";
+}
+
+function modelLine(model, riskLevel) {
   if (!model) return "";
-  const calibrated = model.calibrated ? ` · 校準桶 ${model.calibrated.prob_bucket}：歷史上漲率 ${(Number(model.calibrated.empirical_up_rate || 0) * 100).toFixed(1)}%，5日均報酬 ${(Number(model.calibrated.avg_fwd_return || 0) * 100).toFixed(1)}%` : "";
+  const calibrated = model.calibrated ? ` · 歷史同類勝率 ${(Number(model.calibrated.empirical_up_rate || 0) * 100).toFixed(1)}% (樣本數 ${model.calibrated.sample_count || 0})` : "";
+  const confidence = getModelConfidence(model.calibrated_probability_up ?? model.probability_up);
+  const marketState = getMarketState(riskLevel);
   const reasons = asArray(model.calibrated_reasons).slice(0, 3).join("；");
   return `
-    <p class="modelLine">AI 模型：未校準偏多 ${model.probability_up ?? "-"}% · 校準偏多 ${model.calibrated_probability_up ?? "-"}% · 趨勢 ${model.trend_points ?? "-"} · 動能 ${model.momentum_points ?? "-"}${calibrated}</p>
+    <p class="modelLine">AI 模型信心：<strong>${confidence}</strong> · 市場狀態：${marketState} · 趨勢 ${model.trend_points ?? "-"} · 動能 ${model.momentum_points ?? "-"}${calibrated}</p>
     ${reasons ? `<p class="modelReason">校準理由：${reasons}</p>` : ""}
   `;
 }
@@ -105,7 +124,7 @@ function renderShapBars(contributions) {
   `;
 }
 
-function calibratedModelPanel(model) {
+function calibratedModelPanel(model, riskLevel) {
   if (!model || !model.calibrated_probability_up) return "";
   
   const prob = model.calibrated_probability_up;
@@ -116,6 +135,8 @@ function calibratedModelPanel(model) {
   const isUp = prob >= 50.0;
   const badgeClass = isUp ? "pos" : "neg";
   const predictionText = isUp ? "看漲" : "看跌";
+  const confidence = getModelConfidence(prob);
+  const marketState = getMarketState(riskLevel);
   
   let calEvidenceHtml = "";
   if (cal && cal.empirical_up_rate !== undefined) {
@@ -126,9 +147,11 @@ function calibratedModelPanel(model) {
     calEvidenceHtml = `
       <div style="font-size: 13px; color: var(--muted); margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 6px;">
         📊 <strong>樣本外前向校準驗證：</strong><br />
+        模型信心：<strong>${confidence}</strong><br />
+        目前市場狀態：${marketState}<br />
         前向預測天數：<strong>${cal.horizon_days || 5} 天</strong><br />
         所屬機率區間：<strong>${cal.prob_bucket}</strong><br />
-        歷史同區間實際上漲率：<strong class="pos" style="font-weight: bold;">${upRatePercent}%</strong><br />
+        歷史同類情境勝率 (實際上漲率)：<strong class="pos" style="font-weight: bold;">${upRatePercent}%</strong><br />
         平均持有報酬率：<strong class="${returnClass}" style="font-weight: bold;">${avgReturnPercent}%</strong> 
         (歷史樣本數：${cal.sample_count})
       </div>
@@ -452,10 +475,89 @@ async function runTraining() {
   }
 }
 
+function updateMarketRiskPanel(m) {
+  const panel = $("marketRiskPanel");
+  if (!panel) return;
+  if (!m) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "block";
+
+  // Reset all lights
+  const lights = ["GREEN", "YELLOW", "RED", "BLACK"];
+  lights.forEach(color => {
+    const el = $(`light${color}`);
+    if (el) el.className = "light";
+  });
+
+  // Activate corresponding light
+  const riskLevel = m.risk_level || "GREEN";
+  const activeLight = $(`light${riskLevel}`);
+  if (activeLight) {
+    activeLight.className = `light active ${riskLevel.toLowerCase()}`;
+  }
+
+  // Set text labels
+  $("riskLabel").textContent = m.risk_label || "🟢 綠色 · 正常選股";
+  $("riskStance").textContent = m.risk_stance || "多頭常態，正常選股";
+
+  // Tomorrow's decision
+  const tomorrowDecision = $("tomorrowDecision");
+  if (tomorrowDecision) {
+    const dateStr = m.date || new Date().toISOString().split("T")[0];
+    let decisionText = `${dateStr}：`;
+    if (riskLevel === "BLACK") {
+      decisionText += "市場急停，停止所有新買進，清空部位或極限避險！";
+      tomorrowDecision.style.color = "#111827"; // Black
+    } else if (riskLevel === "RED") {
+      decisionText += "市場停止新買進，減碼防守！";
+      tomorrowDecision.style.color = "var(--red)";
+    } else if (riskLevel === "YELLOW") {
+      decisionText += "大盤整理中，減半觀察操作！";
+      tomorrowDecision.style.color = "var(--amber)";
+    } else {
+      decisionText += "大盤安全，可正常選股買進！";
+      tomorrowDecision.style.color = "var(--green)";
+    }
+    tomorrowDecision.textContent = decisionText;
+  }
+
+  // Decision reasons
+  const reasonsDiv = $("decisionReasons");
+  if (reasonsDiv) {
+    const reasons = asArray(m.decision_reasons);
+    reasonsDiv.innerHTML = reasons.length 
+      ? `<ul style="margin: 4px 0 0; padding-left: 16px;">${reasons.map(r => `<li>${r}</li>`).join("")}</ul>`
+      : "<p style='margin: 4px 0 0; color: var(--muted);'>無特別系統性風險警訊</p>";
+  }
+
+  // Position Suggestions
+  $("buyExposureSuggest").textContent = m.buy_exposure || "100%";
+  if (riskLevel === "BLACK" || riskLevel === "RED") {
+    $("buyExposureSuggest").style.color = "var(--red)";
+  } else if (riskLevel === "YELLOW") {
+    $("buyExposureSuggest").style.color = "var(--amber)";
+  } else {
+    $("buyExposureSuggest").style.color = "var(--green)";
+  }
+  
+  $("holdExposureSuggest").textContent = m.hold_exposure || "正常續抱";
+  $("openGuideSuggest").textContent = m.open_guide || "低接不追高";
+}
+
 async function recommendToday() {
   try {
     setBusy("recommendToday", true);
-    $("candidateList").innerHTML = "<p>分析中</p>";
+    
+    // 清空 A/B/C 三個列表
+    const listA = $("candidateListA");
+    const listB = $("candidateListB");
+    const listC = $("candidateListC");
+    if (listA) listA.innerHTML = "<p>分析中...</p>";
+    if (listB) listB.innerHTML = "<p>分析中...</p>";
+    if (listC) listC.innerHTML = "<p>分析中...</p>";
+    
     const res = await fetch("/api/recommend", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -468,7 +570,10 @@ async function recommendToday() {
     });
     const data = await readJson(res);
     
-    // 渲染大盤導引狀態卡
+    // 更新頂部市場風險與總決策面板
+    updateMarketRiskPanel(data.market_index);
+    
+    // 渲染大盤導引狀態舊卡片 (保留相容性，如果有的話)
     const m = data.market_index;
     const mCard = $("marketStatusCard");
     if (m && mCard) {
@@ -496,29 +601,68 @@ async function recommendToday() {
     }
 
     const candidates = asArray(data.candidates);
-    let noteHtml = "";
-    if (symbols().length === 0 && candidates.length > 0) {
-      noteHtml = `<div style="font-size: 13px; color: var(--amber); margin-bottom: 10px; font-weight: bold; background: #fffdf5; border: 1px solid #fef3c7; padding: 10px; border-radius: 6px;">💡 偵測到股票代號輸入為空，系統已自動載入跨產業指標股池，並依今日大盤環境動態篩選出潛力股進行排序：</div>`;
+    
+    // 渲染空輸入時的提示 note
+    const noteEl = $("candidateNote");
+    if (noteEl) {
+      if (symbols().length === 0 && candidates.length > 0) {
+        noteEl.style.display = "block";
+        noteEl.innerHTML = `<div style="font-size: 13px; color: var(--amber); margin-bottom: 10px; font-weight: bold; background: #fffdf5; border: 1px solid #fef3c7; padding: 10px; border-radius: 6px;">💡 偵測到股票代號輸入為空，系統已自動載入跨產業指標股池，並依今日大盤環境動態篩選出潛力股進行排序：</div>`;
+      } else {
+        noteEl.style.display = "none";
+      }
     }
 
-    $("candidateList").innerHTML = noteHtml + (candidates.length ? candidates.map(item => `
+    // 分組 A, B, C
+    const gradeA = [];
+    const gradeB = [];
+    const gradeC = [];
+    
+    candidates.forEach(item => {
+      const g = item.grade || "B";
+      if (g === "A") gradeA.push(item);
+      else if (g === "C") gradeC.push(item);
+      else gradeB.push(item);
+    });
+
+    const riskLevel = m ? m.risk_level : null;
+    const renderCard = (item) => `
       <article class="candidate">
         <strong>
           <span>${item.symbol} · ${item.action}</span>
           <span class="${item.score >= 5 ? "pos" : item.score <= -2 ? "neg" : "watch"}">分數 ${item.score}</span>
         </strong>
         <p>截至 ${item.last_date}，收盤 ${item.last_close}</p>
-        ${modelLine(item.model)}
+        ${modelLine(item.model, riskLevel)}
         <ul>${asArray(item.reasons).map(reason => `<li>${reason}</li>`).join("")}</ul>
         ${aiPredictorLine(item.ai_predictor)}
-        ${calibratedModelPanel(item.model)}
+        ${calibratedModelPanel(item.model, riskLevel)}
       </article>
-    `).join("") : "<p>沒有候選資料，請縮短區間或確認股票代號。</p>");
+    `;
+
+    if (listA) {
+      listA.innerHTML = gradeA.length 
+        ? gradeA.map(renderCard).join("") 
+        : "<p style='color: var(--muted); padding: 8px;'>無 A 級候選股</p>";
+    }
+    if (listB) {
+      listB.innerHTML = gradeB.length 
+        ? gradeB.map(renderCard).join("") 
+        : "<p style='color: var(--muted); padding: 8px;'>無 B 級觀察股</p>";
+    }
+    if (listC) {
+      listC.innerHTML = gradeC.length 
+        ? gradeC.map(renderCard).join("") 
+        : "<p style='color: var(--muted); padding: 8px;'>無 C 級禁買股</p>";
+    }
     
     // Update portfolio allocation
     updatePortfolioAllocation(data.market_index, candidates);
   } catch (err) {
-    $("candidateList").innerHTML = `<p>候選分析失敗：${err.message}</p>`;
+    const listA = $("candidateListA");
+    if (listA) {
+      listA.innerHTML = `<p>候選分析失敗：${err.message}</p>`;
+    }
   } finally {
     setBusy("recommendToday", false);
   }
@@ -679,6 +823,14 @@ async function nextDayPlan() {
     });
     const data = await readJson(res);
     const plans = asArray(data.plans);
+    const m = data.market_index;
+    const riskLevel = m ? m.risk_level : null;
+    
+    // Update top market risk panel if available
+    if (m) {
+      updateMarketRiskPanel(m);
+    }
+
     $("planList").innerHTML = plans.length ? plans.map(item => {
       const gain = item.held && item.unrealized_gain !== null ? `<span class="pill">未實現 ${pct(item.unrealized_gain)}</span>` : `<span class="pill">未持有</span>`;
       const cls = item.action.includes("買進") || item.action.includes("續抱") ? "pos" : item.action.includes("賣") || item.action.includes("減碼") ? "neg" : "watch";
@@ -688,10 +840,10 @@ async function nextDayPlan() {
           <span>分數 ${item.score}</span>
         </strong>
         <p>截至 ${item.as_of}，收盤 ${item.last_close} ${gain}</p>
-        ${modelLine(item.model)}
+        ${modelLine(item.model, riskLevel)}
         <ul>${asArray(item.reasons).map(reason => `<li>${reason}</li>`).join("")}</ul>
         ${aiPredictorLine(item.ai_predictor)}
-        ${calibratedModelPanel(item.model)}
+        ${calibratedModelPanel(item.model, riskLevel)}
       </article>`;
     }).join("") : "<p>沒有明日計畫資料，請確認股票代號或區間。</p>";
     refreshQuotes();   // 持股/決策中心更新後,報價同步涵蓋
@@ -851,18 +1003,25 @@ function updatePortfolioAllocation(marketIndex, candidates) {
   panel.style.display = "block";
   
   const regime = marketIndex.regime || "區間整理";
+  const riskLevel = marketIndex.risk_level;
   let stockExposure = 50;
   if (regime.includes("強勢多頭")) stockExposure = 90;
   else if (regime.includes("弱勢空頭")) stockExposure = 20;
   else if (regime.includes("高波動震盪")) stockExposure = 40;
   else if (regime.includes("區間整理")) stockExposure = 60;
   
-  $("portfolioRegimeLabel").textContent = `當前狀態：${regime}`;
+  if (riskLevel === "BLACK" || riskLevel === "RED") {
+    stockExposure = 0;
+  } else if (riskLevel === "YELLOW") {
+    stockExposure = Math.min(25, Math.round(stockExposure / 2));
+  }
+  
+  $("portfolioRegimeLabel").textContent = `當前狀態：${regime} (${marketIndex.risk_label || "正常"})`;
   $("stockExposureVal").textContent = `${stockExposure}%`;
   $("stockExposureBar").style.width = `${stockExposure}%`;
   $("cashExposureVal").textContent = `${100 - stockExposure}%`;
   $("cashExposureBar").style.width = `${100 - stockExposure}%`;
-  $("regimeStanceText").textContent = `分析官觀點：${marketIndex.regime_note || "大盤整理中，建議均衡配置。"}`;
+  $("regimeStanceText").textContent = `分析官觀點：${marketIndex.risk_stance || marketIndex.regime_note || "大盤整理中，建議均衡配置。"}`;
   
   // Top 5 allocation
   const topCands = candidates.slice(0, 5);

@@ -423,5 +423,15 @@ input[type="range"] {
   background: rgba(59, 130, 246, 0.02);
 }
 
+/* Risk light statuses */
+.light {
+  transition: background-color 0.3s, box-shadow 0.3s;
+}
+.light.active.green { background-color: #10b981 !important; box-shadow: 0 0 12px #10b981 !important; }
+.light.active.yellow { background-color: #f59e0b !important; box-shadow: 0 0 12px #f59e0b !important; }
+.light.active.red { background-color: #ef4444 !important; box-shadow: 0 0 12px #ef4444 !important; }
+.light.active.black { background-color: #111827 !important; box-shadow: 0 0 12px #111827 !important; border: 2px solid #ef4444 !important; }
+
+
 
 
