@@ -839,7 +839,7 @@ async function nextDayPlan() {
 
     $("planList").innerHTML = plans.length ? plans.map(item => {
       const gain = item.held && item.unrealized_gain !== null ? `<span class="pill">未實現 ${pct(item.unrealized_gain)}</span>` : `<span class="pill">未持有</span>`;
-      const cls = item.action.includes("買進") || item.action.includes("續抱") ? "pos" : item.action.includes("賣") || item.action.includes("減碼") ? "neg" : "watch";
+      const cls = item.action.includes("買進") || item.action.includes("續抱") || item.action.includes("加碼") ? "pos" : item.action.includes("賣") || item.action.includes("減碼") ? "neg" : "watch";
       return `<article class="candidate">
         <strong>
           <span>${item.symbol} · <span class="${cls}">${item.action}</span></span>

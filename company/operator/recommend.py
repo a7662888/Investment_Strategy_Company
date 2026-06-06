@@ -27,6 +27,7 @@ from .journal import JournalEngine
 
 CATEGORY_LABEL = {
     "BUY": "明日買進",
+    "ADD": "分批加碼",
     "SELL_PROFIT": "獲利了結",
     "SELL_LOSS": "停損出場",
     "TRIM": "減碼",
@@ -62,6 +63,8 @@ def _categorize(exposure: float, target: float, unreal: float) -> str:
         return "SELL_PROFIT" if unreal >= 0 else "SELL_LOSS"
     if target < exposure - 1e-6:
         return "TRIM"
+    if target > exposure + 1e-6:
+        return "ADD"
     return "HOLD"
 
 

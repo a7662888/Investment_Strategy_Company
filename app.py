@@ -1714,6 +1714,10 @@ def plan_next_session(symbol: str, rows: list[dict], position: dict | None, mark
     reasons = list(analysis["reasons"])
 
     if held:
+        # 逢低加碼條件: 大盤為綠或黃(安全)、個股評級為 A、價格較成本拉回 5% 至 12% 之間
+        is_market_safe = (risk_level not in ("RED", "BLACK"))
+        is_candidate_grade_a = (analysis.get("grade") == "A")
+        
         if gain >= 0.25 and ma20 and last < ma20:
             action = "明日減碼獲利"
             reasons.insert(0, f"持股獲利約 {gain * 100:.2f}%，且價格跌破 20 日均線，優先保護獲利")
@@ -1723,6 +1727,9 @@ def plan_next_session(symbol: str, rows: list[dict], position: dict | None, mark
         elif ma60 and last < ma60 and gain > 0:
             action = "明日檢查賣出風險"
             reasons.insert(0, "仍有獲利但價格跌破 60 日均線，需避免獲利回吐")
+        elif is_market_safe and is_candidate_grade_a and (-0.12 <= gain <= -0.05):
+            action = "明日逢低加碼"
+            reasons.insert(0, f"個股處於長多結構且大盤安全，但目前價格較加權成本拉回 {gain * 100:+.1f}%，觸發逢低分批加碼信號")
         elif ma20 and ma60 and last > ma20 > ma60:
             action = "明日續抱"
             reasons.insert(0, "持股仍在短中期上升結構，續抱但設定獲利保護線")
