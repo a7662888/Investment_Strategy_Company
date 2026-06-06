@@ -1793,46 +1793,89 @@ def discover_antigravity_candidates(end: str, limit: int = 5) -> list[dict]:
             closes = [float(r["close"]) for r in rows]
             volumes = [float(r.get("volume", 0) or 0) for r in rows]
 
-            vol_10 = _vol_of_returns(closes, 10)
-            vol_60 = _vol_of_returns(closes, 60)
+            # 1. 均線與趨勢判定 (Stage 2 Trend Template)
+            last = closes[-1]
+            ma50 = moving_average(closes, 50)
+            ma150 = moving_average(closes, 150)
+            ma200 = moving_average(closes, 200)
+            
+            # 取得 10 日前的 MA200 用以判定 200 日線是否上揚
+            ma200_prev = None
+            if len(closes) >= 210:
+                ma200_prev = moving_average(closes[:-10], 200)
 
-            v5 = sum(volumes[-5:]) / 5.0 if len(volumes) >= 5 else 0.0
-            v60 = sum(volumes[-60:]) / 60.0 if len(volumes) >= 60 else 0.0
-            vol_surge = (v5 / v60 - 1.0) if v60 > 0 else 0.0
-
-            high_20 = max(closes[-20:]) if len(closes) >= 20 else closes[-1]
-            close_near_high = closes[-1] >= 0.98 * high_20
-
-            ev = model_evidence(item["symbol"], closes, volumes)
-            prob = ev.get("probability_up", 50.0)
+            is_stage2 = False
+            if ma50 and ma150 and ma200:
+                is_stage2 = (last > ma50) and (ma50 > ma150) and (ma150 > ma200)
+                if ma200_prev is not None:
+                    is_stage2 = is_stage2 and (ma200 > ma200_prev)
 
             score = 0
             reasons: list[str] = []
 
-            if vol_10 < vol_60:
+            if is_stage2:
                 score += 3
+                reasons.append("處於第二階段多頭結構 (MA50 > MA150 > MA200)")
+            else:
+                score -= 2
+                reasons.append("未滿足第二階段多頭結構 (長線趨勢偏弱)")
+
+            # 2. 波動多重收縮 (VCP 特徵)
+            vol_10 = _vol_of_returns(closes, 10)
+            vol_20 = _vol_of_returns(closes, 20)
+            vol_60 = _vol_of_returns(closes, 60)
+
+            if vol_10 < vol_20 < vol_60:
+                score += 4
+                reasons.append("波動多重巢狀收縮 (vol_10 < vol_20 < vol_60)")
+            elif vol_10 < vol_60:
+                score += 2
                 reasons.append("波動收縮 (短期 vol < 長期 vol)")
-            if vol_surge > 0.3:
-                score += 3
-                reasons.append(f"量能突破 (5日均量高出60日均量 {vol_surge * 100:+.1f}%)")
-            if close_near_high:
-                score += 2
-                reasons.append("收盤逼近 20 日高點 (≥ 98%)")
-            if prob > 55.0:
-                score += 2
-                reasons.append(f"AI 技術模型偏多 ({prob:.1f}%)")
+            
             if vol_10 > 2.0 * vol_60:
                 score -= 3
                 reasons.append("波動發散扣分 (短期 vol > 2× 長期 vol)")
 
+            # 3. 籌碼窒息乾涸 (Volume Dry-up)
+            # 在過去 20 日到 3 日前 (避開近幾日可能已開始的突破量)，是否有出現日量小於 60日均量 50% 的籌碼沉澱
+            v60 = sum(volumes[-60:]) / 60.0 if len(volumes) >= 60 else 0.0
+            vol_dry = False
+            if v60 > 0 and len(volumes) >= 20:
+                vol_dry = any(v < 0.5 * v60 for v in volumes[-20:-3])
+            
+            if vol_dry:
+                score += 2
+                reasons.append("籌碼沉澱 (曾出現量能窒息量 < 60日均量 50%)")
+
+            # 4. 突破量能激增 (Volume Surge)
+            v5 = sum(volumes[-5:]) / 5.0 if len(volumes) >= 5 else 0.0
+            vol_surge = (v5 / v60 - 1.0) if v60 > 0 else 0.0
+            if vol_surge > 0.3:
+                score += 3
+                reasons.append(f"量能突破 (5日均量高出60日均量 {vol_surge * 100:+.1f}%)")
+
+            # 5. 價格突破邊緣 (Near 20-day High)
+            high_20 = max(closes[-20:]) if len(closes) >= 20 else last
+            close_near_high = last >= 0.98 * high_20
+            if close_near_high:
+                score += 2
+                reasons.append("價格突破邊緣 (收盤逼近 20 日高點 ≥ 98%)")
+
+            # 6. AI 技術模型機率偏多加分
+            ev = model_evidence(item["symbol"], closes, volumes)
+            prob = ev.get("probability_up", 50.0)
+            if prob > 55.0:
+                score += 2
+                reasons.append(f"AI 技術模型偏多 ({prob:.1f}%)")
+
             # A/B/C 分級與安全懲罰邏輯
-            last = closes[-1]
             prev_close = closes[-2] if len(closes) > 1 else last
             day_change_pct = (last / prev_close - 1) * 100.0 if prev_close > 0 else 0.0
             ma5 = moving_average(closes, 5)
             broke_ma5 = last < ma5 if ma5 else False
             ma20 = moving_average(closes, 20)
             ma60 = moving_average(closes, 60)
+            
             # A/B/C 分級與安全懲罰邏輯 (⚠️ 暫定閾值，待 Phase 2 校準)
             if day_change_pct <= -4.5:
                 score -= 10
@@ -1886,7 +1929,7 @@ def discover_antigravity_candidates(end: str, limit: int = 5) -> list[dict]:
                 "grade_label": grade_label,
                 "action": action,
                 "discovery_score": float(score),
-                "probability_up": round(prob, 1),   # 校準機率(供前端統一標準化比較)
+                "probability_up": round(prob, 1),
                 "reasons": [f"Antigravity VCP 突破分級：{grade_label}"] + reasons,
                 "future_knowledge_used": False,
             })
@@ -1895,6 +1938,7 @@ def discover_antigravity_candidates(end: str, limit: int = 5) -> list[dict]:
 
     candidates.sort(key=lambda x: x["score"], reverse=True)
     return candidates[:limit]
+
 
 
 def discover_claude_candidates(end: str, limit: int = 5) -> list[dict]:
