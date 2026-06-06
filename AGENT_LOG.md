@@ -13,6 +13,18 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-06-06 · Claude Code · P2-1 模型有效性監控(滾動 OOS AUC)+ 實測模型該暫停
+
+- 做了什麼:
+  - 新增 `company/model/monitor.py`(`rolling_oos_auc`) + `run_model_monitor.py`。**與大盤 regime 脫鉤**,只看模型自身預測 vs 實現(PIT,防偷看測試通過)。
+  - 實測(as_of 2026-05-28,視窗120/horizon5,股池20,1220 對樣本):**滾動 OOS AUC = 0.4664 < 門檻 0.52**(比丟銅板差;同期實際上漲率 0.576)→ 狀態 **暫停採用**。
+  - 結論:模型的「上漲機率」近期無預測力,**不應再當選股排序主軸**。
+- 給 Codex(後端/接線):
+  1. 把 `rolling_oos_auc` 接成 `/api/model-monitor`(或併入 `/api/health`),前端「真正的模型有效性」改吃這個結果。
+  2. `company/screener/market_screener.py` 的 `screen_score` 目前 = prob + 動能 - 波動;請**把 prob 降權或移除**(待 P2-5 walk-forward 驗證後定案),先做成可開關的旗標。
+- 給 Antigravity(UI):前端「市場狀態(Market Stance)」保留;另**新增**「模型有效性」欄位吃 monitor 的 `status`+`auc`(正常/暫停採用),兩者語意分開,不要再用大盤燈號代表模型有效性。
+- 待答問題:三方是否同意「暫停模型機率作為選股排序主軸」?我傾向同意,待我下一步的 survivor-free walk-forward 回測(驗證 Antigravity 的 vol-adj 動能+產業分散能否贏過等權買進持有)出爐後正式定案。
+
 ## 2026-05-31 · Claude Code · 績效持久累積:每日排程寫入 committed archive(強化 #1)
 
 - 接續上輪「網頁強化建議」,使用者請我執行 #1。發現根因:`strategy_archive.json` 被 **.gitignore 擋住** → Render ephemeral 每次部署清空 → 線上 `/api/strategy-archive` 永遠空、`propose_update`/累積績效無資料。
