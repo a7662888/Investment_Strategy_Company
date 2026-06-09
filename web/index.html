@@ -285,7 +285,10 @@
     <section class="panel" style="margin-top: 20px; border-color: #3b82f6; background: #fafcff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
       <div class="sectionHead">
         <h2 style="color: #2563eb; display: flex; align-items: center; gap: 8px;"><span>⏱️</span> 歷史日誌快照與覆盤終端 (Simulation Snapshots Log)</h2>
-        <div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button id="replayOptimizeSnapshots" class="primary" style="height: 30px; font-size: 12px; padding: 0 12px; background-color: #10b981; border-color: #10b981; color: white;">一鍵覆盤與參數優化</button>
+          <button id="importSnapshotsBtn" style="height: 30px; font-size: 12px; padding: 0 12px; background-color: #f1f5f9; border-color: #cbd5e1; color: #334155;">匯入歷史日誌</button>
+          <input type="file" id="importSnapshotsFile" style="display:none;" accept=".json">
           <button id="exportSnapshots" class="primary" style="height: 30px; font-size: 12px; padding: 0 12px;">匯出 JSON</button>
           <button id="clearSnapshots" style="height: 30px; font-size: 12px; padding: 0 12px; color: var(--red); border-color: var(--red); background: #fef2f2;">清除歷史</button>
         </div>
@@ -307,6 +310,9 @@
             <tr><td colspan="7" style="text-align: center; color: var(--muted);">尚無覆盤快照。當您執行「明日計畫」或「開始區間訓練」時將自動記錄快照。</td></tr>
           </tbody>
         </table>
+      </div>
+      <div id="replayResultsPanel" style="display:none; margin-top: 15px; padding: 15px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+        <!-- Replay results will be inserted here dynamically -->
       </div>
     </section>
   </main>

@@ -2657,6 +2657,187 @@ class Handler(SimpleHTTPRequestHandler):
                 plans.sort(key=lambda item: (not item["held"], -item["score"]))
                 self.send_json({"as_of": end, "plans": plans, "rule": "after_close_next_session_plan_only", "market_index": market_info})
                 return
+            if self.path == "/api/replay-snapshots":
+                body = self.read_body()
+                snapshots = body.get("snapshots") or []
+                
+                details = []
+                X_train = []
+                y_train = []
+                
+                for snap in snapshots:
+                    target_date = snap.get("targetDate")
+                    if not target_date:
+                        continue
+                    regime = snap.get("regime") or "未知狀態"
+                    picks_str = snap.get("picks") or ""
+                    symbols_list = [s.strip() for s in picks_str.split(",") if s.strip()]
+                    
+                    try:
+                        t_dt = datetime.fromisoformat(target_date)
+                    except ValueError:
+                        continue
+                        
+                    start_fetch = (t_dt - timedelta(days=80)).date().isoformat()
+                    end_fetch = (t_dt + timedelta(days=20)).date().isoformat()
+                    
+                    for symbol in symbols_list:
+                        try:
+                            rows = fetch_history(symbol, start_fetch, end_fetch)
+                            if not rows:
+                                continue
+                            
+                            rows = sorted(rows, key=lambda r: r["date"])
+                            
+                            idx_T = -1
+                            for i, r in enumerate(rows):
+                                if r["date"] <= target_date:
+                                    idx_T = i
+                                else:
+                                    break
+                            
+                            if idx_T == -1:
+                                continue
+                                
+                            future_bars = rows[idx_T + 1 : idx_T + 6]
+                            if not future_bars:
+                                continue
+                                
+                            entry_price = float(future_bars[0]["open"])
+                            exit_price = float(future_bars[-1]["close"])
+                            max_high = max(float(bar["high"]) for bar in future_bars)
+                            min_low = min(float(bar["low"]) for bar in future_bars)
+                            
+                            return_5d = (exit_price / entry_price - 1.0)
+                            max_profit = (max_high / entry_price - 1.0)
+                            max_drawdown = (min_low / entry_price - 1.0)
+                            win = 1.0 if return_5d > 0 else 0.0
+                            
+                            history_closes = [float(r["close"]) for r in rows[:idx_T + 1]]
+                            
+                            if len(history_closes) >= 30:
+                                rsi_T = calculate_rsi_list(history_closes, 14)
+                                y_slope = history_closes[-5:]
+                                close_T = history_closes[-1]
+                                slope_T = (-2.0 * y_slope[0] - 1.0 * y_slope[1] + 1.0 * y_slope[3] + 2.0 * y_slope[4]) / 10.0
+                                _, _, hist_T = calculate_macd_list(history_closes, 12, 26, 9)
+                                
+                                x0 = 1.0
+                                x1 = (50.0 - rsi_T) / 10.0
+                                x2 = (slope_T / close_T) * 100.0
+                                x3 = (hist_T / close_T) * 100.0
+                                y_val = 1 if return_5d > 0 else 0
+                                
+                                X_train.append([x0, x1, x2, x3])
+                                y_train.append(y_val)
+                            
+                            details.append({
+                                "symbol": symbol,
+                                "name": NAME_MAP.get(symbol.split(".")[0], symbol),
+                                "target_date": target_date,
+                                "regime": regime,
+                                "entry_price": entry_price,
+                                "exit_price": exit_price,
+                                "return_5d": return_5d,
+                                "max_profit": max_profit,
+                                "max_drawdown": max_drawdown,
+                                "win": win
+                            })
+                        except Exception as e:
+                            print(f"Error replaying snapshot for {symbol} on {target_date}: {e}")
+                
+                total_evaluated = len(details)
+                overall_win_rate = 0.0
+                overall_avg_return = 0.0
+                overall_avg_mdd = 0.0
+                overall_avg_max_profit = 0.0
+                
+                if total_evaluated > 0:
+                    overall_win_rate = (sum(d["win"] for d in details) / total_evaluated) * 100.0
+                    overall_avg_return = sum(d["return_5d"] for d in details) / total_evaluated
+                    overall_avg_mdd = sum(d["max_drawdown"] for d in details) / total_evaluated
+                    overall_avg_max_profit = sum(d["max_profit"] for d in details) / total_evaluated
+                
+                regimes_stats = {}
+                for d in details:
+                    r = d["regime"]
+                    if r not in regimes_stats:
+                        regimes_stats[r] = []
+                    regimes_stats[r].append(d)
+                
+                regime_breakdown = []
+                for r, r_details in regimes_stats.items():
+                    r_count = len(r_details)
+                    r_win = (sum(rd["win"] for rd in r_details) / r_count) * 100.0
+                    r_ret = sum(rd["return_5d"] for rd in r_details) / r_count
+                    r_mdd = sum(rd["max_drawdown"] for rd in r_details) / r_count
+                    
+                    if r_win < 45.0 or r_mdd < -0.05:
+                        diagnostic = f"在「{r}」狀態下，推薦個股勝率較低 ({r_win:.1f}%) 或平均回撤較大 ({r_mdd*100:.1f}%)，建議提高該狀態下的個股勝率門檻，或考慮在紅/黑燈號時暫停買進。"
+                        level = "warning"
+                    elif r_win >= 55.0:
+                        diagnostic = f"在「{r}」狀態下，推薦表現良好，勝率達 {r_win:.1f}%，平均獲利 {r_ret*100:+.1f}%，建議維持現行配置。"
+                        level = "success"
+                    else:
+                        diagnostic = f"在「{r}」狀態下，推薦表現平平，勝率為 {r_win:.1f}%，建議審慎觀察，或微幅調高機率過濾門檻。"
+                        level = "info"
+                        
+                    regime_breakdown.append({
+                        "regime": r,
+                        "count": r_count,
+                        "win_rate": r_win,
+                        "avg_return": r_ret,
+                        "avg_mdd": r_mdd,
+                        "diagnostic": diagnostic,
+                        "level": level
+                    })
+                
+                optimization_available = False
+                optimized_weights = {}
+                optimized_accuracy = 50.0
+                epoch_logs = []
+                
+                current_weights = load_optimized_weights() or {"bias": 0.0, "rsi": 0.15, "slope": 0.25, "macd_hist": 0.15}
+                
+                if X_train:
+                    try:
+                        training_results = train_logistic_regression_pure(X_train, y_train, lr=0.1, l2=0.01, epochs=500)
+                        optimized_weights = training_results["weights"]
+                        optimized_accuracy = training_results["accuracy"]
+                        epoch_logs = training_results.get("epoch_logs") or []
+                        optimization_available = True
+                    except Exception as e:
+                        print(f"Error training weights for snapshots: {e}")
+                
+                self.send_json({
+                    "summary": {
+                        "total_picks": total_evaluated,
+                        "win_rate": overall_win_rate,
+                        "avg_return": overall_avg_return,
+                        "avg_mdd": overall_avg_mdd,
+                        "avg_max_profit": overall_avg_max_profit
+                    },
+                    "regime_breakdown": regime_breakdown,
+                    "optimization": {
+                        "available": optimization_available,
+                        "sample_count": len(X_train),
+                        "current_weights": current_weights,
+                        "optimized_weights": optimized_weights,
+                        "optimized_accuracy": optimized_accuracy,
+                        "epoch_logs": epoch_logs
+                    },
+                    "details": details
+                })
+                return
+            if self.path == "/api/save-weights":
+                body = self.read_body()
+                weights = body.get("weights")
+                if not weights:
+                    self.send_json({"error": "missing weights"}, HTTPStatus.BAD_REQUEST)
+                    return
+                save_optimized_weights(weights)
+                self.send_json({"success": True, "message": "優化因子權重已成功保存且立即套用！"})
+                return
             self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         except Exception as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)

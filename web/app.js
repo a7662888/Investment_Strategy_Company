@@ -1167,6 +1167,328 @@ $("exportSnapshots").addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
+$("importSnapshotsBtn").addEventListener("click", () => {
+  $("importSnapshotsFile").click();
+});
+
+$("importSnapshotsFile").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    try {
+      const list = JSON.parse(event.target.result);
+      if (!Array.isArray(list)) {
+        alert("錯誤的檔案格式：應為快照陣列 JSON。");
+        return;
+      }
+      localStorage.setItem("quant_snapshots", JSON.stringify(list));
+      renderSnapshots();
+      alert(`成功匯入 ${list.length} 筆歷史快照日誌！`);
+    } catch (err) {
+      alert("載入檔案失敗：" + err.message);
+    }
+  };
+  reader.readAsText(file);
+});
+
+$("replayOptimizeSnapshots").addEventListener("click", async () => {
+  const saved = localStorage.getItem("quant_snapshots");
+  if (!saved || JSON.parse(saved).length === 0) {
+    alert("沒有歷史日誌快照可供覆盤。請先執行「明日計畫」或「開始區間訓練」以產生快照。");
+    return;
+  }
+  
+  const panel = $("replayResultsPanel");
+  panel.style.display = "block";
+  panel.innerHTML = `
+    <div style="text-align: center; padding: 25px; color: var(--muted);">
+      <span class="loading-spinner" style="display: inline-block; width: 22px; height: 22px; border: 3px solid var(--blue); border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite; margin-right: 10px; vertical-align: middle;"></span>
+      正在與後端資料庫對齊歷史價格，進行一鍵覆盤與因子權重校準，請稍候...
+    </div>
+    <style>
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  `;
+  
+  try {
+    const response = await fetch("/api/replay-snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ snapshots: JSON.parse(saved) })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`伺服器錯誤: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    renderReplayResults(data);
+  } catch (err) {
+    panel.innerHTML = `<div style="color: var(--red); padding: 12px; border: 1px solid var(--red); background: #fef2f2; border-radius: 6px; font-size: 13px;">覆盤失敗：${err.message}</div>`;
+  }
+});
+
+function renderReplayResults(data) {
+  const panel = $("replayResultsPanel");
+  if (!panel) return;
+  
+  const sum = data.summary;
+  const opt = data.optimization;
+  const regimes = data.regime_breakdown;
+  const details = data.details;
+  
+  const fmtPctSign = (val) => (val >= 0 ? "+" : "") + (val * 100).toFixed(2) + "%";
+  
+  let html = `
+    <h3 style="margin-top: 0; color: #1e293b; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; font-size: 15px;">
+      <span style="display: flex; align-items: center; gap: 6px;">🎯 歷史快照一鍵覆盤與優化報告</span>
+      <button onclick="document.getElementById('replayResultsPanel').style.display='none'" style="height: 24px; padding: 0 8px; font-size: 11px; background: #e2e8f0; border: none; color: #475569; border-radius: 4px; cursor: pointer;">關閉報告</button>
+    </h3>
+    
+    <!-- 1. Scorecard Grid -->
+    <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px;">
+      <div style="background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+        <div style="font-size: 11px; color: #64748b; font-weight: 500;">評估推薦總股次</div>
+        <div style="font-size: 20px; font-weight: bold; color: #1e293b; margin-top: 4px;">${sum.total_picks} 次</div>
+      </div>
+      <div style="background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+        <div style="font-size: 11px; color: #64748b; font-weight: 500;">樣本外 5D 勝率</div>
+        <div style="font-size: 20px; font-weight: bold; margin-top: 4px;" class="${sum.win_rate >= 50 ? 'pos' : 'neg'}">${sum.win_rate.toFixed(1)}%</div>
+      </div>
+      <div style="background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+        <div style="font-size: 11px; color: #64748b; font-weight: 500;">平均 5D 報酬率</div>
+        <div style="font-size: 20px; font-weight: bold; margin-top: 4px;" class="${sum.avg_return >= 0 ? 'pos' : 'neg'}">${fmtPctSign(sum.avg_return)}</div>
+      </div>
+      <div style="background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+        <div style="font-size: 11px; color: #64748b; font-weight: 500;">平均潛在最大漲幅</div>
+        <div style="font-size: 20px; font-weight: bold; margin-top: 4px;" class="pos">+${(sum.avg_max_profit * 100).toFixed(2)}%</div>
+      </div>
+      <div style="background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center;">
+        <div style="font-size: 11px; color: #64748b; font-weight: 500;">平均最大潛在回撤</div>
+        <div style="font-size: 20px; font-weight: bold; margin-top: 4px;" class="neg">${(sum.avg_mdd * 100).toFixed(2)}%</div>
+      </div>
+    </div>
+    
+    <!-- 2. Regime Breakdown & Diagnostics -->
+    <h4 style="margin: 0 0 10px 0; color: #334155; font-size: 13px;">🚦 大盤狀態 (Regime) 表現分析與門檻診斷</h4>
+    <div style="display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 20px;">
+  `;
+  
+  if (regimes.length === 0) {
+    html += `<div style="padding: 10px; background: #f8fafc; border-radius: 6px; color: #64748b; font-size: 12px; text-align: center;">無大盤狀態分類數據。</div>`;
+  } else {
+    regimes.forEach(r => {
+      let bg = "#f8fafc", border = "#e2e8f0", color = "#475569";
+      if (r.level === "warning") {
+        bg = "#fffbeb"; border = "#fef3c7"; color = "var(--amber)";
+      } else if (r.level === "success") {
+        bg = "#f0fdf4"; border = "#bbf7d0"; color = "var(--red)";
+      } else if (r.level === "info") {
+        bg = "#eff6ff"; border = "#bfdbfe"; color = "var(--blue)";
+      }
+      
+      html += `
+        <div style="background: ${bg}; border: 1px solid ${border}; border-radius: 6px; padding: 10px 12px; display: flex; align-items: flex-start; gap: 12px; font-size: 12px;">
+          <div style="font-weight: bold; min-width: 90px; color: ${color}; font-size: 13px;">${r.regime}</div>
+          <div style="flex: 1; line-height: 1.5;">
+            <div style="margin-bottom: 4px; color: #1e293b;">
+              樣本數：<strong>${r.count}</strong> | 
+              勝率：<strong class="${r.win_rate >= 50 ? 'pos' : 'neg'}">${r.win_rate.toFixed(1)}%</strong> | 
+              平均報酬：<strong class="${r.avg_return >= 0 ? 'pos' : 'neg'}">${fmtPctSign(r.avg_return)}</strong> | 
+              平均回撤：<strong class="neg">${(r.avg_mdd * 100).toFixed(2)}%</strong>
+            </div>
+            <div style="color: #475569; font-weight: 500;">💡 診斷：${r.diagnostic}</div>
+          </div>
+        </div>
+      `;
+    });
+  }
+  
+  html += `
+    </div>
+    
+    <!-- 3. Weights Tuning Optimizer -->
+    <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; margin-bottom: 20px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+      <div>
+        <h4 style="margin: 0 0 10px 0; color: #334155; font-size: 13px;">🎛️ AI 預測模型因子權重校準提案</h4>
+        <p style="margin: 0 0 12px 0; font-size: 12px; color: #64748b; line-height: 1.4;">
+          分析推薦股在基準日的指標因子與後續 5 日漲跌。優化器將進行在線梯度下降優化，藉此降低選股偽陽性機率（優化特定股池的勝率，而非全局隨機樣本）。
+        </p>
+  `;
+  
+  if (!opt.available) {
+    html += `
+        <div style="padding: 15px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: center; color: #64748b; font-size: 12px;">
+          樣本數不足（需有歷史推薦個股），無法進行因子權重擬合優化。
+        </div>
+      </div>
+    `;
+  } else {
+    const cw = opt.current_weights;
+    const ow = opt.optimized_weights;
+    
+    html += `
+        <table style="width: 100%; font-size: 12px; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="border-bottom: 1px solid #e2e8f0; color: #64748b;">
+              <th style="padding: 6px 0;">因子名稱</th>
+              <th>當前配置</th>
+              <th>覆盤校準值</th>
+              <th>變化趨勢</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px dotted #e2e8f0;">
+              <td style="padding: 6px 0; font-weight: 500;">偏誤 (Bias)</td>
+              <td>${cw.bias.toFixed(3)}</td>
+              <td style="font-weight: bold; color: #1e293b;">${ow.bias.toFixed(3)}</td>
+              <td style="color: ${ow.bias > cw.bias ? 'var(--red)' : ow.bias < cw.bias ? 'var(--green)' : '#64748b'};">${ow.bias > cw.bias ? '📈 上調' : ow.bias < cw.bias ? '📉 下調' : '➖ 不變'}</td>
+            </tr>
+            <tr style="border-bottom: 1px dotted #e2e8f0;">
+              <td style="padding: 6px 0; font-weight: 500;">超賣程度 (RSI 因子)</td>
+              <td>${cw.rsi.toFixed(3)}</td>
+              <td style="font-weight: bold; color: #1e293b;">${ow.rsi.toFixed(3)}</td>
+              <td style="color: ${ow.rsi > cw.rsi ? 'var(--red)' : ow.rsi < cw.rsi ? 'var(--green)' : '#64748b'};">${ow.rsi > cw.rsi ? '📈 加重' : ow.rsi < cw.rsi ? '📉 減輕' : '➖ 不變'}</td>
+            </tr>
+            <tr style="border-bottom: 1px dotted #e2e8f0;">
+              <td style="padding: 6px 0; font-weight: 500;">近5日趨勢 (Slope 因子)</td>
+              <td>${cw.slope.toFixed(3)}</td>
+              <td style="font-weight: bold; color: #1e293b;">${ow.slope.toFixed(3)}</td>
+              <td style="color: ${ow.slope > cw.slope ? 'var(--red)' : ow.slope < cw.slope ? 'var(--green)' : '#64748b'};">${ow.slope > cw.slope ? '📈 加重' : ow.slope < cw.slope ? '📉 減輕' : '➖ 不變'}</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 6px 0; font-weight: 500;">柱狀動能 (MACD 因子)</td>
+              <td>${cw.macd_hist.toFixed(3)}</td>
+              <td style="font-weight: bold; color: #1e293b;">${ow.macd_hist.toFixed(3)}</td>
+              <td style="color: ${ow.macd_hist > cw.macd_hist ? 'var(--red)' : ow.macd_hist < cw.macd_hist ? 'var(--green)' : '#64748b'};">${ow.macd_hist > cw.macd_hist ? '📈 加重' : ow.macd_hist < cw.macd_hist ? '📉 減輕' : '➖ 不變'}</td>
+            </tr>
+          </tbody>
+        </table>
+        
+        <div style="margin-top: 15px; display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 11px; color: #64748b;">基於 <strong>${opt.sample_count}</strong> 組推薦個股樣本進行在線優化</span>
+          <button id="applyOptimizedWeightsBtn" class="primary" style="height: 28px; line-height: 26px; padding: 0 12px; font-size: 12px; background-color: #10b981; border-color: #10b981; color: white;">套用優化權重</button>
+        </div>
+      </div>
+    `;
+  }
+  
+  html += `
+      <!-- 4. Epoch Convergence logs -->
+      <div>
+        <h4 style="margin: 0 0 10px 0; color: #334155; font-size: 13px;">📈 收斂進度與優化成效</h4>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; height: 140px; overflow-y: auto; font-family: monospace; font-size: 11px; line-height: 1.5; color: #475569;">
+  `;
+  
+  if (!opt.available || !opt.epoch_logs || opt.epoch_logs.length === 0) {
+    html += `<div>無優化日誌。請增加歷史快照日誌。</div>`;
+  } else {
+    html += `
+      <div style="font-weight: bold; color: #1e293b; margin-bottom: 4px;">梯度下降收斂紀錄 (Gradient Descent Run):</div>
+    `;
+    opt.epoch_logs.forEach(log => {
+      html += `<div>[Epoch ${log.epoch.toString().padStart(3)}] Loss: ${log.loss.toFixed(4)} | Acc: ${log.accuracy.toFixed(1)}%</div>`;
+    });
+    html += `
+      <div style="border-top: 1px dashed #cbd5e1; margin-top: 6px; padding-top: 6px; font-weight: bold; color: #166534;">
+        校準後預測勝率提升至: ${opt.optimized_accuracy.toFixed(1)}%
+      </div>
+    `;
+  }
+  
+  html += `
+        </div>
+      </div>
+    </div>
+    
+    <!-- 5. Detailed Pick Replay Table -->
+    <h4 style="margin: 20px 0 10px 0; color: #334155; font-size: 13px; border-top: 1px solid #e2e8f0; padding-top: 20px;">📋 歷次推薦個股樣本外持有 5 日明細表</h4>
+    <div style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px;">
+      <table style="width: 100%; font-size: 12px; border-collapse: collapse; text-align: left;">
+        <thead>
+          <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #64748b;">
+            <th style="padding: 8px 10px;">決策基準日</th>
+            <th>大盤狀態</th>
+            <th>股票名稱</th>
+            <th>進場價 (T+1 O)</th>
+            <th>出場價 (T+5 C)</th>
+            <th>5D 漲跌幅</th>
+            <th>5D 最大回撤</th>
+            <th>5D 最大潛在漲幅</th>
+            <th>方向</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  
+  if (details.length === 0) {
+    html += `<tr><td colspan="9" style="text-align: center; padding: 20px; color: #64748b;">尚無個股明細，請增加歷史日誌。</td></tr>`;
+  } else {
+    details.forEach(d => {
+      const isWin = d.win > 0.5;
+      html += `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 8px 10px; font-weight: 500;">${d.target_date}</td>
+          <td>${d.regime}</td>
+          <td><strong>${d.name}</strong> <span style="color: #64748b; font-size: 10px;">(${d.symbol})</span></td>
+          <td>$${d.entry_price.toFixed(1)}</td>
+          <td>$${d.exit_price.toFixed(1)}</td>
+          <td style="font-weight: bold;" class="${d.return_5d >= 0 ? 'pos' : 'neg'}">${fmtPctSign(d.return_5d)}</td>
+          <td class="neg">${(d.max_drawdown * 100).toFixed(2)}%</td>
+          <td class="pos">+${(d.max_profit * 100).toFixed(2)}%</td>
+          <td><span style="padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; background: ${isWin ? '#fef2f2' : '#f0fdf4'}; color: ${isWin ? 'var(--red)' : 'var(--green)'};">${isWin ? '獲利' : '虧損'}</span></td>
+        </tr>
+      `;
+    });
+  }
+  
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+  
+  panel.innerHTML = html;
+  
+  const applyBtn = $("applyOptimizedWeightsBtn");
+  if (applyBtn) {
+    applyBtn.addEventListener("click", async () => {
+      if (!confirm("確定要將今日校準優化後的因子權重套用到實體預測模型中嗎？這將會即時影響「明日計畫」及新推薦個股的評估機率。")) {
+        return;
+      }
+      
+      try {
+        const res = await fetch("/api/save-weights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ weights: opt.optimized_weights })
+        });
+        
+        if (!res.ok) {
+          throw new Error("發送保存權重請求失敗");
+        }
+        
+        const resData = await res.json();
+        alert(resData.message);
+        
+        panel.style.display = "none";
+        
+        const optimizedWeightsBlock = $("optimizedWeights");
+        const weightsDetailText = $("weightsDetail");
+        if (optimizedWeightsBlock && weightsDetailText) {
+          optimizedWeightsBlock.style.display = "block";
+          const w = opt.optimized_weights;
+          weightsDetailText.textContent = `偏誤(Bias): ${w.bias.toFixed(3)}, RSI: ${w.rsi.toFixed(3)}, 斜率(Slope): ${w.slope.toFixed(3)}, MACD柱體: ${w.macd_hist.toFixed(3)} (準確率: ${opt.optimized_accuracy.toFixed(1)}%)`;
+        }
+      } catch (err) {
+        alert("套用優化權重失敗：" + err.message);
+      }
+    });
+  }
+}
+
+
 // --- 4. Initialization Runs ---
 loadUniverse();
 loadMarketNews();
