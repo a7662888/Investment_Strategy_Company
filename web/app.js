@@ -1270,7 +1270,10 @@ function renderReplayResults(data) {
   let html = `
     <h3 style="margin-top: 0; color: #1e293b; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; font-size: 15px;">
       <span style="display: flex; align-items: center; gap: 6px;">🎯 歷史快照一鍵覆盤與優化報告</span>
-      <button onclick="document.getElementById('replayResultsPanel').style.display='none'" style="height: 24px; padding: 0 8px; font-size: 11px; background: #e2e8f0; border: none; color: #475569; border-radius: 4px; cursor: pointer;">關閉報告</button>
+      <div style="display: flex; gap: 8px;">
+        ${data.report_markdown ? `<button id="downloadReportBtn" style="height: 24px; padding: 0 8px; font-size: 11px; background: var(--blue); border: none; color: white; border-radius: 4px; cursor: pointer;">📥 下載 Markdown 報告</button>` : ''}
+        <button onclick="document.getElementById('replayResultsPanel').style.display='none'" style="height: 24px; padding: 0 8px; font-size: 11px; background: #e2e8f0; border: none; color: #475569; border-radius: 4px; cursor: pointer;">關閉報告</button>
+      </div>
     </h3>
     
     <!-- 1. Scorecard Grid -->
@@ -1518,6 +1521,19 @@ function renderReplayResults(data) {
       } catch (err) {
         alert("套用優化權重失敗：" + err.message);
       }
+    });
+  }
+
+  const downloadBtn = $("downloadReportBtn");
+  if (downloadBtn && data.report_markdown) {
+    downloadBtn.addEventListener("click", () => {
+      const blob = new Blob([data.report_markdown], {type: "text/markdown;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `replay_report_${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
     });
   }
 }

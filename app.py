@@ -1514,7 +1514,7 @@ def save_snapshots_to_archives(snapshots: list[dict]) -> dict:
             print(f"Error saving snapshots to {path}: {e}")
     return {"success": True, "saved_paths": saved_paths}
 
-def generate_and_save_replay_report(data: dict) -> str:
+def generate_and_save_replay_report(data: dict) -> tuple[str, str]:
     sum_data = data["summary"]
     regimes = data["regime_breakdown"]
     opt = data["optimization"]
@@ -1592,7 +1592,7 @@ def generate_and_save_replay_report(data: dict) -> str:
             saved_paths.append(str(path))
         except Exception as e:
             print(f"Error saving report to {path}: {e}")
-    return saved_paths[0] if saved_paths else ""
+    return (saved_paths[0] if saved_paths else "", report_content)
 
 def train_logistic_regression_pure(X: list[list[float]], y: list[int], lr: float = 0.1, l2: float = 0.01, epochs: int = 500) -> dict:
     w = [0.0, 0.15, 0.25, 0.15]
@@ -2940,8 +2940,9 @@ class Handler(SimpleHTTPRequestHandler):
                     "details": details
                 }
                 
-                report_file = generate_and_save_replay_report(result_data)
+                report_file, report_md = generate_and_save_replay_report(result_data)
                 result_data["saved_report_path"] = report_file
+                result_data["report_markdown"] = report_md
                 
                 self.send_json(result_data)
                 return
