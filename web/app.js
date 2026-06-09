@@ -1091,6 +1091,12 @@ function saveSnapshot(actionType) {
     list.unshift(snapshot); // prepend new ones
     localStorage.setItem("quant_snapshots", JSON.stringify(list));
     renderSnapshots();
+    
+    fetch("/api/save-snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ snapshots: list })
+    }).catch(err => console.error("Failed to sync new snapshot to server:", err));
   } catch (err) {
     console.error("Failed to save snapshot:", err);
   }
@@ -1131,6 +1137,11 @@ window.deleteSnapshot = function(idx) {
     list.splice(idx, 1);
     localStorage.setItem("quant_snapshots", JSON.stringify(list));
     renderSnapshots();
+    fetch("/api/save-snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ snapshots: list })
+    }).catch(err => console.error("Failed to sync delete event to server:", err));
   }
 };
 
@@ -1145,10 +1156,19 @@ $("slippageRate").addEventListener("input", (e) => {
   $("slippageRateVal").textContent = (e.target.value * 100).toFixed(2) + "%";
 });
 
-$("clearSnapshots").addEventListener("click", () => {
-  if (confirm("確定要清除所有歷史快照日誌嗎？")) {
+$("clearSnapshots").addEventListener("click", async () => {
+  if (confirm("確定要清除所有歷史快照日誌嗎？這將會同步清除雲端與本地存檔。")) {
     localStorage.removeItem("quant_snapshots");
     renderSnapshots();
+    try {
+      await fetch("/api/save-snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshots: [] })
+      });
+    } catch (err) {
+      console.error("Failed to sync clear event to server:", err);
+    }
   }
 });
 
@@ -1175,7 +1195,7 @@ $("importSnapshotsFile").addEventListener("change", (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(event) {
+  reader.onload = async function(event) {
     try {
       const list = JSON.parse(event.target.result);
       if (!Array.isArray(list)) {
@@ -1184,7 +1204,14 @@ $("importSnapshotsFile").addEventListener("change", (e) => {
       }
       localStorage.setItem("quant_snapshots", JSON.stringify(list));
       renderSnapshots();
-      alert(`成功匯入 ${list.length} 筆歷史快照日誌！`);
+      
+      await fetch("/api/save-snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ snapshots: list })
+      });
+      
+      alert(`成功匯入 ${list.length} 筆歷史快照日誌，並已同步至雲端存檔！`);
     } catch (err) {
       alert("載入檔案失敗：" + err.message);
     }
@@ -1269,6 +1296,13 @@ function renderReplayResults(data) {
         <div style="font-size: 20px; font-weight: bold; margin-top: 4px;" class="neg">${(sum.avg_mdd * 100).toFixed(2)}%</div>
       </div>
     </div>
+    
+    ${data.saved_report_path ? `
+    <div style="margin-bottom: 20px; padding: 10px 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 12px; color: #166534; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+      <span>💾 覆盤與參數優化報告已自動同步保存至雲端與本地專屬目錄！</span>
+      <span style="font-family: monospace; font-size: 11px; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 420px;" title="${data.saved_report_path}">報告檔案: ${data.saved_report_path.split(/[\\/]/).pop()}</span>
+    </div>
+    ` : ''}
     
     <!-- 2. Regime Breakdown & Diagnostics -->
     <h4 style="margin: 0 0 10px 0; color: #334155; font-size: 13px;">🚦 大盤狀態 (Regime) 表現分析與門檻診斷</h4>
@@ -1489,9 +1523,49 @@ function renderReplayResults(data) {
 }
 
 
+async function syncSnapshotsFromServer() {
+  try {
+    const response = await fetch("/api/load-snapshots");
+    if (response.ok) {
+      const data = await response.json();
+      if (data.snapshots && data.snapshots.length > 0) {
+        const local = localStorage.getItem("quant_snapshots");
+        let localList = [];
+        if (local) {
+          try {
+            localList = JSON.parse(local);
+          } catch(e) {}
+        }
+        
+        const uniqueKeys = new Set(localList.map(item => item.targetDate + "_" + item.timestamp));
+        let mergedCount = 0;
+        data.snapshots.forEach(item => {
+          const key = item.targetDate + "_" + item.timestamp;
+          if (!uniqueKeys.has(key)) {
+            localList.push(item);
+            uniqueKeys.add(key);
+            mergedCount++;
+          }
+        });
+        
+        if (mergedCount > 0) {
+          localList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          localStorage.setItem("quant_snapshots", JSON.stringify(localList));
+          renderSnapshots();
+          console.log(`Successfully synced ${mergedCount} snapshots from cloud archive.`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Failed to sync snapshots from server:", err);
+  }
+}
+
+
 // --- 4. Initialization Runs ---
 loadUniverse();
 loadMarketNews();
 renderSnapshots();
+syncSnapshotsFromServer();
 $("endDate").addEventListener("change", loadMarketNews);
 

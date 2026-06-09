@@ -1,0 +1,18 @@
+[
+    {
+        "timestamp": "2026/6/9 下午10:00:00",
+        "targetDate": "2020-05-15",
+        "regime": "多頭趨勢",
+        "picks": "2330.TW, 2454.TW",
+        "positions": "無持倉",
+        "accuracy": "75.0%"
+    },
+    {
+        "timestamp": "2026/6/9 下午10:05:00",
+        "targetDate": "2020-08-10",
+        "regime": "空頭燈號",
+        "picks": "2317.TW",
+        "positions": "無持倉",
+        "accuracy": "未優化"
+    }
+]

@@ -1500,6 +1500,100 @@ def save_optimized_weights(weights: dict) -> None:
     except Exception as e:
         print(f"Error saving optimized weights: {e}")
 
+def save_snapshots_to_archives(snapshots: list[dict]) -> dict:
+    proj_path = PROJECT / "data" / "snapshots_archive.json"
+    d_path = Path("D:/secondbrain/Skills/Stock/snapshots_archive.json")
+    e_path = Path("E:/OneDrive/Obsidian Vault/skills/Stock/snapshots_archive.json")
+    saved_paths = []
+    for path in (proj_path, d_path, e_path):
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(snapshots, indent=4, ensure_ascii=False), encoding="utf-8")
+            saved_paths.append(str(path))
+        except Exception as e:
+            print(f"Error saving snapshots to {path}: {e}")
+    return {"success": True, "saved_paths": saved_paths}
+
+def generate_and_save_replay_report(data: dict) -> str:
+    sum_data = data["summary"]
+    regimes = data["regime_breakdown"]
+    opt = data["optimization"]
+    details = data["details"]
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_fn = datetime.now().strftime("%Y%m%d_%H%M%S")
+    lines = [
+        f"# 歷史日誌快照與覆盤優化報告",
+        f"產生時間: `{now_str}`",
+        "",
+        "## 一、樣本外覆盤總體成效",
+        "",
+        f"- **評估總股次**: `{sum_data['total_picks']}` 次",
+        f"- **樣本外 5D 勝率**: `{sum_data['win_rate']:.1f}%`",
+        f"- **平均 5D 報酬率**: `{sum_data['avg_return']*100:+.2f}%`",
+        f"- **平均最大潛在漲幅**: `+{sum_data['avg_max_profit']*100:.2f}%`",
+        f"- **平均最大潛在回撤**: `{sum_data['avg_mdd']*100:.2f}%`",
+        "",
+        "## 二、大盤狀態 (Regime) 表現分析與門檻診斷",
+        ""
+    ]
+    if not regimes:
+        lines.append("無分類數據。")
+    else:
+        for r in regimes:
+            lines.extend([
+                f"### 🚦 {r['regime']}",
+                f"- **推薦股次**: {r['count']} 次",
+                f"- **勝率**: `{r['win_rate']:.1f}%` | **平均報酬**: `{r['avg_return']*100:+.2f}%` | **平均回撤**: `{r['avg_mdd']*100:.2f}%`",
+                f"- **💡 診斷建議**: {r['diagnostic']}",
+                ""
+            ])
+    lines.extend([
+        "## 三、預測模型因子權重校準分析",
+        "",
+        "| 因子名稱 | 當前配置權重 | 覆盤校準優化值 | 變化方向 |",
+        "|---|---|---|---|",
+    ])
+    cw = opt.get("current_weights", {})
+    ow = opt.get("optimized_weights", {})
+    if not opt.get("available"):
+        lines.append("| (樣本不足，無法擬合) | | | |")
+    else:
+        for key, name in [("bias", "偏誤 (Bias)"), ("rsi", "超賣程度 (RSI)"), ("slope", "趨勢斜率 (Slope)"), ("macd_hist", "柱狀動能 (MACD Hist)")]:
+            c_val = cw.get(key, 0.0)
+            o_val = ow.get(key, 0.0)
+            change = "📈 上調" if o_val > c_val else "📉 下調" if o_val < c_val else "➖ 不變"
+            lines.append(f"| {name} | {c_val:.4f} | {o_val:.4f} | {change} |")
+    lines.extend([
+        "",
+        f"- **校準樣本數**: {opt.get('sample_count', 0)} 組個股推薦樣本",
+        f"- **最優擬合勝率**: {opt.get('optimized_accuracy', 50.0):.1f}%",
+        "",
+        "## 四、樣本外 5 日持股交易明細表",
+        "",
+        "| 決策基準日 | 大盤狀態 | 股票名稱 (代號) | 進場價 (T+1 O) | 出場價 (T+5 C) | 5D 漲跌幅 | 最大回撤 | 最大漲幅 | 結果 |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ])
+    for d in details:
+        win_lbl = "獲利" if d["win"] > 0.5 else "虧損"
+        lines.append(
+            f"| {d['target_date']} | {d['regime']} | {d['name']} ({d['symbol']}) | "
+            f"${d['entry_price']:.1f} | ${d['exit_price']:.1f} | "
+            f"`{d['return_5d']*100:+.2f}%` | `{d['max_drawdown']*100:.2f}%` | `+{d['max_profit']*100:.2f}%` | {win_lbl} |"
+        )
+    report_content = "\n".join(lines)
+    proj_report_path = PROJECT / "reports" / f"replay_report_{now_fn}.md"
+    d_report_path = Path("D:/secondbrain/Skills/Stock") / f"replay_report_{now_fn}.md"
+    e_report_path = Path("E:/OneDrive/Obsidian Vault/skills/Stock") / f"replay_report_{now_fn}.md"
+    saved_paths = []
+    for path in (proj_report_path, d_report_path, e_report_path):
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(report_content, encoding="utf-8")
+            saved_paths.append(str(path))
+        except Exception as e:
+            print(f"Error saving report to {path}: {e}")
+    return saved_paths[0] if saved_paths else ""
+
 def train_logistic_regression_pure(X: list[list[float]], y: list[int], lr: float = 0.1, l2: float = 0.01, epochs: int = 500) -> dict:
     w = [0.0, 0.15, 0.25, 0.15]
     N = len(y)
@@ -2493,6 +2587,21 @@ class Handler(SimpleHTTPRequestHandler):
                 from company.model.archive import load_archive, propose_update
                 self.send_json({**propose_update(), "archive": load_archive()})
                 return
+            if parsed.path == "/api/load-snapshots":
+                archive_path = PROJECT / "data" / "snapshots_archive.json"
+                d_path = Path("D:/secondbrain/Skills/Stock/snapshots_archive.json")
+                e_path = Path("E:/OneDrive/Obsidian Vault/skills/Stock/snapshots_archive.json")
+                snapshots = []
+                for path in (e_path, d_path, archive_path):
+                    if path.exists():
+                        try:
+                            snapshots = json.loads(path.read_text(encoding="utf-8"))
+                            if snapshots:
+                                break
+                        except Exception:
+                            pass
+                self.send_json({"snapshots": snapshots})
+                return
             super().do_GET()
         except Exception as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -2809,7 +2918,9 @@ class Handler(SimpleHTTPRequestHandler):
                     except Exception as e:
                         print(f"Error training weights for snapshots: {e}")
                 
-                self.send_json({
+                save_snapshots_to_archives(snapshots)
+                
+                result_data = {
                     "summary": {
                         "total_picks": total_evaluated,
                         "win_rate": overall_win_rate,
@@ -2827,7 +2938,12 @@ class Handler(SimpleHTTPRequestHandler):
                         "epoch_logs": epoch_logs
                     },
                     "details": details
-                })
+                }
+                
+                report_file = generate_and_save_replay_report(result_data)
+                result_data["saved_report_path"] = report_file
+                
+                self.send_json(result_data)
                 return
             if self.path == "/api/save-weights":
                 body = self.read_body()
@@ -2837,6 +2953,12 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 save_optimized_weights(weights)
                 self.send_json({"success": True, "message": "優化因子權重已成功保存且立即套用！"})
+                return
+            if self.path == "/api/save-snapshots":
+                body = self.read_body()
+                snapshots = body.get("snapshots") or []
+                res = save_snapshots_to_archives(snapshots)
+                self.send_json(res)
                 return
             self.send_json({"error": "not found"}, HTTPStatus.NOT_FOUND)
         except Exception as exc:
