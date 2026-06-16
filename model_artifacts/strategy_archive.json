@@ -935,6 +935,94 @@
           ]
         }
       ]
+    },
+    {
+      "timestamp": "2026-06-16T12:58:46.269379",
+      "pick_date": "2026-06-15",
+      "eval_date": "2026-06-16",
+      "agents": [
+        {
+          "agent": "🤖 Codex",
+          "n": 5,
+          "avg_return": 0.01414,
+          "picks": [
+            {
+              "symbol": "2330.TW",
+              "return": 0.01053
+            },
+            {
+              "symbol": "2409.TW",
+              "return": -0.0083
+            },
+            {
+              "symbol": "2337.TW",
+              "return": 0.04717
+            },
+            {
+              "symbol": "3711.TW",
+              "return": 0.00339
+            },
+            {
+              "symbol": "2383.TW",
+              "return": 0.01789
+            }
+          ]
+        },
+        {
+          "agent": "🌌 Antigravity",
+          "n": 5,
+          "avg_return": 0.03876,
+          "picks": [
+            {
+              "symbol": "2327.TW",
+              "return": 0.01064
+            },
+            {
+              "symbol": "3008.TW",
+              "return": 0.09955
+            },
+            {
+              "symbol": "2454.TW",
+              "return": 0.02013
+            },
+            {
+              "symbol": "2360.TW",
+              "return": 0.02649
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.03696
+            }
+          ]
+        },
+        {
+          "agent": "🧠 Claude",
+          "n": 5,
+          "avg_return": 0.03693,
+          "picks": [
+            {
+              "symbol": "2327.TW",
+              "return": 0.01064
+            },
+            {
+              "symbol": "2344.TW",
+              "return": 0.04233
+            },
+            {
+              "symbol": "2408.TW",
+              "return": 0.07459
+            },
+            {
+              "symbol": "2454.TW",
+              "return": 0.02013
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.03696
+            }
+          ]
+        }
+      ]
     }
   ]
 }
