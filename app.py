@@ -2771,7 +2771,30 @@ class Handler(SimpleHTTPRequestHandler):
                         res = calculate_potential_score(symbol, end)
                         potentials.append(res)
                     except Exception as e:
-                        print(f"Error calculating potential score for {symbol} on {end}: {e}")
+                        import traceback
+                        tb_str = traceback.format_exc()
+                        print(f"Error calculating potential score for {symbol} on {end}: {e}\n{tb_str}")
+                        potentials.append({
+                            "symbol": symbol,
+                            "name": symbol,
+                            "score": 0.0,
+                            "grade": "D",
+                            "grade_label": "D級 錯誤",
+                            "close": 0.0,
+                            "fair_range": [0.0, 0.0],
+                            "undervaluation_pct": 0.0,
+                            "safety_margin": 0.0,
+                            "catalysts": "計算錯誤",
+                            "warnings": [f"計算潛力得分時發生錯誤: {str(e)}", tb_str],
+                            "buy_range": "無資料",
+                            "stop_loss": "無資料",
+                            "take_profit": "無資料",
+                            "valuation_score": 0.0,
+                            "growth_score": 0.0,
+                            "quality_score": 0.0,
+                            "catalyst_score": 0.0,
+                            "risk_score": 0.0
+                        })
                 
                 potentials.sort(key=lambda item: item["score"], reverse=True)
                 
