@@ -377,8 +377,20 @@ def calculate_potential_score(symbol: str, as_of: str) -> dict:
         warnings = ["無顯著價值陷阱或轉弱警訊，財務結構穩健。"]
 
     # 取得股票名稱
-    from app import NAME_MAP
-    stock_name = NAME_MAP.get(clean_sym, clean_sym)
+    stock_name = clean_sym
+    try:
+        from company.data.universe import RAW_CANDIDATES, load_active_universe
+        temp_map = {item[0]: item[1] for item in RAW_CANDIDATES}
+        try:
+            active_univ = load_active_universe()
+            for s in active_univ:
+                code = s["symbol"].split(".")[0]
+                temp_map[code] = s["name"]
+        except Exception:
+            pass
+        stock_name = temp_map.get(clean_sym, clean_sym)
+    except Exception:
+        pass
 
     return {
         "symbol": symbol,
