@@ -305,9 +305,18 @@ def calculate_potential_score(symbol: str, as_of: str) -> dict:
     final_score = valuation_score + growth_score + quality_score + catalyst_score + risk_score - deductions
     final_score = max(0.0, min(100.0, round(final_score, 1)))
     
+    # A 級門檻：分數 >= 70 且安全邊際 (折價幅度) >= 15%
     if final_score >= 70.0:
-        grade = "A"
-        grade_label = "A級 長期潛力股"
+        if safety_margin >= 15.0:
+            grade = "A"
+            grade_label = "A級 長期潛力股"
+        else:
+            grade = "B"
+            grade_label = "B級 觀察股"
+            # 移除預設的「無顯著轉弱警訊」以顯示安全邊際不足警告
+            if "無顯著價值陷阱或轉弱警訊，財務結構穩健。" in warnings:
+                warnings.remove("無顯著價值陷阱或轉弱警訊，財務結構穩健。")
+            warnings.append("⚠️ 估值偏高 (安全邊際 < 15%)：雖評分達 A 級標準，但為防追高降為 B 級觀察股。")
     elif final_score >= 50.0:
         grade = "B"
         grade_label = "B級 觀察股"
