@@ -84,7 +84,10 @@ def calculate_potential_score(symbol: str, as_of: str) -> dict:
     
     # 取得歷史 PER/PBR 中位數 (250 天 lookback)
     s_per = view._data._per
-    sub_per = s_per.loc[s_per.index <= view.as_of]
+    if isinstance(s_per.index, pd.DatetimeIndex) and len(s_per) > 0:
+        sub_per = s_per.loc[s_per.index <= view.as_of]
+    else:
+        sub_per = pd.DataFrame(columns=["PER", "PBR", "dividend_yield"])
     
     div_yield = 0.0
     if len(sub_per) and "dividend_yield" in sub_per.columns:
@@ -168,7 +171,7 @@ def calculate_potential_score(symbol: str, as_of: str) -> dict:
             
     accel_pts = 0.0
     prev_avg_yoy = 0.0
-    if len(view._data._rev_yoy) > 0:
+    if len(view._data._rev_yoy) > 0 and isinstance(view._data._rev_yoy.index, pd.DatetimeIndex):
         rev_sub = view._data._rev_yoy.loc[view._data._rev_yoy.index <= view.as_of].tail(3)
         if len(rev_sub) >= 2:
             prev_avg_yoy = float(rev_sub.iloc[:-1].mean())
