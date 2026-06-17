@@ -726,6 +726,66 @@ async function recommendToday() {
         }).join("");
       }
     }
+
+    const codexLongTerm = data.codex_long_term || {};
+    const codexLongTermPicks = asArray(codexLongTerm.picks);
+    const codexLongTermRows = $("codexLongTermRows");
+    const codexLongTermStatus = $("codexLongTermStatus");
+    if (codexLongTermRows) {
+      if (codexLongTermPicks.length === 0) {
+        codexLongTermRows.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--muted); padding: 20px;">目前無 Codex 長投評分資料。</td></tr>`;
+        if (codexLongTermStatus) codexLongTermStatus.textContent = codexLongTerm.error ? `錯誤: ${codexLongTerm.error}` : "無資料";
+      } else {
+        if (codexLongTermStatus) codexLongTermStatus.textContent = `已完成 (${codexLongTerm.scanned || codexLongTermPicks.length} 檔)`;
+        codexLongTermRows.innerHTML = codexLongTermPicks.map(item => {
+          let gradeColor = "#ef4444";
+          let gradeBg = "rgba(239, 68, 68, 0.1)";
+          if (item.grade === "A") {
+            gradeColor = "#10b981";
+            gradeBg = "rgba(16, 185, 129, 0.1)";
+          } else if (item.grade === "B") {
+            gradeColor = "#0369a1";
+            gradeBg = "rgba(14, 165, 233, 0.12)";
+          } else if (item.grade === "C") {
+            gradeColor = "#f59e0b";
+            gradeBg = "rgba(245, 158, 11, 0.1)";
+          }
+          const scores = item.scores || {};
+          const reasonsHtml = asArray(item.reasons).map(r => `<div style="font-size: 11px; line-height: 1.35;">${r}</div>`).join("");
+          const warningsHtml = asArray(item.warnings).map(w => {
+            const danger = w.includes("陷阱") || w.includes("不足") || w.includes("偏弱");
+            return `<div style="font-size: 11px; line-height: 1.35; color: ${danger ? "#dc2626" : "var(--muted)"};">${w}</div>`;
+          }).join("");
+          const margin = Number(item.margin_of_safety || 0);
+          const marginColor = margin >= 15 ? "#10b981" : margin >= 0 ? "var(--ink)" : "#ef4444";
+          return `
+            <tr>
+              <td style="font-weight: bold; cursor: pointer; color: var(--blue);" onclick="toggleSymbol('${item.symbol}')" title="點擊即可加入/移除 ${item.symbol}">
+                ${item.symbol}<br><span style="font-size: 11px; color: var(--muted); font-weight: normal;">${item.name || item.symbol}</span>
+              </td>
+              <td style="text-align: center;">
+                <span class="pill" style="background: ${gradeBg}; color: ${gradeColor}; border-color: ${gradeColor}; font-weight: bold; font-size: 11px; padding: 3px 6px;">
+                  ${item.grade_label}
+                </span>
+                <div style="font-weight: bold; margin-top: 4px; font-size: 12px; color: ${gradeColor};">${item.score} 分</div>
+                <div style="font-size: 10px; color: var(--muted); margin-top: 4px; font-family: monospace;">${item.action || ""}</div>
+              </td>
+              <td style="font-weight: bold; font-family: monospace; text-align: right;">${item.close} 元</td>
+              <td style="font-family: monospace; text-align: center;">${item.fair_range?.[0] ?? "-"} - ${item.fair_range?.[1] ?? "-"} 元</td>
+              <td style="font-weight: bold; color: ${marginColor}; font-family: monospace; text-align: right;">${margin >= 0 ? "+" : ""}${margin}%</td>
+              <td style="font-size: 10px; color: var(--muted); line-height: 1.35; font-family: monospace; text-align: left;">
+                估值:${scores.valuation ?? "-"} 成長:${scores.growth ?? "-"}<br>
+                品質:${scores.quality ?? "-"} 催化:${scores.catalyst ?? "-"}<br>
+                風險:${scores.risk ?? "-"}
+              </td>
+              <td style="max-width: 190px; word-wrap: break-word; white-space: normal; text-align: left;">${reasonsHtml}</td>
+              <td style="max-width: 210px; word-wrap: break-word; white-space: normal; text-align: left;">${warningsHtml}</td>
+              <td style="font-size: 12px; font-family: monospace; text-align: center;">${item.buy_range || "-"}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+    }
     
     // Update portfolio allocation
     updatePortfolioAllocation(data.market_index, candidates);

@@ -2775,12 +2775,37 @@ class Handler(SimpleHTTPRequestHandler):
                 
                 potentials.sort(key=lambda item: item["score"], reverse=True)
                 
+                try:
+                    from company.screener.codex_long_term_3_6m import scan_codex_long_term
+                    codex_long_term = scan_codex_long_term(
+                        as_of=end,
+                        symbols=body.get("symbols") or None,
+                        limit=int(body.get("long_term_limit", 10)),
+                        max_scan=int(body.get("long_term_max_scan", 100)),
+                        cached_only=not bool(body.get("refresh_long_term", False)),
+                    )
+                except Exception as e:
+                    codex_long_term = {"agent": "Codex 3-6M Long-Term Scorer", "error": str(e), "picks": []}
+
                 self.send_json({
                     "as_of": end,
                     "market_index": market_info,
                     "candidates": candidates[: int(body.get("limit", 5))],
-                    "potentials": potentials
+                    "potentials": potentials,
+                    "codex_long_term": codex_long_term
                 })
+                return
+            if self.path == "/api/codex-long-term":
+                body = self.read_body()
+                end = body.get("end") or datetime.now().date().isoformat()
+                from company.screener.codex_long_term_3_6m import scan_codex_long_term
+                self.send_json(scan_codex_long_term(
+                    as_of=end,
+                    symbols=body.get("symbols") or None,
+                    limit=int(body.get("limit", 10)),
+                    max_scan=int(body.get("max_scan", 100)),
+                    cached_only=not bool(body.get("refresh", False)),
+                ))
                 return
             if self.path == "/api/next-day-plan":
                 body = self.read_body()
