@@ -2736,10 +2736,29 @@ class Handler(SimpleHTTPRequestHandler):
                         print(f"Error recommending for {symbol}: {e}")
                 
                 candidates.sort(key=lambda item: (GRADE_ORDER.get(item.get("grade"), 0), item.get("codex_score", item["score"])), reverse=True)
+                
+                # 計算中期潛力股評分
+                symbols_for_potentials = body.get("symbols") or []
+                symbols_for_potentials = [s.strip() for s in symbols_for_potentials if s.strip()]
+                if not symbols_for_potentials:
+                    symbols_for_potentials = [item["symbol"] for item in DISCOVERY_UNIVERSE]
+                
+                potentials = []
+                for symbol in symbols_for_potentials:
+                    try:
+                        from company.screener.potential_3_6m import calculate_potential_score
+                        res = calculate_potential_score(symbol, end)
+                        potentials.append(res)
+                    except Exception as e:
+                        print(f"Error calculating potential score for {symbol} on {end}: {e}")
+                
+                potentials.sort(key=lambda item: item["score"], reverse=True)
+                
                 self.send_json({
                     "as_of": end,
                     "market_index": market_info,
-                    "candidates": candidates[: int(body.get("limit", 5))]
+                    "candidates": candidates[: int(body.get("limit", 5))],
+                    "potentials": potentials
                 })
                 return
             if self.path == "/api/next-day-plan":

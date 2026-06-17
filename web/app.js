@@ -656,6 +656,77 @@ async function recommendToday() {
         : "<p style='color: var(--muted); padding: 8px;'>無 C 級禁買股</p>";
     }
     
+    // 渲染中期潛力股
+    const potentials = asArray(data.potentials);
+    const midTermRows = $("midTermPotentialRows");
+    const midTermStatus = $("midTermStatus");
+    if (midTermRows) {
+      if (potentials.length === 0) {
+        midTermRows.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--muted); padding: 20px;">目前無符合條件的中期潛力股資料。</td></tr>`;
+        if (midTermStatus) midTermStatus.textContent = "無資料";
+      } else {
+        if (midTermStatus) midTermStatus.textContent = `已完成 (${potentials.length} 檔)`;
+        
+        midTermRows.innerHTML = potentials.map(item => {
+          let gradeColor = "#ef4444";
+          let gradeBg = "rgba(239, 68, 68, 0.1)";
+          if (item.grade === "A") {
+            gradeColor = "#10b981";
+            gradeBg = "rgba(16, 185, 129, 0.1)";
+          } else if (item.grade === "B") {
+            gradeColor = "#f59e0b";
+            gradeBg = "rgba(245, 158, 11, 0.1)";
+          } else if (item.grade === "C") {
+            gradeColor = "#3b82f6";
+            gradeBg = "rgba(59, 130, 246, 0.1)";
+          }
+          
+          const warningsHtml = asArray(item.warnings).map(w => {
+            const isDanger = w.includes("警告") || w.includes("陷阱") || w.includes("警訊") || w.includes("⚠️");
+            const wColor = isDanger ? "#dc2626" : "var(--muted)";
+            return `<div style="color: ${wColor}; font-size: 11px; margin-bottom: 2px; text-align: left;">${w}</div>`;
+          }).join("");
+          
+          const safetyColor = item.safety_margin >= 20 ? "#10b981" : item.safety_margin >= 0 ? "var(--ink)" : "#ef4444";
+          
+          return `
+            <tr>
+              <td style="font-weight: bold; cursor: pointer; color: var(--blue);" onclick="toggleSymbol('${item.symbol}')" title="點擊即可加入/移除 ${item.symbol}">
+                ${item.symbol}<br><span style="font-size: 11px; color: var(--muted); font-weight: normal;">${item.name}</span>
+              </td>
+              <td style="text-align: center;">
+                <span class="pill" style="background: ${gradeBg}; color: ${gradeColor}; border-color: ${gradeColor}; font-weight: bold; font-size: 11px; padding: 3px 6px;">
+                  ${item.grade_label}
+                </span>
+                <div style="font-weight: bold; margin-top: 4px; font-size: 12px; color: ${gradeColor};">${item.score} 分</div>
+                <div style="font-size: 9px; color: var(--muted); margin-top: 4px; line-height: 1.2; font-family: monospace; text-align: left;">
+                  估值:${item.valuation_score} 成長:${item.growth_score}<br>
+                  品質:${item.quality_score} 催化:${item.catalyst_score}<br>
+                  風險:${item.risk_score}
+                </div>
+              </td>
+              <td style="font-weight: bold; font-family: monospace; text-align: right;">${item.close} 元</td>
+              <td style="font-family: monospace; text-align: center;">${item.fair_range[0]} - ${item.fair_range[1]} 元</td>
+              <td style="font-weight: bold; color: ${safetyColor}; font-family: monospace; text-align: right;">
+                ${item.safety_margin >= 0 ? "+" : ""}${item.safety_margin}%
+              </td>
+              <td style="font-size: 12px; max-width: 180px; word-wrap: break-word; white-space: normal; line-height: 1.4; text-align: left;">
+                ${item.catalysts}
+              </td>
+              <td style="max-width: 200px; word-wrap: break-word; white-space: normal; line-height: 1.3;">
+                ${warningsHtml}
+              </td>
+              <td style="font-size: 12px; font-family: monospace; line-height: 1.3; text-align: center;">${item.buy_range}</td>
+              <td style="font-size: 11px; color: var(--muted); max-width: 200px; word-wrap: break-word; white-space: normal; line-height: 1.3; text-align: left;">
+                <strong>停損：</strong>${item.stop_loss}<br>
+                <strong>重檢：</strong>${item.take_profit}
+              </td>
+            </tr>
+          `;
+        }).join("");
+      }
+    }
+    
     // Update portfolio allocation
     updatePortfolioAllocation(data.market_index, candidates);
   } catch (err) {
