@@ -2737,11 +2737,32 @@ class Handler(SimpleHTTPRequestHandler):
                 
                 candidates.sort(key=lambda item: (GRADE_ORDER.get(item.get("grade"), 0), item.get("codex_score", item["score"])), reverse=True)
                 
-                # 計算中期潛力股評分
+                # 計算中期潛力股評分 (從百大優質股母池中篩選適合長投股票)
                 symbols_for_potentials = body.get("symbols") or []
                 symbols_for_potentials = [s.strip() for s in symbols_for_potentials if s.strip()]
+                
                 if not symbols_for_potentials:
-                    symbols_for_potentials = [item["symbol"] for item in DISCOVERY_UNIVERSE]
+                    # 如果使用者輸入為空，優先從 active_pool.json (百大優質母池) 中載入已快取的股票
+                    pool_path = PROJECT / "model_artifacts" / "active_pool.json"
+                    if pool_path.exists():
+                        try:
+                            with pool_path.open("r", encoding="utf-8") as f:
+                                pool_data = json.load(f)
+                            pool_syms = [s["symbol"] for s in pool_data.get("stocks", [])]
+                            
+                            # 為了防止 Render 連線逾時與 API 流量限制，僅對已下載快取資料的母池個股進行掃描
+                            cache_dir = PROJECT / "data_cache"
+                            symbols_for_potentials = []
+                            for sym in pool_syms:
+                                clean_code = sym.split(".")[0]
+                                if (cache_dir / f"{clean_code}_price.csv").exists():
+                                    symbols_for_potentials.append(sym)
+                        except Exception as e:
+                            print(f"Error loading active pool for potentials: {e}")
+                    
+                    # 若母池無快取資料，則 fallback 載入 DISCOVERY_UNIVERSE 
+                    if not symbols_for_potentials:
+                        symbols_for_potentials = [item["symbol"] for item in DISCOVERY_UNIVERSE]
                 
                 potentials = []
                 for symbol in symbols_for_potentials:
