@@ -90,9 +90,12 @@ def calculate_potential_score(symbol: str, as_of: str) -> dict:
     if len(sub_per) and "dividend_yield" in sub_per.columns:
         div_yield = float(sub_per["dividend_yield"].iloc[-1]) if not pd.isna(sub_per["dividend_yield"].iloc[-1]) else 0.0
 
+    has_per = "PER" in sub_per.columns
+    has_pbr = "PBR" in sub_per.columns
+
     hist_per_sub = sub_per.tail(250)
-    median_per = float(hist_per_sub["PER"].median()) if len(hist_per_sub) and not hist_per_sub["PER"].isna().all() else 15.0
-    median_pbr = float(hist_per_sub["PBR"].median()) if len(hist_per_sub) and not hist_per_sub["PBR"].isna().all() else 2.0
+    median_per = float(hist_per_sub["PER"].median()) if has_per and len(hist_per_sub) and not hist_per_sub["PER"].isna().all() else 15.0
+    median_pbr = float(hist_per_sub["PBR"].median()) if has_pbr and len(hist_per_sub) and not hist_per_sub["PBR"].isna().all() else 2.0
 
     # 避免除以零或無意義的負值
     eps = (close / per) if (per is not None and per > 0) else None
@@ -175,9 +178,15 @@ def calculate_potential_score(symbol: str, as_of: str) -> dict:
     eps_pts = 0.0
     # 建立合併價格與 PER 的 DataFrame 來算歷史 EPS 趨勢
     df_prices = pd.DataFrame({"close": closes}, index=pd.to_datetime(dates))
-    merged_df = pd.merge(df_prices, sub_per[["PER", "PBR"]], left_index=True, right_index=True, how="inner")
-    merged_df["EPS"] = merged_df["close"] / merged_df["PER"]
-    merged_df["ROE"] = merged_df["PBR"] / merged_df["PER"]
+    if has_per and has_pbr:
+        merged_df = pd.merge(df_prices, sub_per[["PER", "PBR"]], left_index=True, right_index=True, how="inner")
+        if not merged_df.empty and "PER" in merged_df.columns and "PBR" in merged_df.columns:
+            merged_df["EPS"] = merged_df["close"] / merged_df["PER"]
+            merged_df["ROE"] = merged_df["PBR"] / merged_df["PER"]
+        else:
+            merged_df = pd.DataFrame(columns=["close", "PER", "PBR", "EPS", "ROE"])
+    else:
+        merged_df = pd.DataFrame(columns=["close", "PER", "PBR", "EPS", "ROE"])
     
     if len(merged_df) >= 90:
         eps_recent = merged_df["EPS"].tail(10).mean()
