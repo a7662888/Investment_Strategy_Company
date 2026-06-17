@@ -14,7 +14,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from company.data.single_stock import load as load_single_stock
@@ -68,6 +67,37 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return default
+
+
+def _mean(values: list[float]) -> float:
+    vals = [float(v) for v in values if math.isfinite(float(v))]
+    return sum(vals) / len(vals) if vals else 0.0
+
+
+def _std(values: list[float]) -> float:
+    vals = [float(v) for v in values if math.isfinite(float(v))]
+    if not vals:
+        return 0.0
+    avg = sum(vals) / len(vals)
+    return math.sqrt(sum((v - avg) ** 2 for v in vals) / len(vals))
+
+
+def _clean_median(series: pd.Series, default: float) -> float:
+    vals = []
+    for value in series.tolist():
+        try:
+            f = float(value)
+            if math.isfinite(f):
+                vals.append(f)
+        except Exception:
+            pass
+    if not vals:
+        return default
+    vals.sort()
+    mid = len(vals) // 2
+    if len(vals) % 2:
+        return vals[mid]
+    return (vals[mid - 1] + vals[mid]) / 2.0
 
 
 def _score_margin(margin: float) -> float:
@@ -138,8 +168,8 @@ def score_symbol(symbol: str, as_of: str, name: str | None = None, sector: str =
     rev_yoy = view.rev_yoy()
     per_df = data._per.loc[data._per.index <= as_of_ts] if len(data._per) else pd.DataFrame()
     hist_per = per_df.tail(250)
-    median_per = _safe_float(hist_per["PER"].replace([np.inf, -np.inf], np.nan).dropna().median(), 15.0) if len(hist_per) and "PER" in hist_per else 15.0
-    median_pbr = _safe_float(hist_per["PBR"].replace([np.inf, -np.inf], np.nan).dropna().median(), 2.0) if len(hist_per) and "PBR" in hist_per else 2.0
+    median_per = _clean_median(hist_per["PER"], 15.0) if len(hist_per) and "PER" in hist_per else 15.0
+    median_pbr = _clean_median(hist_per["PBR"], 2.0) if len(hist_per) and "PBR" in hist_per else 2.0
     div_yield = _safe_float(per_df["dividend_yield"].iloc[-1], 0.0) if len(per_df) and "dividend_yield" in per_df else 0.0
 
     eps = close / per if per and per > 0 else None
@@ -196,10 +226,10 @@ def score_symbol(symbol: str, as_of: str, name: str | None = None, sector: str =
     quality_score = min(20.0, roe_score + leverage_score + dividend_score)
 
     inst20 = view.inst_net(20)
-    avg_vol20 = float(np.mean(volumes[-20:])) if len(volumes) >= 20 else 1.0
-    ma20 = float(np.mean(closes[-20:])) if len(closes) >= 20 else close
-    ma60 = float(np.mean(closes[-60:])) if len(closes) >= 60 else close
-    ma120 = float(np.mean(closes[-120:])) if len(closes) >= 120 else ma60
+    avg_vol20 = _mean(volumes[-20:]) if len(volumes) >= 20 else 1.0
+    ma20 = _mean(closes[-20:]) if len(closes) >= 20 else close
+    ma60 = _mean(closes[-60:]) if len(closes) >= 60 else close
+    ma120 = _mean(closes[-120:]) if len(closes) >= 120 else ma60
     catalyst_score = 0.0
     if rev_yoy is not None and rev_yoy >= 0.10:
         catalyst_score += 4.0
@@ -214,7 +244,7 @@ def score_symbol(symbol: str, as_of: str, name: str | None = None, sector: str =
     catalyst_score = min(15.0, catalyst_score)
 
     rets = [closes[i] / closes[i - 1] - 1.0 for i in range(max(1, len(closes) - 20), len(closes))]
-    vol20 = float(np.std(rets)) if rets else 0.03
+    vol20 = _std(rets) if rets else 0.03
     high120 = max(closes[-120:]) if len(closes) >= 120 else max(closes)
     drawdown = close / high120 - 1.0 if high120 > 0 else 0.0
     risk_score = 0.0
