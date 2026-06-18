@@ -1090,6 +1090,94 @@
           "picks": []
         }
       ]
+    },
+    {
+      "timestamp": "2026-06-18T11:54:51.553717",
+      "pick_date": "2026-06-17",
+      "eval_date": "2026-06-18",
+      "agents": [
+        {
+          "agent": "🤖 Codex",
+          "n": 5,
+          "avg_return": 0.03718,
+          "picks": [
+            {
+              "symbol": "2330.TW",
+              "return": 0.01048
+            },
+            {
+              "symbol": "2337.TW",
+              "return": 0.04644
+            },
+            {
+              "symbol": "2382.TW",
+              "return": 0.00535
+            },
+            {
+              "symbol": "6213.TW",
+              "return": 0.04673
+            },
+            {
+              "symbol": "2383.TW",
+              "return": 0.07692
+            }
+          ]
+        },
+        {
+          "agent": "🌌 Antigravity",
+          "n": 5,
+          "avg_return": 0.04305,
+          "picks": [
+            {
+              "symbol": "3008.TW",
+              "return": 0.00972
+            },
+            {
+              "symbol": "2327.TW",
+              "return": 0.09756
+            },
+            {
+              "symbol": "2383.TW",
+              "return": 0.07692
+            },
+            {
+              "symbol": "6213.TW",
+              "return": 0.04673
+            },
+            {
+              "symbol": "2454.TW",
+              "return": -0.0157
+            }
+          ]
+        },
+        {
+          "agent": "🧠 Claude",
+          "n": 5,
+          "avg_return": 0.07115,
+          "picks": [
+            {
+              "symbol": "2344.TW",
+              "return": 0.09799
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.09898
+            },
+            {
+              "symbol": "2408.TW",
+              "return": 0.05149
+            },
+            {
+              "symbol": "2327.TW",
+              "return": 0.09756
+            },
+            {
+              "symbol": "3008.TW",
+              "return": 0.00972
+            }
+          ]
+        }
+      ]
     }
   ]
 }
