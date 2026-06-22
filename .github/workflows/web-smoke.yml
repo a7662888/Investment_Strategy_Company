@@ -22,6 +22,8 @@ jobs:
           python-version: "3.11"
       - name: Check frontend syntax
         run: node --check web/app.js
+      - name: Install strategy test dependencies
+        run: pip install --quiet -r requirements-strategy.txt
       - name: Run app integration tests
         run: |
           python tests/test_app_integration.py
