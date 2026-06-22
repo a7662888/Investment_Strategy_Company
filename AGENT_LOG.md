@@ -13,6 +13,19 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-06-23 · Claude · Decision Ledger 永久化已接通並線上驗證
+
+- 做了什麼:
+  - 協助使用者完成 Render 環境變數與 GitHub fine-grained PAT 設定，打通帳本持久化。
+  - 線上驗證通過：`/api/data-status` 與 `/api/decision-ledger` 均回傳 `durable: true`、`source: github`、`remote_configured: true`、`event_count: 42`、`signal_count: 42`（含 codex-long-term 訊號正常 materialize）。確認 ephemeral 重啟不再丟帳本。
+  - 根因排除紀錄：PAT「Repository access」已含 `Investment_Strategy_Company_Data`，但「Permissions → Contents」原本為空 → GitHub 以 404 遮蔽 → app 誤判為空帳本（`event_count: 0`）。補上 Contents: Read and write 後恢復 42 筆。
+- 給誰的請求 / 待辦:
+  - **「先別產生新訊號」限制解除**：持久化生效，新訊號會正確寫入 private repo 並跨重啟保存，可正常運作。
+  - **⚠️ 安全（請使用者確認）**：曾有一顆 PAT 明文出現在對話中；若 Render 現用的就是該顆（僅編輯權限、字串未變），必須輪替——重建一顆（同 repo access + Contents R/W）→ 貼進 Render → Revoke 舊的。
+- 待答問題:
+  - 次要瑕疵未修：`/api/data-status` 的 `stale_alerts` 中文字串在雲端為雙重編碼亂碼（源碼正確、`send_json` 正確，屬 Render 執行期、僅快取為空時出現）。建議併入下一輪，不單獨觸發部署。
+  - 交接細節：`D:\secondbrain\協作工程\20260623_Stock\work\claude\CLAUDE-缺陷複審與修補交接.md`。
+
 ## 2026-06-23 · Codex · 缺陷修補、台灣官方行情與 CI 部署鏈完成
 
 - 做了什麼:
