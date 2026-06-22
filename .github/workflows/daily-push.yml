@@ -1,0 +1,35 @@
+name: Daily Decision Push
+
+# 零成本自動化定時執行推送：每交易日（週一至週五）台灣收盤並完成績效更新後，
+# 自動計算明日計畫與 AI 診斷，並將結果推送至使用者的 Discord 與 Telegram 頻道。
+# 台灣時間 16:30（08:30 UTC）觸發。
+on:
+  schedule:
+    - cron: "30 8 * * 1-5"
+  workflow_dispatch: {}  # 支援手動觸發測試
+
+jobs:
+  push-notifications:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # 本專案的核心解析皆為純標準庫，故不需安裝額外重型依賴以保持秒級執行
+
+      - name: Execute Daily Decision Push
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python run_daily_push.py
