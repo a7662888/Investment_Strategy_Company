@@ -155,6 +155,8 @@ def yahoo_json(url: str) -> dict:
 
 
 _SSL_CONTEXT = ssl.create_default_context()
+_OFFICIAL_QUOTE_CACHE: dict = {"at": 0.0, "items": []}
+_OFFICIAL_QUOTE_TTL = 300.0
 
 
 def http_json(url: str, headers: dict[str, str] | None = None, *, timeout: float = 10.0, retries: int = 1) -> dict:
@@ -196,6 +198,119 @@ def twse_market_timestamp(date_text: str | None, time_text: str | None) -> int |
         except ValueError:
             continue
     return None
+
+
+def roc_date_to_iso(value: object) -> str | None:
+    digits = "".join(character for character in str(value or "") if character.isdigit())
+    if len(digits) != 7:
+        return None
+    try:
+        year = int(digits[:3]) + 1911
+        return datetime(year, int(digits[3:5]), int(digits[5:7])).date().isoformat()
+    except ValueError:
+        return None
+
+
+def _official_quote_item(
+    *,
+    symbol: str,
+    name: object,
+    date_value: object,
+    close_value: object,
+    change_value: object,
+    open_value: object,
+    high_value: object,
+    low_value: object,
+    volume_value: object,
+    source: str,
+) -> dict | None:
+    market_date = roc_date_to_iso(date_value)
+    close = parse_float(close_value)
+    if market_date is None or close is None:
+        return None
+    change = parse_float(change_value)
+    previous = None if change is None else close - change
+    change_pct = 0.0 if not previous else change / previous * 100.0
+    market_time = datetime.fromisoformat(f"{market_date}T13:30:00").replace(
+        tzinfo=timezone(timedelta(hours=8))
+    )
+    return {
+        "symbol": symbol,
+        "shortName": str(name or symbol),
+        "regularMarketPrice": close,
+        "regularMarketChangePercent": change_pct,
+        "regularMarketTime": int(market_time.timestamp()),
+        "marketDate": market_date,
+        "marketTime": "13:30:00",
+        "open": parse_float(open_value),
+        "dayHigh": parse_float(high_value),
+        "dayLow": parse_float(low_value),
+        "volume": parse_float(volume_value),
+        "source": source,
+        "realtimeStatus": "官方盤後定稿，不是盤中即時報價",
+    }
+
+
+def fetch_official_daily_quotes(symbols: list[str]) -> list[dict]:
+    """Fetch authoritative TWSE/TPEx daily closes with a short process cache."""
+    now = time.monotonic()
+    cached = _OFFICIAL_QUOTE_CACHE["items"]
+    if cached and now - _OFFICIAL_QUOTE_CACHE["at"] < _OFFICIAL_QUOTE_TTL:
+        wanted = set(symbols)
+        return [dict(item) for item in cached if item["symbol"] in wanted]
+
+    items: dict[str, dict] = {}
+    sources = (
+        (
+            "twse_openapi",
+            "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+            "TWSE OpenAPI official close",
+        ),
+        (
+            "tpex_openapi",
+            "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes",
+            "TPEx OpenAPI official close",
+        ),
+    )
+    for provider, url, source in sources:
+        started = time.perf_counter()
+        try:
+            rows = http_json(url, timeout=8.0, retries=1)
+            for row in rows if isinstance(rows, list) else []:
+                code = str(row.get("Code") or row.get("SecuritiesCompanyCode") or "").strip()
+                if not code:
+                    continue
+                item = _official_quote_item(
+                    symbol=f"{code}.TW",
+                    name=row.get("Name") or row.get("CompanyName"),
+                    date_value=row.get("Date"),
+                    close_value=row.get("ClosingPrice") or row.get("Close"),
+                    change_value=row.get("Change"),
+                    open_value=row.get("OpeningPrice") or row.get("Open"),
+                    high_value=row.get("HighestPrice") or row.get("High"),
+                    low_value=row.get("LowestPrice") or row.get("Low"),
+                    volume_value=row.get("TradeVolume") or row.get("TradingShares"),
+                    source=source,
+                )
+                if item and item["symbol"] not in items:
+                    items[item["symbol"]] = item
+            record_provider_status(provider, "ok" if rows else "empty", started, rows=len(rows or []))
+        except Exception as exc:
+            record_provider_status(provider, "failed", started, error=f"{type(exc).__name__}: {exc}")
+
+    cached_items = list(items.values())
+    _OFFICIAL_QUOTE_CACHE.update(at=now, items=cached_items)
+    wanted = set(symbols)
+    return [dict(item) for item in cached_items if item["symbol"] in wanted]
+
+
+def is_tw_market_session(now: datetime | None = None) -> bool:
+    current = now or datetime.now(timezone(timedelta(hours=8)))
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone(timedelta(hours=8)))
+    local = current.astimezone(timezone(timedelta(hours=8)))
+    minutes = local.hour * 60 + local.minute
+    return local.weekday() < 5 and 8 * 60 + 55 <= minutes <= 13 * 60 + 40
 
 
 def fetch_twse_mis_quotes(symbols: list[str]) -> list[dict]:
@@ -432,6 +547,12 @@ def fetch_quote(symbols: list[str]) -> dict:
         record_provider_status("twse_mis", "failed", started, error=f"{type(exc).__name__}: {exc}")
 
     missing = [symbol for symbol in symbols if symbol not in by_symbol]
+    market_open = is_tw_market_session()
+    if missing and not market_open:
+        for item in fetch_official_daily_quotes(missing):
+            by_symbol[item["symbol"]] = item
+
+    missing = [symbol for symbol in symbols if symbol not in by_symbol]
     if missing:
         started = time.perf_counter()
         try:
@@ -441,6 +562,11 @@ def fetch_quote(symbols: list[str]) -> dict:
             record_provider_status("yahoo_intraday", "ok" if items else "empty", started, rows=len(items))
         except Exception as exc:
             record_provider_status("yahoo_intraday", "failed", started, error=f"{type(exc).__name__}: {exc}")
+
+    missing = [symbol for symbol in symbols if symbol not in by_symbol]
+    if missing and market_open:
+        for item in fetch_official_daily_quotes(missing):
+            by_symbol[item["symbol"]] = item
 
     missing = [symbol for symbol in symbols if symbol not in by_symbol]
     if missing:
@@ -469,7 +595,10 @@ def fetch_quote(symbols: list[str]) -> dict:
 
     return {
         "quoteResponse": {"result": [by_symbol[symbol] for symbol in symbols if symbol in by_symbol]},
-        "quotePolicy": "TWSE/TPEx MIS first; Yahoo 1m intraday cloud fallback; Yahoo daily only as last resort.",
+        "quotePolicy": (
+            "During market: TWSE/TPEx MIS, Yahoo 1m, official daily close, Yahoo fallbacks. "
+            "Outside market: TWSE/TPEx MIS, official daily close, Yahoo fallbacks."
+        ),
     }
 
 
@@ -629,6 +758,7 @@ def build_version() -> dict:
         "render_service_name": os.environ.get("RENDER_SERVICE_NAME"),
         "features": {
             "quote_yahoo_1m_fallback": True,
+            "quote_twse_tpex_official_close": True,
             "train_model_training": True,
             "train_optimizer_audit": True,
             "train_threshold_reviews": True,
@@ -667,7 +797,16 @@ def get_data_status() -> dict:
         ledger = {"durable": False, "source": "unavailable", "error": type(exc).__name__}
 
     providers = {name: dict(value) for name, value in PROVIDER_RUNTIME.items()}
-    for name in ("twse_mis", "yahoo_intraday", "yahoo_quote", "yahoo_daily", "news_rss", "gemini"):
+    for name in (
+        "twse_mis",
+        "twse_openapi",
+        "tpex_openapi",
+        "yahoo_intraday",
+        "yahoo_quote",
+        "yahoo_daily",
+        "news_rss",
+        "gemini",
+    ):
         providers.setdefault(name, {"status": "unknown", "last_checked_at": None})
     return {
         "status": "ok" if not stale_alerts and ledger.get("durable") else "degraded",
