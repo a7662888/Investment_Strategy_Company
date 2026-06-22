@@ -4,6 +4,8 @@ import csv
 import json
 import math
 import os
+import random
+import ssl
 import sys
 import time
 import urllib.parse
@@ -152,10 +154,23 @@ def yahoo_json(url: str) -> dict:
     return http_json(url, {"User-Agent": "Mozilla/5.0"})
 
 
-def http_json(url: str, headers: dict[str, str] | None = None) -> dict:
-    request = urllib.request.Request(url, headers=headers or {"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(request, timeout=25) as response:
-        return json.loads(response.read().decode("utf-8"))
+_SSL_CONTEXT = ssl.create_default_context()
+
+
+def http_json(url: str, headers: dict[str, str] | None = None, *, timeout: float = 10.0, retries: int = 1) -> dict:
+    last_exc: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            request = urllib.request.Request(url, headers=headers or {"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(request, timeout=timeout, context=_SSL_CONTEXT) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except Exception as exc:  # noqa: BLE001 - retry transient network/SSL errors once
+            last_exc = exc
+            if attempt < retries:
+                time.sleep(0.3 + random.random() * 0.4)
+                continue
+            raise
+    raise last_exc  # pragma: no cover - defensive
 
 
 def parse_float(value: object) -> float | None:
@@ -208,6 +223,8 @@ def fetch_twse_mis_quotes(symbols: list[str]) -> list[dict]:
             "User-Agent": "Mozilla/5.0",
             "Referer": "https://mis.twse.com.tw/stock/fibest.jsp",
         },
+        timeout=6.0,
+        retries=0,
     )
 
     results: dict[str, dict] = {}
@@ -272,10 +289,16 @@ def fetch_yahoo_intraday_quotes(symbols: list[str]) -> list[dict]:
             "includePrePost": "false",
         }
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?{urllib.parse.urlencode(params)}"
-        payload = yahoo_json(url)
-        if payload["chart"].get("error"):
+        try:
+            payload = yahoo_json(url)
+        except Exception:
+            # One bad/throttled symbol must not discard quotes already collected.
             continue
-        chart = payload["chart"]["result"][0]
+        chart_block = payload.get("chart") or {}
+        chart_results = chart_block.get("result")
+        if chart_block.get("error") or not chart_results:
+            continue
+        chart = chart_results[0]
         meta = chart.get("meta", {})
         quote = (chart.get("indicators", {}).get("quote") or [{}])[0]
         timestamps = chart.get("timestamp") or []
@@ -534,16 +557,25 @@ def fetch_history(symbol: str, start_date: str, end_date: str) -> list[dict]:
     }
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(symbol)}?{urllib.parse.urlencode(params)}"
     payload = yahoo_json(url)
-    if payload["chart"].get("error"):
-        raise RuntimeError(payload["chart"]["error"])
+    chart_block = payload.get("chart") or {}
+    if chart_block.get("error"):
+        raise RuntimeError(chart_block["error"])
+    chart_results = chart_block.get("result")
+    if not chart_results:
+        raise RuntimeError(f"yahoo chart empty for {symbol}")
 
-    result = payload["chart"]["result"][0]
+    result = chart_results[0]
     timestamps = result.get("timestamp") or []
     quote = result["indicators"]["quote"][0]
+    # adjclose is back-adjusted for dividends/splits; required for unbiased multi-month returns.
+    adjclose_series = ((result.get("indicators", {}).get("adjclose") or [{}])[0]).get("adjclose") or []
     rows: list[dict] = []
     for index, timestamp in enumerate(timestamps):
         if quote["open"][index] is None or quote["close"][index] is None:
             continue
+        raw_close = float(quote["close"][index])
+        adj_close = adjclose_series[index] if index < len(adjclose_series) else None
+        adj_close = float(adj_close) if adj_close is not None else None
         rows.append(
             {
                 "date": datetime.fromtimestamp(timestamp, tz=timezone.utc).date().isoformat(),
@@ -551,7 +583,8 @@ def fetch_history(symbol: str, start_date: str, end_date: str) -> list[dict]:
                 "open": f"{float(quote['open'][index]):.4f}",
                 "high": f"{float(quote['high'][index]):.4f}",
                 "low": f"{float(quote['low'][index]):.4f}",
-                "close": f"{float(quote['close'][index]):.4f}",
+                "close": f"{raw_close:.4f}",
+                "adj_close": "" if adj_close is None else f"{adj_close:.4f}",
                 "volume": str(int(quote["volume"][index] or 0)),
             }
         )
