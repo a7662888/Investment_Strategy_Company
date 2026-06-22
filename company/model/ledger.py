@@ -6,6 +6,7 @@ import base64
 import hashlib
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -114,8 +115,23 @@ def _write_remote(events: list[dict], sha: str | None) -> tuple[bool, str | None
         return False, f"github_write:{type(exc).__name__}"
 
 
-def load_events(prefer_remote: bool = True) -> tuple[list[dict], dict]:
+_READ_CACHE: dict = {"at": 0.0, "events": None, "storage": None, "prefer_remote": None}
+_READ_TTL = float(os.environ.get("LEDGER_READ_TTL", "45"))
+
+
+def _invalidate_read_cache() -> None:
+    _READ_CACHE.update(events=None, storage=None, prefer_remote=None)
+
+
+def load_events(prefer_remote: bool = True, use_cache: bool = True) -> tuple[list[dict], dict]:
     """Load remote events when configured, otherwise the local ephemeral snapshot."""
+    if (
+        use_cache
+        and _READ_CACHE["events"] is not None
+        and _READ_CACHE["prefer_remote"] == prefer_remote
+        and (time.monotonic() - _READ_CACHE["at"]) < _READ_TTL
+    ):
+        return list(_READ_CACHE["events"]), dict(_READ_CACHE["storage"])
     remote_events = None
     remote_error = None
     if prefer_remote:
@@ -134,17 +150,25 @@ def load_events(prefer_remote: bool = True) -> tuple[list[dict], dict]:
             events = _parse_jsonl(LEDGER_PATH.read_text(encoding="utf-8")) if LEDGER_PATH.exists() else []
         except Exception:
             events = []
-    return events, {
+    storage = {
         "source": source,
         "remote_configured": _remote_config() is not None,
         "durable": source == "github",
         "error": remote_error,
         "event_count": len(events),
     }
+    _READ_CACHE.update(
+        at=time.monotonic(),
+        events=list(events),
+        storage=dict(storage),
+        prefer_remote=prefer_remote,
+    )
+    return events, storage
 
 
 def append_events(new_events: list[dict]) -> dict:
     """Idempotently append events and report whether durable storage succeeded."""
+    _invalidate_read_cache()
     remote_events, sha, remote_error = _fetch_remote()
     if remote_events is None:
         try:
@@ -177,8 +201,14 @@ def append_events(new_events: list[dict]) -> dict:
                 merged = latest + [event for event in added if event["event_id"] not in latest_ids]
                 remote_ok, write_error = _write_remote(merged, latest_sha)
     elif _remote_config() is not None:
-        remote_ok = True
-        write_error = None
+        if remote_events is not None:
+            # Remote read succeeded and nothing new to write: already consistent → durable.
+            remote_ok = True
+            write_error = None
+        else:
+            # Remote configured but unreachable this cycle: cannot claim durability.
+            remote_ok = False
+            write_error = remote_error or "github_read_failed"
 
     return {
         "added": len(added),
@@ -254,26 +284,76 @@ def ledger_summary(limit: int = 100) -> dict:
     return {"storage": storage, "signals": signals[: max(0, limit)], "signal_count": len(signals)}
 
 
+def _adj_close(row: dict) -> float | None:
+    """Adjusted (dividend/split) close. Returns None when no adjusted value is present,
+    so callers fall back to the frozen raw reference rather than silently using raw close."""
+    try:
+        value = row.get("adj_close")
+        return float(value) if value not in (None, "", "-") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _adj_factor(row: dict) -> float:
+    """adj/raw ratio, used to put unadjusted Yahoo high/low on the adjusted basis."""
+    try:
+        raw = float(row.get("close"))
+        adj = float(row.get("adj_close") or row.get("close"))
+        return adj / raw if raw else 1.0
+    except (TypeError, ValueError):
+        return 1.0
+
+
 def _outcome_event(signal: dict, horizon: str, rows: list[dict], benchmark_rows: list[dict], cost_rate: float) -> dict | None:
     n_days = int(horizon[:-1])
     cutoff = signal["data_cutoff"]
     after = [row for row in rows if row["date"] > cutoff]
     if len(after) < n_days:
         return None
-    reference = float(signal.get("reference_price") or 0)
-    if reference <= 0:
+    raw_reference = float(signal.get("reference_price") or 0)
+    if raw_reference <= 0:
         return None
     period = after[:n_days]
     end_row = period[-1]
-    gross = float(end_row["close"]) / reference - 1.0
+
+    # Prefer a total-return basis: same adjusted series for reference and evaluation.
+    ref_rows = [row for row in rows if row["date"] <= cutoff]
+    adj_ref = _adj_close(ref_rows[-1]) if ref_rows else None
+    adj_end = _adj_close(end_row)
+    if adj_ref and adj_ref > 0 and adj_end:
+        return_basis = "adjusted"
+        reference_basis = adj_ref
+        end_value = adj_end
+        highs = [_adj_factor(row) * float(row["high"]) for row in period]
+        lows = [_adj_factor(row) * float(row["low"]) for row in period]
+    else:
+        return_basis = "raw"
+        reference_basis = raw_reference
+        end_value = float(end_row["close"])
+        highs = [float(row["high"]) for row in period]
+        lows = [float(row["low"]) for row in period]
+
+    gross = end_value / reference_basis - 1.0
+
     benchmark_before = [row for row in benchmark_rows if row["date"] <= cutoff]
     benchmark_end = [row for row in benchmark_rows if row["date"] <= end_row["date"]]
     benchmark_return = None
+    benchmark_return_basis = None
     if benchmark_before and benchmark_end:
-        b0 = float(benchmark_before[-1]["close"])
-        b1 = float(benchmark_end[-1]["close"])
-        if b0 > 0:
+        b0 = _adj_close(benchmark_before[-1])
+        b1 = _adj_close(benchmark_end[-1])
+        if b0 and b0 > 0 and b1:
             benchmark_return = b1 / b0 - 1.0
+            benchmark_return_basis = "adjusted"
+        else:
+            try:
+                b0_raw = float(benchmark_before[-1]["close"])
+                b1_raw = float(benchmark_end[-1]["close"])
+                if b0_raw > 0:
+                    benchmark_return = b1_raw / b0_raw - 1.0
+                    benchmark_return_basis = "raw"
+            except (KeyError, TypeError, ValueError):
+                pass
     payload = {"signal_id": signal["signal_id"], "horizon": horizon, "evaluation_date": end_row["date"]}
     return {
         "schema_version": SCHEMA_VERSION,
@@ -281,14 +361,16 @@ def _outcome_event(signal: dict, horizon: str, rows: list[dict], benchmark_rows:
         "event_id": _event_id("OUT", payload),
         "recorded_at": _utc_now(),
         **payload,
-        "reference_price": reference,
+        "return_basis": return_basis,
+        "reference_price": raw_reference,
         "evaluation_price": float(end_row["close"]),
         "gross_return": round(gross, 8),
         "transaction_cost_rate": cost_rate,
         "net_return": round(gross - cost_rate, 8),
-        "mfe": round(max(float(row["high"]) for row in period) / reference - 1.0, 8),
-        "mae": round(min(float(row["low"]) for row in period) / reference - 1.0, 8),
+        "mfe": round(max(highs) / reference_basis - 1.0, 8),
+        "mae": round(min(lows) / reference_basis - 1.0, 8),
         "benchmark_symbol": "0050.TW",
+        "benchmark_return_basis": benchmark_return_basis,
         "benchmark_return": None if benchmark_return is None else round(benchmark_return, 8),
         "excess_return": None if benchmark_return is None else round(gross - benchmark_return, 8),
     }
@@ -324,4 +406,3 @@ def update_outcomes(as_of: str, fetch_history: Callable[[str, str, str], list[di
     result = append_events(pending)
     result["storage_before"] = storage
     return result
-
