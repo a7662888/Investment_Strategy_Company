@@ -3,6 +3,13 @@ name: Web Smoke Check
 on:
   push:
     branches: [main]
+    paths:
+      - "app.py"
+      - "requirements*.txt"
+      - "company/**"
+      - "web/**"
+      - "tests/**"
+      - ".github/workflows/web-smoke.yml"
   pull_request:
     branches: [main]
 
@@ -29,3 +36,16 @@ jobs:
           python tests/test_app_integration.py
           python tests/test_no_lookahead.py
           python tests/test_decision_ledger.py
+          python -m pytest -q
+
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: syntax-and-integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render after tests pass
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          test -n "$RENDER_DEPLOY_HOOK_URL"
+          curl --fail --silent --show-error --request POST "$RENDER_DEPLOY_HOOK_URL"

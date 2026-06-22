@@ -47,6 +47,8 @@ Never expose the token to the browser or commit it. Until the repo and token are
 
 The Render build filter ignores data-only changes under `model_artifacts/`, `data/`, `data_cache/`, and `reports/`. Code changes still deploy after CI.
 
+Production deploys are also protected by `.github/workflows/web-smoke.yml`: pushes that touch code or tests run the full smoke suite, then call the encrypted repository secret `RENDER_DEPLOY_HOOK_URL`. Data and documentation-only commits do not enter this deploy workflow.
+
 ## Local Tunnel
 
 For temporary phone testing:
