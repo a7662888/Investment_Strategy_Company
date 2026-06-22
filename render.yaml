@@ -6,3 +6,12 @@ services:
     startCommand: python app.py $PORT 0.0.0.0
     healthCheckPath: /api/health
     plan: free
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
