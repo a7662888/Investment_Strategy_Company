@@ -155,16 +155,29 @@ def yahoo_json(url: str) -> dict:
 
 
 _SSL_CONTEXT = ssl.create_default_context()
+_TAIWAN_SSL_CONTEXT = ssl.create_default_context()
+# Python 3.13+ enables X509_STRICT by default. Some official Taiwan endpoints
+# still serve a legacy chain without Subject Key Identifier. Keep CA and
+# hostname verification enabled, but drop only that additional strict check.
+if hasattr(ssl, "VERIFY_X509_STRICT"):
+    _TAIWAN_SSL_CONTEXT.verify_flags &= ~ssl.VERIFY_X509_STRICT
 _OFFICIAL_QUOTE_CACHE: dict = {"at": 0.0, "items": []}
 _OFFICIAL_QUOTE_TTL = 300.0
 
 
-def http_json(url: str, headers: dict[str, str] | None = None, *, timeout: float = 10.0, retries: int = 1) -> dict:
+def http_json(
+    url: str,
+    headers: dict[str, str] | None = None,
+    *,
+    timeout: float = 10.0,
+    retries: int = 1,
+    ssl_context: ssl.SSLContext | None = None,
+) -> dict:
     last_exc: Exception | None = None
     for attempt in range(retries + 1):
         try:
             request = urllib.request.Request(url, headers=headers or {"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(request, timeout=timeout, context=_SSL_CONTEXT) as response:
+            with urllib.request.urlopen(request, timeout=timeout, context=ssl_context or _SSL_CONTEXT) as response:
                 return json.loads(response.read().decode("utf-8"))
         except Exception as exc:  # noqa: BLE001 - retry transient network/SSL errors once
             last_exc = exc
@@ -275,7 +288,7 @@ def fetch_official_daily_quotes(symbols: list[str]) -> list[dict]:
     for provider, url, source in sources:
         started = time.perf_counter()
         try:
-            rows = http_json(url, timeout=8.0, retries=1)
+            rows = http_json(url, timeout=8.0, retries=1, ssl_context=_TAIWAN_SSL_CONTEXT)
             for row in rows if isinstance(rows, list) else []:
                 code = str(row.get("Code") or row.get("SecuritiesCompanyCode") or "").strip()
                 if not code:
@@ -340,6 +353,7 @@ def fetch_twse_mis_quotes(symbols: list[str]) -> list[dict]:
         },
         timeout=6.0,
         retries=0,
+        ssl_context=_TAIWAN_SSL_CONTEXT,
     )
 
     results: dict[str, dict] = {}

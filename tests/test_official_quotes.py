@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import ssl
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -47,6 +48,12 @@ class TestOfficialQuotes(unittest.TestCase):
         self.assertTrue(app.is_tw_market_session(datetime(2026, 6, 23, 9, 0, tzinfo=tz)))
         self.assertFalse(app.is_tw_market_session(datetime(2026, 6, 23, 14, 0, tzinfo=tz)))
         self.assertFalse(app.is_tw_market_session(datetime(2026, 6, 21, 10, 0, tzinfo=tz)))
+
+    def test_taiwan_context_keeps_certificate_verification(self) -> None:
+        self.assertEqual(app._TAIWAN_SSL_CONTEXT.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(app._TAIWAN_SSL_CONTEXT.check_hostname)
+        if hasattr(ssl, "VERIFY_X509_STRICT"):
+            self.assertFalse(app._TAIWAN_SSL_CONTEXT.verify_flags & ssl.VERIFY_X509_STRICT)
 
 
 if __name__ == "__main__":
