@@ -7,6 +7,7 @@ function restorePositionInput() {
   try {
     const saved = localStorage.getItem(POSITION_STORAGE_KEY);
     if (saved && !input.value.trim()) input.value = saved;
+    updatePositionSaveStatus();
   } catch (err) {
     console.warn("Unable to restore positions from this browser:", err);
   }
@@ -19,9 +20,19 @@ function persistPositionInput() {
     const value = input.value.trim();
     if (value) localStorage.setItem(POSITION_STORAGE_KEY, value);
     else localStorage.removeItem(POSITION_STORAGE_KEY);
+    updatePositionSaveStatus();
   } catch (err) {
     console.warn("Unable to save positions in this browser:", err);
   }
+}
+
+function updatePositionSaveStatus() {
+  const status = $("positionSaveStatus");
+  if (!status) return;
+  const count = positions().length;
+  status.textContent = count
+    ? `已在此瀏覽器保存 ${count} 筆持股；按「明日計畫」產生持股決策。`
+    : "尚未輸入持股";
 }
 
 function symbols() {
@@ -998,7 +1009,10 @@ async function nextDayPlan() {
       updateMarketRiskPanel(m);
     }
 
-    $("planList").innerHTML = plans.length ? plans.map(item => {
+    const requestedPositions = positions();
+    const returnedSymbols = new Set(plans.map(item => item.symbol));
+    const missingPositions = requestedPositions.filter(item => !returnedSymbols.has(item.symbol));
+    const planCards = plans.map(item => {
       const gain = item.held && item.unrealized_gain !== null ? `<span class="pill">未實現 ${pct(item.unrealized_gain)}</span>` : `<span class="pill">未持有</span>`;
       const cls = item.action.includes("買進") || item.action.includes("續抱") || item.action.includes("加碼") ? "pos" : item.action.includes("賣") || item.action.includes("減碼") ? "neg" : "watch";
       return `<article class="candidate">
@@ -1012,7 +1026,12 @@ async function nextDayPlan() {
         ${aiPredictorLine(item.ai_predictor)}
         ${calibratedModelPanel(item.model, riskLevel)}
       </article>`;
-    }).join("") : "<p>沒有明日計畫資料，請確認股票代號或區間。</p>";
+    });
+    const missingCards = missingPositions.map(item => `<article class="candidate" style="border-color: var(--red);">
+      <strong><span>${item.symbol} · <span class="neg">查無報價或歷史資料</span></span></strong>
+      <p>請確認代號是否正確；台灣上市 ETF 通常使用 .TW。</p>
+    </article>`);
+    $("planList").innerHTML = [...planCards, ...missingCards].join("") || "<p>沒有明日計畫資料，請確認股票代號或區間。</p>";
     refreshQuotes();   // 持股/決策中心更新後,報價同步涵蓋
     saveSnapshot("plan");
   } catch (err) {
