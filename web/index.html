@@ -187,10 +187,11 @@
               <th>價值陷阱與警訊</th>
               <th>建議分批買進區間</th>
               <th>停損 / 停利 / 重檢條件</th>
+              <th>AI 診斷</th>
             </tr>
           </thead>
           <tbody id="midTermPotentialRows">
-            <tr><td colspan="9" style="text-align: center; color: var(--muted); padding: 20px;">請點擊上方重新計算以跑中期潛力股評分</td></tr>
+            <tr><td colspan="10" style="text-align: center; color: var(--muted); padding: 20px;">請點擊上方重新計算以跑中期潛力股評分</td></tr>
           </tbody>
         </table>
       </div>
@@ -211,10 +212,11 @@
               <th>理由</th>
               <th>警訊</th>
               <th>建議買進區間</th>
+              <th>AI 診斷</th>
             </tr>
           </thead>
           <tbody id="codexLongTermRows">
-            <tr><td colspan="9" style="text-align: center; color: var(--muted); padding: 20px;">請點擊上方重新計算以跑 Codex 長投評分</td></tr>
+            <tr><td colspan="10" style="text-align: center; color: var(--muted); padding: 20px;">請點擊上方重新計算以跑 Codex 長投評分</td></tr>
           </tbody>
         </table>
       </div>
@@ -367,6 +369,35 @@
       </div>
     </section>
   </main>
-  <script src="/app.js?v=20260529-5" charset="utf-8"></script>
+
+  <!-- AI Analysis Modal -->
+  <div id="aiAnalysisModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter:blur(5px); z-index:9999; justify-content:center; align-items:center;">
+    <div style="background:rgba(255,255,255,0.95); border:1px solid #00f0ff; border-radius:12px; box-shadow:0 10px 25px rgba(0,240,255,0.2); width:90%; max-width:600px; max-height:80vh; display:flex; flex-direction:column; overflow:hidden; animation: fadeIn 0.3s ease;">
+      <!-- Modal Header -->
+      <div style="background:linear-gradient(135deg, #0f172a, #1e293b); color:#ffffff; padding:15px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,240,255,0.3);">
+        <h3 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;">
+          <span>🤖</span> <span id="aiModalTitle">AI 智能分析助理</span>
+        </h3>
+        <button onclick="closeAiModal()" style="background:none; border:none; color:#94a3b8; font-size:20px; cursor:pointer; font-weight:bold; line-height: 1;">&times;</button>
+      </div>
+      <!-- Modal Body -->
+      <div id="aiModalBody" style="padding:20px; overflow-y:auto; font-size:14px; line-height:1.6; color:#1e293b; max-height: 60vh;">
+        <!-- AI content will go here -->
+      </div>
+      <!-- Modal Footer -->
+      <div style="background:#f1f5f9; padding:12px 20px; display:flex; justify-content:flex-end; border-top:1px solid #e2e8f0;">
+        <button onclick="closeAiModal()" class="primary" style="margin:0;">關閉視窗</button>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+  </style>
+
+  <script src="/app.js?v=20260622-1" charset="utf-8"></script>
 </body>
 </html>

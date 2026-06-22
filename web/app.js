@@ -602,6 +602,201 @@ async function recommendToday() {
 
     const candidates = asArray(data.candidates);
     
+    const data = await readJson(res);
+    const results = asArray(data.results);
+    renderLearningPanel(data);
+    $("trainingRows").innerHTML = results.map(row => `
+      <tr>
+        <td>${row.symbol}</td>
+        <td>${row.role}</td>
+        <td>${row.start} - ${row.end}</td>
+        <td class="${row.total_return >= 0 ? "pos" : "neg"}">${pct(row.total_return)}</td>
+        <td class="neg">${pct(row.max_drawdown)}</td>
+        <td>${row.trade_count}</td>
+        <td><span title="${row.training_note || ""}">${row.model_basis || ""}</span></td>
+        <td>${row.future_knowledge_used ? "異常" : "未使用"}</td>
+      </tr>
+    `).join("");
+    $("trainingStatus").textContent = results.length ? "完成" : "完成，但沒有可顯示結果";
+    
+    // Trigger terminal scrolling output for model training
+    const mt = data.model_training;
+    if (mt && mt.epoch_logs && mt.epoch_logs.length > 0) {
+      $("trainProgress").textContent = "優化狀態：回傳迭代日誌中";
+      const logs = mt.epoch_logs;
+      const terminal = $("trainConsole");
+      terminal.textContent = "🔍 [1/4] 特徵提取完成，共收集 " + (logs.length * 10) + " 個跨股票歷史交易日樣本。\n";
+      terminal.textContent += "⚙️ [2/4] 啟動隨機梯度下降 L2 擬合器 (Learning Rate=0.1, L2=0.01, Epochs=500)...\n\n";
+      
+      let idx = 0;
+      function printEpochLog() {
+        if (idx < logs.length) {
+          const log = logs[idx];
+          terminal.textContent += `[Epoch ${log.epoch}/500] BCE損失值 (Loss): ${log.loss.toFixed(6)} | 訓練擬合度 (Accuracy): ${log.accuracy.toFixed(2)}%\n`;
+          terminal.scrollTop = terminal.scrollHeight;
+          idx++;
+          setTimeout(printEpochLog, 50);
+        } else {
+          terminal.textContent += `\n🎉 [3/4] AI 預測模型在線優化成功！\n`;
+          const weights = mt.weights;
+          terminal.textContent += `優化權重：Bias = ${weights.bias.toFixed(4)}, RSI = ${weights.rsi.toFixed(4)}, Slope = ${weights.slope.toFixed(4)}, MACD = ${weights.macd_hist.toFixed(4)}\n`;
+          terminal.textContent += `[4/4] 權重已持久化存檔。更新後的預測特徵貢獻佔比條已就緒。\n`;
+          terminal.scrollTop = terminal.scrollHeight;
+          
+          $("trainProgress").textContent = "優化狀態：已完成且套用新權重";
+          $("optimizedWeights").style.display = "block";
+          $("weightsDetail").innerHTML = `RSI權重: <strong>${weights.rsi.toFixed(3)}</strong> | 5日斜率權重: <strong>${weights.slope.toFixed(3)}</strong> | MACD權重: <strong>${weights.macd_hist.toFixed(3)}</strong> | 偏置值: <strong>${weights.bias.toFixed(3)}</strong> | 最終歷史擬合準確率: <strong>${mt.accuracy.toFixed(1)}%</strong>`;
+          
+          // Re-render recommendations & plans using the new weights!
+          recommendToday();
+          nextDayPlan();
+          saveSnapshot("train");
+        }
+      }
+      setTimeout(printEpochLog, 300);
+    } else {
+      $("trainConsole").textContent = "無法載入優化訓練過程，請確認股票代號。";
+      $("trainProgress").textContent = "優化狀態：失敗";
+    }
+
+  } catch (err) {
+    $("trainingStatus").textContent = `訓練失敗：${err.message}`;
+    $("learningStatus").textContent = "訓練失敗";
+    $("learningPanel").innerHTML = `<p>${err.message}</p>`;
+    $("trainConsole").textContent = `❌ 錯誤: ${err.message}`;
+    $("trainProgress").textContent = "優化狀態：錯誤";
+  } finally {
+    setBusy("runTraining", false);
+  }
+}
+
+function updateMarketRiskPanel(m) {
+  const panel = $("marketRiskPanel");
+  if (!panel) return;
+  if (!m) {
+    panel.style.display = "none";
+    return;
+  }
+  panel.style.display = "block";
+
+  // Reset all lights
+  const lights = ["GREEN", "YELLOW", "RED", "BLACK"];
+  lights.forEach(color => {
+    const el = $(`light${color}`);
+    if (el) el.className = "light";
+  });
+
+  // Activate corresponding light
+  const riskLevel = m.risk_level || "GREEN";
+  const activeLight = $(`light${riskLevel}`);
+  if (activeLight) {
+    activeLight.className = `light active ${riskLevel.toLowerCase()}`;
+  }
+
+  // Set text labels
+  $("riskLabel").textContent = m.risk_label || "🟢 綠色 · 正常選股";
+  $("riskStance").textContent = m.risk_stance || "多頭常態，正常選股";
+
+  // Tomorrow's decision
+  const tomorrowDecision = $("tomorrowDecision");
+  if (tomorrowDecision) {
+    const dateStr = m.date || new Date().toISOString().split("T")[0];
+    let decisionText = `${dateStr}：`;
+    if (riskLevel === "BLACK") {
+      decisionText += "市場急停，停止所有新買進，清空部位或極限避險！";
+      tomorrowDecision.style.color = "#111827"; // Black
+    } else if (riskLevel === "RED") {
+      decisionText += "市場停止新買進，減碼防守！";
+      tomorrowDecision.style.color = "var(--red)";
+    } else if (riskLevel === "YELLOW") {
+      decisionText += "大盤整理中，減半觀察操作！";
+      tomorrowDecision.style.color = "var(--amber)";
+    } else {
+      decisionText += "大盤安全，可正常選股買進！";
+      tomorrowDecision.style.color = "var(--green)";
+    }
+    tomorrowDecision.textContent = decisionText;
+  }
+
+  // Decision reasons
+  const reasonsDiv = $("decisionReasons");
+  if (reasonsDiv) {
+    const reasons = asArray(m.decision_reasons);
+    reasonsDiv.innerHTML = reasons.length 
+      ? `<ul style="margin: 4px 0 0; padding-left: 16px;">${reasons.map(r => `<li>${r}</li>`).join("")}</ul>`
+      : "<p style='margin: 4px 0 0; color: var(--muted);'>無特別系統性風險警訊</p>";
+  }
+
+  // Position Suggestions
+  $("buyExposureSuggest").textContent = m.buy_exposure || "100%";
+  if (riskLevel === "BLACK" || riskLevel === "RED") {
+    $("buyExposureSuggest").style.color = "var(--red)";
+  } else if (riskLevel === "YELLOW") {
+    $("buyExposureSuggest").style.color = "var(--amber)";
+  } else {
+    $("buyExposureSuggest").style.color = "var(--green)";
+  }
+  
+  $("holdExposureSuggest").textContent = m.hold_exposure || "正常續抱";
+  $("openGuideSuggest").textContent = m.open_guide || "低接不追高";
+}
+
+async function recommendToday() {
+  try {
+    setBusy("recommendToday", true);
+    
+    // 清空 A/B/C 三個列表
+    const listA = $("candidateListA");
+    const listB = $("candidateListB");
+    const listC = $("candidateListC");
+    if (listA) listA.innerHTML = "<p>分析中...</p>";
+    if (listB) listB.innerHTML = "<p>分析中...</p>";
+    if (listC) listC.innerHTML = "<p>分析中...</p>";
+    
+    const res = await fetch("/api/recommend", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        symbols: symbols(),
+        end: $("endDate").value,
+        limit: 5,
+        lookback_days: 320
+      })
+    });
+    const data = await readJson(res);
+    
+    // 更新頂部市場風險與總決策面板
+    updateMarketRiskPanel(data.market_index);
+    
+    // 渲染大盤導引狀態舊卡片 (保留相容性，如果有的話)
+    const m = data.market_index;
+    const mCard = $("marketStatusCard");
+    if (m && mCard) {
+      mCard.style.display = "block";
+      const changeClass = m.change_percent >= 0 ? "pos" : "neg";
+      const changePrefix = m.change_percent >= 0 ? "+" : "";
+      
+      let badgeClass = "consolidation";
+      if (m.regime === "強勢多頭") badgeClass = "bullish";
+      else if (m.regime === "弱勢空頭") badgeClass = "bearish";
+      else if (m.regime === "高波動震盪") badgeClass = "volatility";
+      
+      mCard.className = `market-status-card ${badgeClass}`;
+      mCard.innerHTML = `
+        <div style="font-weight: bold; font-size: 14px; display: flex; align-items: center; justify-content: space-between;">
+          <span>📈 ${m.name} (${m.symbol}) 收盤：${m.close.toLocaleString()} <span class="${changeClass}" style="font-weight: bold;">${changePrefix}${m.change_percent}%</span></span>
+          <span class="market-badge ${badgeClass}">${m.regime}</span>
+        </div>
+        <div style="margin-top: 6px; font-size: 13px; opacity: 0.95;">
+          🎯 <strong>大盤引導決策：</strong>${m.regime_note}
+        </div>
+      `;
+    } else if (mCard) {
+      mCard.style.display = "none";
+    }
+
+    const candidates = asArray(data.candidates);
+    
     // 渲染空輸入時的提示 note
     const noteEl = $("candidateNote");
     if (noteEl) {
@@ -662,7 +857,7 @@ async function recommendToday() {
     const midTermStatus = $("midTermStatus");
     if (midTermRows) {
       if (potentials.length === 0) {
-        midTermRows.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--muted); padding: 20px;">目前無符合條件的中期潛力股資料。</td></tr>`;
+        midTermRows.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--muted); padding: 20px;">目前無符合條件的中期潛力股資料。</td></tr>`;
         if (midTermStatus) midTermStatus.textContent = "無資料";
       } else {
         if (midTermStatus) midTermStatus.textContent = `已完成 (${potentials.length} 檔)`;
@@ -721,6 +916,9 @@ async function recommendToday() {
                 <strong>停損：</strong>${item.stop_loss}<br>
                 <strong>重檢：</strong>${item.take_profit}
               </td>
+              <td style="text-align: center;">
+                <button onclick="askAiAnalysis('${item.symbol}')" style="font-size: 11px; padding: 4px 8px; margin: 0; background-color: var(--blue); color: white; border-color: var(--blue); border-radius: 4px; cursor: pointer;">🤖 AI 診斷</button>
+              </td>
             </tr>
           `;
         }).join("");
@@ -733,7 +931,7 @@ async function recommendToday() {
     const codexLongTermStatus = $("codexLongTermStatus");
     if (codexLongTermRows) {
       if (codexLongTermPicks.length === 0) {
-        codexLongTermRows.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--muted); padding: 20px;">目前無 Codex 長投評分資料。</td></tr>`;
+        codexLongTermRows.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--muted); padding: 20px;">目前無 Codex 長投評分資料。</td></tr>`;
         if (codexLongTermStatus) codexLongTermStatus.textContent = codexLongTerm.error ? `錯誤: ${codexLongTerm.error}` : "無資料";
       } else {
         if (codexLongTermStatus) codexLongTermStatus.textContent = `已完成 (${codexLongTerm.scanned || codexLongTermPicks.length} 檔)`;
@@ -781,6 +979,9 @@ async function recommendToday() {
               <td style="max-width: 190px; word-wrap: break-word; white-space: normal; text-align: left;">${reasonsHtml}</td>
               <td style="max-width: 210px; word-wrap: break-word; white-space: normal; text-align: left;">${warningsHtml}</td>
               <td style="font-size: 12px; font-family: monospace; text-align: center;">${item.buy_range || "-"}</td>
+              <td style="text-align: center;">
+                <button onclick="askAiAnalysis('${item.symbol}')" style="font-size: 11px; padding: 4px 8px; margin: 0; background-color: var(--blue); color: white; border-color: var(--blue); border-radius: 4px; cursor: pointer;">🤖 AI 診斷</button>
+              </td>
             </tr>
           `;
         }).join("");
@@ -1716,3 +1917,80 @@ renderSnapshots();
 syncSnapshotsFromServer();
 $("endDate").addEventListener("change", loadMarketNews);
 
+
+// --- 5. AI Analysis Modal Interactions ---
+async function askAiAnalysis(symbol) {
+  const modal = $("aiAnalysisModal");
+  const title = $("aiModalTitle");
+  const body = $("aiModalBody");
+  
+  if (!modal || !title || !body) return;
+  
+  title.textContent = `AI 智能分析助理 - 載入中 (${symbol})`;
+  body.innerHTML = `
+    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 40px 0;">
+      <div style="border: 4px solid #f3f3f3; border-top: 4px solid var(--blue); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin-bottom: 12px;"></div>
+      <div style="color: var(--muted); font-size:13px;">正在收集數據與即時新聞，並呼叫 AI 進行中期投資診斷...</div>
+    </div>
+    <style>
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  `;
+  modal.style.display = "flex";
+  
+  try {
+    const end = $("endDate").value || new Date().toISOString().split('T')[0];
+    const res = await fetch("/api/ai-analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol: symbol, end: end })
+    });
+    const data = await readJson(res);
+    
+    if (data.error) {
+      body.innerHTML = `<div style="color:#dc2626; font-weight:bold; padding:10px 0;">分析載入失敗：${data.error}</div>`;
+      title.textContent = `AI 智能分析助理 - 錯誤 (${symbol})`;
+    } else {
+      title.textContent = `AI 智能分析助理 - ${data.symbol} ${data.name || ''}`;
+      body.innerHTML = parseMarkdown(data.analysis);
+    }
+  } catch (err) {
+    console.error("AI Analysis failed:", err);
+    body.innerHTML = `<div style="color:#dc2626; font-weight:bold; padding:10px 0;">請求發生錯誤：${err.message}</div>`;
+    title.textContent = `AI 智能分析助理 - 失敗 (${symbol})`;
+  }
+}
+
+function closeAiModal() {
+  const modal = $("aiAnalysisModal");
+  if (modal) {
+    modal.style.display = "none";
+  }
+}
+
+function parseMarkdown(text) {
+  let html = text;
+  // Titles
+  html = html.replace(/^### (.*$)/gim, '<h4 style="margin: 12px 0 6px 0; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; font-weight: bold; font-size: 14px;">$1</h4>');
+  html = html.replace(/^## (.*$)/gim, '<h3 style="margin: 16px 0 8px 0; color: #0f172a; font-weight: bold; font-size: 15px;">$1</h3>');
+  html = html.replace(/^# (.*$)/gim, '<h2 style="margin: 20px 0 10px 0; color: #0f172a; font-weight: bold; font-size: 16px;">$1</h2>');
+  // Bold
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Checkboxes
+  html = html.replace(/- \[\s\]\s(.*)/g, '<div style="display:flex; align-items:start; margin: 6px 0;"><input type="checkbox" disabled style="margin-top:3px; margin-right:8px; width:14px; height:14px;"><span>$1</span></div>');
+  html = html.replace(/- \[x\]\s(.*)/g, '<div style="display:flex; align-items:start; margin: 6px 0;"><input type="checkbox" checked disabled style="margin-top:3px; margin-right:8px; width:14px; height:14px;"><span>$1</span></div>');
+  // List items (normal bullets)
+  html = html.replace(/^- (?!\[\s\]|\[x\])(.*)/gim, '<li style="margin-left: 15px; margin-bottom: 4px;">$1</li>');
+  // Paragraphs / Newlines
+  html = html.split('\n').map(line => {
+    let t = line.trim();
+    if (t.startsWith('<h') || t.startsWith('<div') || t.startsWith('<li') || t.startsWith('</') || t === '') {
+      return line;
+    }
+    return `<p style="margin: 6px 0; color: #334155;">${line}</p>`;
+  }).join('\n');
+  return html;
+}

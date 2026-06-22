@@ -7,3 +7,5 @@ cloudflared*.log
 .DS_Store
 # 注意:strategy_archive.json 不再 ignore —— 由每日 GitHub Action 累積 commit,
 # 讓三家績效歷史持久留存(Render ephemeral 不會清掉 git 內的歷史)。
+data_cache/
+reports/
