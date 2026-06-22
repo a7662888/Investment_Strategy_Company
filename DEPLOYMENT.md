@@ -31,9 +31,21 @@ Settings:
 - Runtime: Python
 - Build command: empty
 - Start command: `python app.py $PORT 0.0.0.0`
-- Health check path: `/api/health`
+- Health check path: `/api/health/ready`
 
 Render Blueprint can also read `render.yaml` from this repository.
+
+## Phase 0 Decision Ledger
+
+The local JSONL ledger is only an ephemeral fallback. For durable storage, create a separate private repository such as `a7662888/Investment_Strategy_Company_Data` with a `main` branch, then configure these Render secrets:
+
+- `GITHUB_DATA_REPO=a7662888/Investment_Strategy_Company_Data`
+- `GITHUB_DATA_TOKEN=<fine-grained token with Contents read/write only for the data repo>`
+- `GITHUB_DATA_BRANCH=main`
+
+Never expose the token to the browser or commit it. Until the repo and token are configured, readiness, data status, and recommendation responses report the ledger as `degraded`; a local Render write is not treated as durable.
+
+The Render build filter ignores data-only changes under `model_artifacts/`, `data/`, `data_cache/`, and `reports/`. Code changes still deploy after CI.
 
 ## Local Tunnel
 

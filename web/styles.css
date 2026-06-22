@@ -432,6 +432,35 @@ input[type="range"] {
 .light.active.red { background-color: #ef4444 !important; box-shadow: 0 0 12px #ef4444 !important; }
 .light.active.black { background-color: #111827 !important; box-shadow: 0 0 12px #111827 !important; border: 2px solid #ef4444 !important; }
 
+@media (max-width: 700px) {
+  html, body { max-width: 100%; overflow-x: hidden; }
+  .shell { padding: 16px; }
+  .panel { min-width: 0; padding: 14px; }
+  .sectionHead { align-items: flex-start; flex-wrap: wrap; }
+  .tableWrap { max-width: 100%; }
+  #marketRiskPanel > div,
+  #portfolioAllocationPanel > div,
+  #focusNewsGrid,
+  .friction-controls,
+  #universeGrid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  #marketRiskPanel > div > div,
+  #portfolioAllocationPanel > div > div {
+    min-width: 0;
+  }
+  #marketRiskPanel > div > div + div {
+    border-left: 0 !important;
+    border-top: 1px solid var(--line);
+    padding-left: 0 !important;
+    padding-top: 14px;
+  }
+  #candidateGradesContainer h3 {
+    align-items: flex-start !important;
+    flex-wrap: wrap;
+  }
+}
+
 
 
 

@@ -9,3 +9,4 @@ cloudflared*.log
 # 讓三家績效歷史持久留存(Render ephemeral 不會清掉 git 內的歷史)。
 data_cache/
 reports/
+data/decision_ledger.jsonl

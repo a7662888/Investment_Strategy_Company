@@ -1,4 +1,12 @@
 const $ = (id) => document.getElementById(id);
+
+function taipeiDateString(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 const POSITION_STORAGE_KEY = "investment_strategy_positions";
 
 function restorePositionInput() {
@@ -849,15 +857,15 @@ async function discoverToday() {
   setBusy("discoverToday", true);
 
   try {
-    const [resCodex, resAnti, resClaude] = await Promise.all([
-      fetch(`/api/discover?end=${end}&limit=5`),
-      fetch(`/api/antigravity/discover?end=${end}&limit=5`),
-      fetch(`/api/claude/discover?end=${end}&limit=5`),
-    ]);
-
-    const codexData  = resCodex.ok  ? await resCodex.json()  : {};
-    const antiData   = resAnti.ok   ? await resAnti.json()   : [];
-    const claudeData = resClaude.ok ? await resClaude.json() : [];
+    const response = await fetch("/api/agent-signals", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({end, limit: 5}),
+    });
+    const combined = await readJson(response);
+    const codexData  = combined.codex || {};
+    const antiData   = combined.antigravity || [];
+    const claudeData = combined.claude || [];
 
     // Codex returns a discover-style wrapper; Antigravity/Claude return plain arrays
     const codexCands  = asArray(codexData.candidates || codexData);
@@ -883,7 +891,8 @@ async function discoverToday() {
     }
 
     $("discoverStatus").textContent =
-      `Codex ${codexCands.length}｜Antigravity ${antiCands.length}｜Claude ${claudeCands.length} 檔 · 分數已標準化(校準機率基準 0–10,三家可比)`;
+      `Codex ${codexCands.length}｜Antigravity ${antiCands.length}｜Claude ${claudeCands.length} 檔 · ` +
+      `決策帳本 ${combined.ledger?.status || "unknown"} · 分數已標準化(校準機率基準 0–10,三家可比)`;
 
     $("codexList").innerHTML = codexCands.length
       ? codexCands.map(c => renderAgentCard(c, "codex")).join("")
@@ -1088,7 +1097,7 @@ function bindActions() {
 
 // Set endDate to today if not already set
 if (!$("endDate").value) {
-  $("endDate").value = new Date().toISOString().slice(0, 10);
+  $("endDate").value = taipeiDateString();
 }
 
 bindActions();
@@ -1792,7 +1801,7 @@ async function askAiAnalysis(symbol) {
   modal.style.display = "flex";
   
   try {
-    const end = $("endDate").value || new Date().toISOString().split('T')[0];
+    const end = $("endDate").value || taipeiDateString();
     const res = await fetch("/api/ai-analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

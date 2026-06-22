@@ -5,6 +5,7 @@ import json
 import math
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -19,6 +20,18 @@ WEB_ROOT = PROJECT / "web"
 DATA_DIR = PROJECT / "data"
 CACHE_DIR = PROJECT / "data" / "web_cache"
 MODEL_ARTIFACT_PATH = PROJECT / "model_artifacts" / "logit_v1.json"
+
+PROVIDER_RUNTIME: dict[str, dict] = {}
+
+
+def record_provider_status(name: str, status: str, started: float, *, error: str | None = None, rows: int | None = None) -> None:
+    PROVIDER_RUNTIME[name] = {
+        "status": status,
+        "last_checked_at": datetime.now(timezone.utc).isoformat(),
+        "latency_ms": round((time.perf_counter() - started) * 1000),
+        "error": error,
+        "rows": rows,
+    }
 
 
 DEFAULT_SYMBOLS = [
@@ -386,33 +399,50 @@ def merge_live_quote_into_history(symbol: str, rows: list[dict]) -> list[dict]:
 def fetch_quote(symbols: list[str]) -> dict:
     symbols = [symbol.strip() for symbol in symbols if symbol.strip()]
     by_symbol: dict[str, dict] = {}
+    started = time.perf_counter()
     try:
-        for item in fetch_twse_mis_quotes(symbols):
+        items = fetch_twse_mis_quotes(symbols)
+        for item in items:
             by_symbol[item["symbol"]] = item
-    except Exception:
-        pass
+        record_provider_status("twse_mis", "ok" if items else "empty", started, rows=len(items))
+    except Exception as exc:
+        record_provider_status("twse_mis", "failed", started, error=f"{type(exc).__name__}: {exc}")
 
     missing = [symbol for symbol in symbols if symbol not in by_symbol]
     if missing:
+        started = time.perf_counter()
         try:
-            for item in fetch_yahoo_intraday_quotes(missing):
+            items = fetch_yahoo_intraday_quotes(missing)
+            for item in items:
                 by_symbol[item["symbol"]] = item
-        except Exception:
-            pass
+            record_provider_status("yahoo_intraday", "ok" if items else "empty", started, rows=len(items))
+        except Exception as exc:
+            record_provider_status("yahoo_intraday", "failed", started, error=f"{type(exc).__name__}: {exc}")
 
     missing = [symbol for symbol in symbols if symbol not in by_symbol]
     if missing:
+        started = time.perf_counter()
         try:
-            for item in fetch_yahoo_quotes(missing):
+            items = fetch_yahoo_quotes(missing)
+            for item in items:
                 by_symbol[item["symbol"]] = item
-        except Exception:
-            pass
+            record_provider_status("yahoo_quote", "ok" if items else "empty", started, rows=len(items))
+        except Exception as exc:
+            record_provider_status("yahoo_quote", "failed", started, error=f"{type(exc).__name__}: {exc}")
 
     missing = [symbol for symbol in symbols if symbol not in by_symbol]
+    daily_count = 0
+    started = time.perf_counter()
     for symbol in missing:
-        item = fetch_history_quote(symbol)
-        if item:
-            by_symbol[symbol] = item
+        try:
+            item = fetch_history_quote(symbol)
+            if item:
+                by_symbol[symbol] = item
+                daily_count += 1
+        except Exception:
+            continue
+    if missing:
+        record_provider_status("yahoo_daily", "ok" if daily_count else "empty", started, rows=daily_count)
 
     return {
         "quoteResponse": {"result": [by_symbol[symbol] for symbol in symbols if symbol in by_symbol]},
@@ -571,6 +601,73 @@ def build_version() -> dict:
             "train_threshold_reviews": True,
         },
     }
+
+
+def get_data_status() -> dict:
+    cache_files = list((PROJECT / "data_cache").glob("*.csv")) if (PROJECT / "data_cache").exists() else []
+    stale_alerts = []
+    latest_date = None
+    price_files = sorted((PROJECT / "data_cache").glob("*_price.csv")) if (PROJECT / "data_cache").exists() else []
+    for path in price_files[:20]:
+        try:
+            rows = path.read_text(encoding="utf-8-sig").splitlines()
+            if len(rows) > 1:
+                candidate = rows[-1].split(",")[0]
+                if candidate and (latest_date is None or candidate > latest_date):
+                    latest_date = candidate
+        except OSError:
+            continue
+    if latest_date:
+        try:
+            age_days = (datetime.now(timezone(timedelta(hours=8))).date() - datetime.fromisoformat(latest_date).date()).days
+            if age_days > 4:
+                stale_alerts.append(f"本機價格快取最後日期 {latest_date}，已落後 {age_days} 天")
+        except ValueError:
+            stale_alerts.append("價格快取日期格式無法解析")
+    else:
+        stale_alerts.append("目前沒有可驗證日期的價格快取；線上請以provider timestamp為準")
+
+    try:
+        from company.model.ledger import ledger_summary
+        ledger = ledger_summary(limit=0)["storage"]
+    except Exception as exc:
+        ledger = {"durable": False, "source": "unavailable", "error": type(exc).__name__}
+
+    providers = {name: dict(value) for name, value in PROVIDER_RUNTIME.items()}
+    for name in ("twse_mis", "yahoo_intraday", "yahoo_quote", "yahoo_daily", "news_rss", "gemini"):
+        providers.setdefault(name, {"status": "unknown", "last_checked_at": None})
+    return {
+        "status": "ok" if not stale_alerts and ledger.get("durable") else "degraded",
+        "active_universe_count": len(DISCOVERY_UNIVERSE),
+        "cache_files_count": len(cache_files),
+        "latest_cache_date": latest_date,
+        "providers": providers,
+        "ledger": ledger,
+        "stale_alerts": stale_alerts,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+def readiness_status() -> tuple[dict, HTTPStatus]:
+    checks = {
+        "web_index": (WEB_ROOT / "index.html").exists(),
+        "web_script": (WEB_ROOT / "app.js").exists(),
+        "universe": bool(DISCOVERY_UNIVERSE),
+        "model_artifact": MODEL_ARTIFACT_PATH.exists(),
+    }
+    warnings = []
+    if not (os.environ.get("GITHUB_DATA_TOKEN") or os.environ.get("GITHUB_PAT")) or not os.environ.get("GITHUB_DATA_REPO"):
+        warnings.append("Decision Ledger遠端持久化尚未設定，目前僅有ephemeral本機快照")
+    ready = all(checks.values())
+    payload = {
+        "status": "ready" if ready and not warnings else "degraded" if ready else "not_ready",
+        "ready": ready,
+        "checks": checks,
+        "warnings": warnings,
+        "time": datetime.now(timezone.utc).isoformat(),
+        "version": build_version(),
+    }
+    return payload, HTTPStatus.OK if ready else HTTPStatus.SERVICE_UNAVAILABLE
 
 
 def model_training_summary() -> dict:
@@ -2418,6 +2515,47 @@ def normalize_positions(raw_positions: list[dict]) -> dict[str, dict]:
     return positions
 
 
+def is_live_decision_request(end: str) -> bool:
+    return end == datetime.now(timezone(timedelta(hours=8))).date().isoformat()
+
+
+def freeze_candidate_groups(end: str, groups: list[tuple[str, list[dict], str]]) -> dict:
+    if not is_live_decision_request(end):
+        return {"status": "skipped", "reason": "historical_request", "durable": False, "added": 0}
+    version = build_version().get("render_git_commit") or build_version().get("app_version") or "unknown"
+    signals = []
+    for agent_id, candidates, horizon in groups:
+        for item in candidates:
+            if not item.get("symbol") or item.get("error"):
+                continue
+            raw_evidence = item.get("reasons") or item.get("catalysts") or []
+            evidence = [raw_evidence] if isinstance(raw_evidence, str) else list(raw_evidence)
+            signals.append({
+                "agent_id": agent_id,
+                "model_version": f"{agent_id}:{version}",
+                "symbol": item["symbol"],
+                "name": item.get("name"),
+                "data_cutoff": item.get("last_date") or item.get("as_of") or end,
+                "action": item.get("action") or ("watch" if item.get("grade") == "C" else "candidate"),
+                "horizon": horizon,
+                "reference_price": item.get("last_close", item.get("close")),
+                "entry_range": item.get("buy_range"),
+                "stop_loss": item.get("stop_loss"),
+                "target": item.get("take_profit"),
+                "invalidation": item.get("invalidation"),
+                "grade": item.get("grade"),
+                "score": item.get("codex_score", item.get("score")),
+                "evidence": evidence,
+                "market_risk": item.get("risk_level"),
+                "data_quality": {"cutoff": item.get("last_date") or end, "future_knowledge_used": item.get("future_knowledge_used", False)},
+            })
+    try:
+        from company.model.ledger import freeze_signals
+        return freeze_signals(signals)
+    except Exception as exc:
+        return {"status": "degraded", "durable": False, "added": 0, "error": f"{type(exc).__name__}: {exc}"}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
@@ -2448,7 +2586,7 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/symbols":
                 self.send_json({"symbols": DEFAULT_SYMBOLS, "universe": DISCOVERY_UNIVERSE})
                 return
-            if parsed.path == "/api/health":
+            if parsed.path in ("/api/health", "/api/health/live"):
                 self.send_json(
                     {
                         "status": "ok",
@@ -2457,6 +2595,18 @@ class Handler(SimpleHTTPRequestHandler):
                         "version": build_version(),
                     }
                 )
+                return
+            if parsed.path == "/api/health/ready":
+                payload, status = readiness_status()
+                self.send_json(payload, status)
+                return
+            if parsed.path == "/api/data-status":
+                self.send_json(get_data_status())
+                return
+            if parsed.path == "/api/decision-ledger":
+                from company.model.ledger import ledger_summary
+                limit = max(0, min(500, int(query.get("limit", ["100"])[0])))
+                self.send_json(ledger_summary(limit=limit))
                 return
             if parsed.path == "/api/version":
                 self.send_json(build_version())
@@ -2508,6 +2658,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/news":
                 date = query.get("date", ["2026-05-28"])[0]
+                started = time.perf_counter()
                 try:
                     from company.data.news_rss import fetch_rss_news
                     
@@ -2515,6 +2666,7 @@ class Handler(SimpleHTTPRequestHandler):
                     market_items = fetch_rss_news("台股", limit=3, before_date=date)
                     # 抓取熱門權值股相關新聞
                     stock_items = fetch_rss_news("台積電 OR 鴻海 OR 聯發科", limit=3, before_date=date)
+                    record_provider_status("news_rss", "ok" if market_items or stock_items else "empty", started, rows=len(market_items) + len(stock_items))
                     
                     items = []
                     idx = 1
@@ -2548,19 +2700,19 @@ class Handler(SimpleHTTPRequestHandler):
                         "time": "今日最新"
                     })
                     
-                    # 如果無任何新聞，放一個預設備份
-                    if len(items) <= 1:
-                        items.insert(0, {"id": 99, "title": "【市場焦點】台股加權指數於今日進行季線攻防，權值股呈現漲跌互現。", "category": "大盤市場", "time": "今日最新"})
-                        
-                    self.send_json({"date": date, "news": items})
-                except Exception as e:
                     self.send_json({
                         "date": date,
-                        "news": [
-                            {"id": 1, "title": "【市場焦點】台股加權指數於今日進行季線攻防，權值股呈現漲跌互現。", "category": "大盤市場", "time": "今日最新"},
-                            {"id": 2, "title": "【股池追蹤】目前股池熱門標的包括台積電、國巨等，主力資金小幅流入。", "category": "個股焦點", "time": "今日最新"},
-                            {"id": 3, "title": "【量化監測】外資今日買賣超金額縮小，市場觀望下週美國非農就業數據指引。", "category": "環境特徵", "time": "今日最新"}
-                        ]
+                        "news": items,
+                        "source_status": "ok" if market_items or stock_items else "degraded",
+                        "warning": None if market_items or stock_items else "新聞來源暫無資料；未使用虛構備援新聞",
+                    })
+                except Exception as e:
+                    record_provider_status("news_rss", "failed", started, error=f"{type(e).__name__}: {e}")
+                    self.send_json({
+                        "date": date,
+                        "news": [],
+                        "source_status": "degraded",
+                        "warning": f"新聞來源失敗：{type(e).__name__}；核心選股不受影響",
                     })
                 return
             if parsed.path == "/api/daily-performance":
@@ -2592,6 +2744,41 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            if self.path == "/api/agent-signals":
+                body = self.read_body()
+                end = body.get("end") or datetime.now(timezone(timedelta(hours=8))).date().isoformat()
+                limit = max(1, min(20, int(body.get("limit", 5))))
+                errors = {}
+                try:
+                    codex_result = discover_candidates(end, limit=limit)
+                    codex_candidates = asarray_dicts(codex_result.get("candidates"))
+                except Exception as exc:
+                    codex_result, codex_candidates = {"candidates": []}, []
+                    errors["codex"] = f"{type(exc).__name__}: {exc}"
+                try:
+                    anti_candidates = discover_antigravity_candidates(end, limit=limit)
+                except Exception as exc:
+                    anti_candidates = []
+                    errors["antigravity"] = f"{type(exc).__name__}: {exc}"
+                try:
+                    claude_candidates = discover_claude_candidates(end, limit=limit)
+                except Exception as exc:
+                    claude_candidates = []
+                    errors["claude"] = f"{type(exc).__name__}: {exc}"
+                ledger = freeze_candidate_groups(end, [
+                    ("codex", codex_candidates, "5D"),
+                    ("antigravity", anti_candidates, "5D"),
+                    ("claude", claude_candidates, "5D"),
+                ])
+                self.send_json({
+                    "as_of": end,
+                    "codex": codex_result,
+                    "antigravity": anti_candidates,
+                    "claude": claude_candidates,
+                    "ledger": ledger,
+                    "errors": errors,
+                })
+                return
             if self.path == "/api/train":
                 body = self.read_body()
                 end_exclusive = (datetime.fromisoformat(body["end"]) + timedelta(days=1)).date().isoformat()
@@ -2793,26 +2980,34 @@ class Handler(SimpleHTTPRequestHandler):
                     )
                 except Exception as e:
                     codex_long_term = {"agent": "Codex 3-6M Long-Term Scorer", "error": str(e), "picks": []}
-
+                ledger = freeze_candidate_groups(end, [
+                    ("decision-center", candidates[: int(body.get("limit", 5))], "5D"),
+                    ("codex-long-term", asarray_dicts(codex_long_term.get("picks")), "60D"),
+                ])
                 self.send_json({
                     "as_of": end,
                     "market_index": market_info,
                     "candidates": candidates[: int(body.get("limit", 5))],
                     "potentials": potentials,
-                    "codex_long_term": codex_long_term
+                    "codex_long_term": codex_long_term,
+                    "ledger": ledger,
                 })
                 return
             if self.path == "/api/codex-long-term":
                 body = self.read_body()
                 end = body.get("end") or datetime.now().date().isoformat()
                 from company.screener.codex_long_term_3_6m import scan_codex_long_term
-                self.send_json(scan_codex_long_term(
+                result = scan_codex_long_term(
                     as_of=end,
                     symbols=body.get("symbols") or None,
                     limit=int(body.get("limit", 10)),
                     max_scan=int(body.get("max_scan", 100)),
                     cached_only=not bool(body.get("refresh", False)),
-                ))
+                )
+                result["ledger"] = freeze_candidate_groups(end, [
+                    ("codex-long-term", asarray_dicts(result.get("picks")), "60D"),
+                ])
+                self.send_json(result)
                 return
             if self.path == "/api/ai-analyze":
                 body = self.read_body()
@@ -2841,15 +3036,22 @@ class Handler(SimpleHTTPRequestHandler):
                 except Exception:
                     stock_name = symbol
                     news_headlines = []
+                started = time.perf_counter()
                 try:
                     from company.model.gemini_analyst import analyze_stock_with_ai
                     analysis = analyze_stock_with_ai(symbol, stock_name, quant_data, news_headlines)
+                    analysis_source = "rule_fallback" if "規則引擎降級" in analysis else "gemini"
+                    record_provider_status("gemini", "ok" if analysis_source == "gemini" else "fallback", started)
                 except Exception as e:
-                    analysis = f"AI 分析失敗: {str(e)}"
+                    from company.model.gemini_analyst import generate_rule_based_analysis
+                    analysis = generate_rule_based_analysis(symbol, stock_name, quant_data, news_headlines)
+                    analysis_source = "rule_fallback"
+                    record_provider_status("gemini", "failed", started, error=f"{type(e).__name__}: {e}")
                 self.send_json({
                     "symbol": symbol,
                     "name": stock_name,
-                    "analysis": analysis
+                    "analysis": analysis,
+                    "analysis_source": analysis_source,
                 })
                 return
             if self.path == "/api/next-day-plan":
@@ -2874,7 +3076,14 @@ class Handler(SimpleHTTPRequestHandler):
                         print(f"Error planning next day for {symbol}: {e}")
                 
                 plans.sort(key=lambda item: (not item["held"], -item["score"]))
-                self.send_json({"as_of": end, "plans": plans, "rule": "after_close_next_session_plan_only", "market_index": market_info})
+                ledger = freeze_candidate_groups(end, [("next-day-plan", plans, "1D")])
+                self.send_json({
+                    "as_of": end,
+                    "plans": plans,
+                    "rule": "after_close_next_session_plan_only",
+                    "market_index": market_info,
+                    "ledger": ledger,
+                })
                 return
             if self.path == "/api/replay-snapshots":
                 body = self.read_body()

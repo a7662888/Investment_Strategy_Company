@@ -4,9 +4,21 @@ services:
     env: python
     buildCommand: ""
     startCommand: python app.py $PORT 0.0.0.0
-    healthCheckPath: /api/health
+    healthCheckPath: /api/health/ready
     plan: free
     autoDeploy: true
+    buildFilter:
+      paths:
+        - "app.py"
+        - "requirements.txt"
+        - "company/**"
+        - "web/**"
+      ignoredPaths:
+        - "model_artifacts/**"
+        - "data/**"
+        - "data_cache/**"
+        - "reports/**"
+        - "*.md"
     envVars:
       - key: GEMINI_API_KEY
         sync: false
@@ -16,3 +28,9 @@ services:
         sync: false
       - key: TELEGRAM_CHAT_ID
         sync: false
+      - key: GITHUB_DATA_REPO
+        sync: false
+      - key: GITHUB_DATA_TOKEN
+        sync: false
+      - key: GITHUB_DATA_BRANCH
+        value: main

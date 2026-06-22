@@ -15,6 +15,7 @@ import urllib.request
 from datetime import date, timedelta
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -69,10 +70,39 @@ def test_health_endpoint():
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=5) as r:
-            payload = json.loads(r.read().decode("utf-8"))
-        assert payload["status"] == "ok"
-        print(f"✅ /api/health 正常(port {port})")
+        for path in ("/api/health/live", "/api/health/ready", "/api/data-status", "/api/decision-ledger?limit=1"):
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
+                payload = json.loads(r.read().decode("utf-8"))
+            assert isinstance(payload, dict)
+        print(f"✅ Phase 0 health/data/ledger endpoints 正常(port {port})")
+    finally:
+        server.shutdown()
+
+
+def test_agent_signals_endpoint():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), appmod.Handler)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    candidate = {"symbol": "2330.TW", "last_date": date.today().isoformat(), "last_close": 1000, "score": 8, "grade": "A", "reasons": ["test"]}
+    body = json.dumps({"end": date.today().isoformat(), "limit": 5}).encode("utf-8")
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/agent-signals",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with patch.object(appmod, "discover_candidates", return_value={"candidates": [candidate]}), \
+             patch.object(appmod, "discover_antigravity_candidates", return_value=[candidate]), \
+             patch.object(appmod, "discover_claude_candidates", return_value=[candidate]), \
+             patch.object(appmod, "freeze_candidate_groups", return_value={"status": "degraded", "added": 3}):
+            with urllib.request.urlopen(request, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        assert len(payload["codex"]["candidates"]) == 1
+        assert len(payload["antigravity"]) == 1
+        assert len(payload["claude"]) == 1
+        assert payload["ledger"]["added"] == 3
+        print("✅ /api/agent-signals 合併三家並接入ledger")
     finally:
         server.shutdown()
 
@@ -93,4 +123,5 @@ if __name__ == "__main__":
     test_held_position()
     test_codex_v2_blocks_new_positions_on_red_market()
     test_health_endpoint()
+    test_agent_signals_endpoint()
     print("✅ app 整合測試全數通過")
