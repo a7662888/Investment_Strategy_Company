@@ -36,7 +36,7 @@ jobs:
           python tests/test_app_integration.py
           python tests/test_no_lookahead.py
           python tests/test_decision_ledger.py
-          python -m pytest -q
+          python -m unittest discover -s tests -p 'test_*.py' -v
 
   deploy-production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
