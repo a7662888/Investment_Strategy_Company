@@ -1,4 +1,28 @@
 const $ = (id) => document.getElementById(id);
+const POSITION_STORAGE_KEY = "investment_strategy_positions";
+
+function restorePositionInput() {
+  const input = $("positionInput");
+  if (!input) return;
+  try {
+    const saved = localStorage.getItem(POSITION_STORAGE_KEY);
+    if (saved && !input.value.trim()) input.value = saved;
+  } catch (err) {
+    console.warn("Unable to restore positions from this browser:", err);
+  }
+}
+
+function persistPositionInput() {
+  const input = $("positionInput");
+  if (!input) return;
+  try {
+    const value = input.value.trim();
+    if (value) localStorage.setItem(POSITION_STORAGE_KEY, value);
+    else localStorage.removeItem(POSITION_STORAGE_KEY);
+  } catch (err) {
+    console.warn("Unable to save positions in this browser:", err);
+  }
+}
 
 function symbols() {
   return $("symbolInput").value.split(",").map(s => s.trim()).filter(Boolean);
@@ -1716,6 +1740,8 @@ async function syncSnapshotsFromServer() {
 
 
 // --- 4. Initialization Runs ---
+restorePositionInput();
+$("positionInput").addEventListener("input", persistPositionInput);
 loadUniverse();
 loadMarketNews();
 renderSnapshots();
