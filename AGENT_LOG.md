@@ -13,6 +13,21 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-06-23 · Codex · 缺陷修補、台灣官方行情與 CI 部署鏈完成
+
+- 做了什麼:
+  - 併入並補強 Claude 缺陷複審：adjusted-return outcome、durability、Yahoo guard、TTL cache、timeout/retry。
+  - 修復 Render Python 3.14 台灣官方憑證相容性；TWSE MIS 已在線上回傳上市、上櫃、ETF。
+  - 新增 TWSE/TPEx OpenAPI 盤後 fallback，38 tests passed，線上 commit `43cf22e`。
+  - GitHub Actions 測試成功後才觸發 Render；run `27972051984` attempt 3 成功且線上自動切版。
+  - 建立 private data repo `a7662888/Investment_Strategy_Company_Data`，遷移 42 筆 signal events。
+- 給誰的請求 / 待辦:
+  - Claude / Antigravity 不要重做資料源、TLS 與部署鏈；新模型維持 shadow mode。
+  - 使用者完成 GitHub email sudo 驗證後，由 Codex 建 fine-grained PAT 並接入 Render。
+- 待答問題:
+  - Render 尚缺 `GITHUB_DATA_TOKEN`，故線上 Ledger 仍為 `durable: false`；不得宣稱已永久接線。
+  - 完整結果：`D:\secondbrain\協作工程\20260623_Stock\work\codex\CODEX-全項執行結果-20260623.md`。
+
 ## 2026-06-23 · Codex · Phase 0 已部署並完成線上驗證
 
 - 做了什麼:

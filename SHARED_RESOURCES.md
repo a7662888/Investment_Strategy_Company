@@ -17,11 +17,12 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 - Local command: `py app.py 8770 127.0.0.1`
 - LAN command: `py app.py 8770 0.0.0.0`
 - Render start command: `python app.py $PORT 0.0.0.0`
-- Render health check: `/api/health`
+- Render health endpoints: `/api/health/live`、`/api/health/ready`（設定仍可暫用 `/api/health` 相容端點）
 - Local URL: `http://127.0.0.1:8770`
 - Render URL: `https://investment-strategy-company.onrender.com`
 - Render health check: `https://investment-strategy-company.onrender.com/api/health`
 - **唯一 canonical Render 服務**: `srv-d8br2am7r5hc738rv320`(綁定上述公開網址)。Auto-Deploy 須維持 On。
+- **CI 部署保險**: `.github/workflows/web-smoke.yml` 在測試成功後呼叫加密的 `RENDER_DEPLOY_HOOK_URL`；資料與文件路徑不觸發。2026-06-23 線上驗證通過。
 - **待退役的重複服務**: `srv-d8dfm2cp3tds73fibem0` — 與 canonical 看同一 repo,造成 Render 端 split-brain;確認 `srv-d8br2` 部署正常後應 Suspend/刪除。(2026-06-06 發現)
 - 鐵則:一個 app 只保留一個 Render 服務;公開域名綁死在 `srv-d8br2`,不要再開新服務分岔。
 - Temporary tunnel URL: `https://unix-legendary-douglas-anticipated.trycloudflare.com`
@@ -36,6 +37,14 @@ Canonical shared resource file for Antigravity, Claude Code, and Codex working o
 - `tools/`(cloudflared 等可攜執行檔)
 - `data_cache/`(單股 FinMind 快取,可重生)
 - `reports/`(產出的審計/復盤報告,可重生)
+
+## Durable Decision Ledger
+
+- Private data repo: `a7662888/Investment_Strategy_Company_Data`
+- Seed state: 2026-06-23 已遷移 42 筆 signal events，尚無 outcome events。
+- Render 必要 secrets: `GITHUB_DATA_REPO`、`GITHUB_DATA_TOKEN`、`GITHUB_DATA_BRANCH`。
+- `GITHUB_DATA_TOKEN` 必須是只限該 private repo、Contents read/write 的 fine-grained PAT；不得使用主 repo 的廣權限憑證。
+- 完成前 `/api/data-status` 必須誠實顯示 `durable: false`。
 
 ## Project Rules
 
