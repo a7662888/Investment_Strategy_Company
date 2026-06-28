@@ -1888,13 +1888,14 @@ async function loadDecisionLedger() {
     $("ledgerEtfSignals").textContent = etfSignals.length;
     $("ledgerSource").textContent = storage.source || "local";
     
-    if (signals.length === 0) {
-      grid.innerHTML = `<p style="grid-column: span 3; text-align: center; color: var(--muted); padding: 20px;">帳本中暫無決策信號。</p>`;
+    const valueGroup = [...valueSignals, ...etfSignals];
+    if (valueGroup.length === 0) {
+      grid.innerHTML = `<p style="grid-column: span 3; text-align: center; color: var(--muted); padding: 20px;">帳本中暫無價值大腦信號。</p>`;
       return;
     }
     
     // Render cards
-    grid.innerHTML = signals.map(s => {
+    grid.innerHTML = valueGroup.map(s => {
       const action = s.action || "watch";
       const badgeCls = `badge-${action}`;
       const symbolCode = s.symbol.split(".")[0];
