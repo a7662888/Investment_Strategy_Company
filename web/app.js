@@ -1087,17 +1087,23 @@ async function loadDailyPerformance() {
   }
 }
 
+function safeBind(id, handler) {
+  const el = $(id);
+  if (el) el.addEventListener("click", handler);
+}
+
 function bindActions() {
-  $("refreshQuotes").addEventListener("click", refreshQuotes);
-  $("runTraining").addEventListener("click", runTraining);
-  $("recommendToday").addEventListener("click", recommendToday);
-  $("discoverToday").addEventListener("click", discoverToday);
-  $("nextDayPlan").addEventListener("click", nextDayPlan);
+  safeBind("refreshQuotes", refreshQuotes);
+  safeBind("runTraining", runTraining);
+  safeBind("recommendToday", recommendToday);
+  safeBind("discoverToday", discoverToday);
+  safeBind("nextDayPlan", nextDayPlan);
 }
 
 // Set endDate to today if not already set
-if (!$("endDate").value) {
-  $("endDate").value = taipeiDateString();
+const endDateEl = $("endDate");
+if (endDateEl && !endDateEl.value) {
+  endDateEl.value = taipeiDateString();
 }
 
 bindActions();
@@ -1336,80 +1342,99 @@ window.deleteSnapshot = function(idx) {
 };
 
 // --- 3. Bind Sliders and History Buttons ---
-$("feeRate").addEventListener("input", (e) => {
-  $("feeRateVal").textContent = (e.target.value * 100).toFixed(4) + "%";
-});
-$("taxRate").addEventListener("input", (e) => {
-  $("taxRateVal").textContent = (e.target.value * 100).toFixed(2) + "%";
-});
-$("slippageRate").addEventListener("input", (e) => {
-  $("slippageRateVal").textContent = (e.target.value * 100).toFixed(2) + "%";
-});
+if ($("feeRate")) {
+  $("feeRate").addEventListener("input", (e) => {
+    const valEl = $("feeRateVal");
+    if (valEl) valEl.textContent = (e.target.value * 100).toFixed(4) + "%";
+  });
+}
+if ($("taxRate")) {
+  $("taxRate").addEventListener("input", (e) => {
+    const valEl = $("taxRateVal");
+    if (valEl) valEl.textContent = (e.target.value * 100).toFixed(2) + "%";
+  });
+}
+if ($("slippageRate")) {
+  $("slippageRate").addEventListener("input", (e) => {
+    const valEl = $("slippageRateVal");
+    if (valEl) valEl.textContent = (e.target.value * 100).toFixed(2) + "%";
+  });
+}
 
-$("clearSnapshots").addEventListener("click", async () => {
-  if (confirm("確定要清除所有歷史快照日誌嗎？這將會同步清除雲端與本地存檔。")) {
-    localStorage.removeItem("quant_snapshots");
-    renderSnapshots();
-    try {
-      await fetch("/api/save-snapshots", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ snapshots: [] })
-      });
-    } catch (err) {
-      console.error("Failed to sync clear event to server:", err);
-    }
-  }
-});
-
-$("exportSnapshots").addEventListener("click", () => {
-  const saved = localStorage.getItem("quant_snapshots");
-  if (!saved || JSON.parse(saved).length === 0) {
-    alert("沒有任何日誌可以匯出。");
-    return;
-  }
-  const blob = new Blob([saved], {type: "application/json"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `solopreneur_quant_snapshots_${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
-
-$("importSnapshotsBtn").addEventListener("click", () => {
-  $("importSnapshotsFile").click();
-});
-
-$("importSnapshotsFile").addEventListener("change", (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = async function(event) {
-    try {
-      const list = JSON.parse(event.target.result);
-      if (!Array.isArray(list)) {
-        alert("錯誤的檔案格式：應為快照陣列 JSON。");
-        return;
-      }
-      localStorage.setItem("quant_snapshots", JSON.stringify(list));
+if ($("clearSnapshots")) {
+  $("clearSnapshots").addEventListener("click", async () => {
+    if (confirm("確定要清除所有歷史快照日誌嗎？這將會同步清除雲端與本地存檔。")) {
+      localStorage.removeItem("quant_snapshots");
       renderSnapshots();
-      
-      await fetch("/api/save-snapshots", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ snapshots: list })
-      });
-      
-      alert(`成功匯入 ${list.length} 筆歷史快照日誌，並已同步至雲端存檔！`);
-    } catch (err) {
-      alert("載入檔案失敗：" + err.message);
+      try {
+        await fetch("/api/save-snapshots", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ snapshots: [] })
+        });
+      } catch (err) {
+        console.error("Failed to sync clear event to server:", err);
+      }
     }
-  };
-  reader.readAsText(file);
-});
+  });
+}
 
-$("replayOptimizeSnapshots").addEventListener("click", async () => {
+if ($("exportSnapshots")) {
+  $("exportSnapshots").addEventListener("click", () => {
+    const saved = localStorage.getItem("quant_snapshots");
+    if (!saved || JSON.parse(saved).length === 0) {
+      alert("沒有任何日誌可以匯出。");
+      return;
+    }
+    const blob = new Blob([saved], {type: "application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `solopreneur_quant_snapshots_${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+if ($("importSnapshotsBtn")) {
+  $("importSnapshotsBtn").addEventListener("click", () => {
+    const fileEl = $("importSnapshotsFile");
+    if (fileEl) fileEl.click();
+  });
+}
+
+if ($("importSnapshotsFile")) {
+  $("importSnapshotsFile").addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async function(event) {
+      try {
+        const list = JSON.parse(event.target.result);
+        if (!Array.isArray(list)) {
+          alert("錯誤的檔案格式：應為快照陣列 JSON。");
+          return;
+        }
+        localStorage.setItem("quant_snapshots", JSON.stringify(list));
+        renderSnapshots();
+
+        await fetch("/api/save-snapshots", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ snapshots: list })
+        });
+
+        alert(`成功匯入 ${list.length} 筆歷史快照日誌，並已同步至雲端存檔！`);
+      } catch (err) {
+        alert("載入檔案失敗：" + err.message);
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+if ($("replayOptimizeSnapshots")) {
+  $("replayOptimizeSnapshots").addEventListener("click", async () => {
   const saved = localStorage.getItem("quant_snapshots");
   if (!saved || JSON.parse(saved).length === 0) {
     alert("沒有歷史日誌快照可供覆盤。請先執行「明日計畫」或「開始區間訓練」以產生快照。");
@@ -1445,6 +1470,7 @@ $("replayOptimizeSnapshots").addEventListener("click", async () => {
     panel.innerHTML = `<div style="color: var(--red); padding: 12px; border: 1px solid var(--red); background: #fef2f2; border-radius: 6px; font-size: 13px;">覆盤失敗：${err.message}</div>`;
   }
 });
+}
 
 function renderReplayResults(data) {
   const panel = $("replayResultsPanel");
@@ -1770,12 +1796,16 @@ async function syncSnapshotsFromServer() {
 
 // --- 4. Initialization Runs ---
 restorePositionInput();
-$("positionInput").addEventListener("input", persistPositionInput);
+if ($("positionInput")) {
+  $("positionInput").addEventListener("input", persistPositionInput);
+}
 loadUniverse();
 loadMarketNews();
 renderSnapshots();
 syncSnapshotsFromServer();
-$("endDate").addEventListener("change", loadMarketNews);
+if ($("endDate")) {
+  $("endDate").addEventListener("change", loadMarketNews);
+}
 
 
 // --- 5. AI Analysis Modal Interactions ---

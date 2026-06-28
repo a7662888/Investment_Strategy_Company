@@ -3,116 +3,61 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>一人投資策略公司</title>
+  <title>一人投資策略公司 · 價值大腦</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <main class="shell">
-    <header class="topbar">
+    <header class="topbar" style="display: flex; justify-content: space-between; align-items: flex-start;">
       <div>
-        <h1>一人投資策略公司</h1>
-        <p>收盤後產生明日計畫、續抱通知、區間訓練與研究候選</p>
+        <h1 style="display: flex; align-items: center; gap: 10px;">
+          🧠 價值大腦
+          <span style="font-size: 12px; font-weight: 400; color: var(--muted); background: #f1f5f9; padding: 2px 8px; border-radius: 4px;">shadow · unproven</span>
+        </h1>
+        <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--muted);">
+          由離線 <code>tw_value_method v2.2</code> 驅動的價值投資決策帳本 —
+          所有訊號在 data_cutoff 當時凍結，與大盤 0050.TW 實時對打
+        </p>
       </div>
-      <button id="refreshQuotes" class="primary">更新報價</button>
+      <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
+        <span id="dataFreshness" style="font-size: 11px; color: var(--muted); padding: 4px 8px; background: #f8fafc; border-radius: 4px;">載入中…</span>
+        <a href="/lab.html" style="font-size: 13px; padding: 6px 14px; background: #1e293b; color: #fff; border-radius: 6px; text-decoration: none; white-space: nowrap;">
+          🔬 策略實驗室 →
+        </a>
+      </div>
     </header>
 
-    <!-- Market Risk Panel -->
-    <section id="marketRiskPanel" class="panel risk-panel" style="display: none; border: 2px solid #ccc; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-      <div style="display: grid; grid-template-columns: 1.2fr 2fr 1.5fr; gap: 20px; align-items: start;">
-        <!-- Left Column: Risk Lights -->
-        <div>
-          <h3 style="margin: 0 0 10px 0; font-size: 14px; color: var(--ink);">🚨 市場風險燈號 <span style="font-size: 10px; font-weight: normal; color: var(--muted);">(閾值為暫定值，待校準)</span></h3>
-          <div style="display: flex; gap: 8px; margin-bottom: 12px;" id="riskLights">
-            <span id="lightGREEN" class="light" style="width: 24px; height: 24px; border-radius: 50%; background: #e2e8f0; display: inline-block; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);"></span>
-            <span id="lightYELLOW" class="light" style="width: 24px; height: 24px; border-radius: 50%; background: #e2e8f0; display: inline-block; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);"></span>
-            <span id="lightRED" class="light" style="width: 24px; height: 24px; border-radius: 50%; background: #e2e8f0; display: inline-block; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);"></span>
-            <span id="lightBLACK" class="light" style="width: 24px; height: 24px; border-radius: 50%; background: #e2e8f0; display: inline-block; box-shadow: inset 0 1px 3px rgba(0,0,0,0.2);"></span>
-          </div>
-          <div id="riskLabel" style="font-weight: bold; font-size: 16px; margin-bottom: 4px;">載入中...</div>
-          <div id="riskStance" style="font-size: 12px; color: var(--muted); line-height: 1.4;">大盤風險狀態判定中</div>
-        </div>
-        <!-- Center Column: Tomorrow's Decision -->
-        <div style="border-left: 1px solid var(--line); padding-left: 20px;">
-          <h3 style="margin: 0 0 10px 0; font-size: 14px; color: var(--ink);">📅 明日總決策</h3>
-          <div id="tomorrowDecision" style="font-weight: bold; font-size: 16px; color: var(--red); margin-bottom: 8px; min-height: 24px;"></div>
-          <div id="decisionReasons" style="font-size: 12px; color: var(--ink); line-height: 1.6;"></div>
-        </div>
-        <!-- Right Column: Position Suggestions -->
-        <div style="border-left: 1px solid var(--line); padding-left: 20px;">
-          <h3 style="margin: 0 0 10px 0; font-size: 14px; color: var(--ink);">⚖️ 部位建議與開盤指引</h3>
-          <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
-            <div>新買進：<strong id="buyExposureSuggest" style="color: var(--blue);">0%</strong></div>
-            <div>既有持股：<span id="holdExposureSuggest" style="font-weight: 500;">僅觀察</span></div>
-            <div>開盤指引：<span id="openGuideSuggest" style="font-weight: 500; color: #d97706;">不得追價</span></div>
-          </div>
-        </div>
+    <!-- Methodology Badge (collapsible) -->
+    <details style="margin-bottom: 16px; font-size: 12px; color: var(--muted); background: #f8fafc; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px;">
+      <summary style="cursor: pointer; font-weight: 600; color: #475569;">📐 方法論準則摘要 (tw_value_method v2.2)</summary>
+      <div style="margin-top: 8px; line-height: 1.6; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <div><strong>選股宇宙</strong><br>24 檔台股（市值/流動性/產業代表篩選）+ 6 檔 ETF</div>
+        <div><strong>Action 光譜</strong><br>accumulate → watch → hold → avoid，附 entry_range 與 invalidation</div>
+        <div><strong>三大支柱</strong><br>商業品質 (ROE/GPM/OPM) · 估值百分位 (PE/PB) · 法人籌碼趨勢</div>
+        <div><strong>資料來源</strong><br>twstock 盤後日線 + Yahoo Finance · 離線計算 · 無 LLM 在線污染</div>
+        <div><strong>持久化</strong><br>每筆決策寫入 <code>decision_ledger.jsonl</code>，GitHub 遠端同步</div>
+        <div><strong>Champion/Challenger</strong><br>value-engine (63 訊號) vs ml-quant (33 訊號) vs 0050 基準</div>
       </div>
-    </section>
-
-    <section id="focusNewsPanel" class="panel news-panel" style="display: none; border-color: #00f0ff; background: rgba(0, 240, 255, 0.02);">
-      <div class="sectionHead" style="margin-bottom: 8px;">
-        <h2 style="color: #00f0ff; display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1.2rem;">
-          <span>📡</span> 今日最新股市焦點新聞
-        </h2>
-        <span class="badge" style="background: rgba(0, 240, 255, 0.15); color: #00f0ff; border: 1px solid rgba(0, 240, 255, 0.3); font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: bold;">LIVE</span>
-      </div>
-      <div id="focusNewsGrid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px;"></div>
-    </section>
-
-    <section class="panel controls">
-      <label>訓練區間開始
-        <input id="startDate" type="date" value="2020-01-01">
-      </label>
-      <label>訓練區間結束
-        <input id="endDate" type="date">
-      </label>
-      <label>股票代號
-        <input id="symbolInput" value="2327.TW,2330.TW,2317.TW,2454.TW,2308.TW">
-      </label>
-      <div class="roleBox">
-        <label><input id="roleC1" type="checkbox" checked> C-1 保守價值流</label>
-        <label><input id="roleC2" type="checkbox" checked> C-2 激進動能流</label>
-      </div>
-      <button id="runTraining" class="primary">開始區間訓練</button>
-      <button id="discoverToday">Agent選股</button>
-      <button id="nextDayPlan" class="primary">明日計畫</button>
-    </section>
-
-    <section class="panel friction-controls" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px;">
-      <label>交易手續費率 (Commission)
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-          <input id="feeRate" type="range" min="0" max="0.005" step="0.0001" value="0.001425" style="flex: 1; height: 24px; padding: 0; cursor: pointer;">
-          <span id="feeRateVal" style="font-family: monospace; font-size: 13px; width: 65px; text-align: right;">0.1425%</span>
-        </div>
-      </label>
-      <label>證券交易稅率 (Tax)
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-          <input id="taxRate" type="range" min="0" max="0.01" step="0.0005" value="0.003" style="flex: 1; height: 24px; padding: 0; cursor: pointer;">
-          <span id="taxRateVal" style="font-family: monospace; font-size: 13px; width: 65px; text-align: right;">0.30%</span>
-        </div>
-      </label>
-      <label>交易滑價率 (Slippage)
-        <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-          <input id="slippageRate" type="range" min="0" max="0.005" step="0.0005" value="0.001" style="flex: 1; height: 24px; padding: 0; cursor: pointer;">
-          <span id="slippageRateVal" style="font-family: monospace; font-size: 13px; width: 65px; text-align: right;">0.10%</span>
-        </div>
-      </label>
-    </section>
+    </details>
 
     <!-- 🧠 價值大腦決策帳本 (Decision Ledger - Shadow Mode) -->
     <section class="panel" style="border: 2px solid #10b981; background: rgba(16, 185, 129, 0.01);">
       <div class="sectionHead">
         <h2 style="color: #0f766e; display: flex; align-items: center; gap: 8px; margin: 0;">
-          <span>🧠</span> 價值大腦決策帳本 (Decision Ledger - Shadow Mode)
+          <span>🧠</span> 決策帳本 (Decision Ledger)
         </h2>
         <span id="ledgerStatus" class="pill" style="font-weight: bold; background: #e6f4ea; color: #137333; border-color: #ceead6;">
           Durable: 載入中...
         </span>
       </div>
       <p style="font-size: 13px; color: var(--muted); margin: 8px 0 12px 0; line-height: 1.5;">
-        由離線 <code>tw_value_method v2.2</code> 價值投資方法論驅動，每筆決策（包含選股、action 光譜與 entry/invalidation 護欄）皆在 data_cutoff 當時凍結，持久化同步至 GitHub 遠端私有資料庫，並與大盤 0050.TW 實時對打，以證明在 shadow 期間獲得超額回報。
+        每筆決策在 data_cutoff 時凍結，禁止事後修改。action 光譜包含 accumulate / watch / hold / avoid，
+        附 entry_range (分批買進區間) 與 invalidation (失效條件)。<strong style="color: #0f766e;">Champion/Challenger 框架：</strong>
+        <span style="background: #e6f4ea; padding: 1px 6px; border-radius: 3px;">value-engine</span>（價值方法論，63 訊號） vs
+        <span style="background: #fef7e0; padding: 1px 6px; border-radius: 3px;">ml-quant</span>（ML 量化模型，33 訊號） vs
+        <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 3px;">0050.TW</span>（大盤基準）。
       </p>
-      
+
       <!-- Ledger Stats -->
       <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px;" id="ledgerStats">
         <div style="background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px; text-align: center;">
@@ -120,7 +65,7 @@
           <strong id="ledgerTotalEvents" style="font-size: 16px;">—</strong>
         </div>
         <div style="background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px; text-align: center;">
-          <div style="font-size: 11px; color: var(--muted);">個股信號</div>
+          <div style="font-size: 11px; color: var(--muted);">個股信號 (value-engine)</div>
           <strong id="ledgerValueSignals" style="font-size: 16px;">—</strong>
         </div>
         <div style="background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px; text-align: center;">
@@ -133,299 +78,50 @@
         </div>
       </div>
 
+      <!-- Filter tabs for ledger -->
+      <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;" id="ledgerFilters">
+        <button class="ledger-filter active" data-filter="all" style="padding: 4px 12px; border-radius: 16px; border: 1px solid #10b981; background: #e6f4ea; color: #137333; cursor: pointer; font-size: 12px; font-weight: 600;">全部</button>
+        <button class="ledger-filter" data-filter="accumulate" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">📈 買進</button>
+        <button class="ledger-filter" data-filter="watch" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">👀 觀察</button>
+        <button class="ledger-filter" data-filter="hold" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">🤲 持有</button>
+        <button class="ledger-filter" data-filter="avoid" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">⛔ 避開</button>
+        <button class="ledger-filter" data-filter="ml-quant" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">🤖 ML-Quant</button>
+        <button class="ledger-filter" data-filter="value-engine" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">📐 Value-Engine</button>
+      </div>
+
       <!-- Ledger Cards Grid -->
       <div id="ledgerGrid" class="agent-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
         <p style="grid-column: span 3; text-align: center; color: var(--muted); padding: 20px;">正在讀取決策帳本...</p>
       </div>
-    </section>
 
-    <section class="panel">
-      <div class="sectionHead">
-        <h2>📊 昨日三家選股績效回顧</h2>
-        <span id="dailyPerfStatus">載入中…</span>
-      </div>
-      <div id="dailyPerfPanel" class="cards"></div>
-    </section>
-
-    <section class="panel">
-      <div class="sectionHead">
-        <h2>🎯 明日決策中心 ①　買進候選（三家 Agent 並列）</h2>
-        <span id="discoverStatus">正在進行多因子計算...</span>
-      </div>
-      <div id="agentGrid" class="agent-grid">
-        <div class="agent-col agent-codex">
-          <div class="agent-col-head">🤖 Codex Agent<span class="agent-sub">綜合多因子 + 大盤環境</span></div>
-          <div id="codexList"></div>
-        </div>
-        <div class="agent-col agent-anti">
-          <div class="agent-col-head">🌌 Antigravity Agent<span class="agent-sub">VCP 波動收縮 + 量能突破</span></div>
-          <div id="antigravityList"></div>
-        </div>
-        <div class="agent-col agent-claude">
-          <div class="agent-col-head">🧠 Claude Agent<span class="agent-sub">智能 Regime 風險感知</span></div>
-          <div id="claudeList"></div>
-        </div>
+      <!-- Outcome summary strip -->
+      <div id="outcomeSummary" style="margin-top: 14px; padding: 10px 14px; background: #f8fafc; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; color: var(--muted); display: none;">
+        <strong>📊 Outcomes 累積狀態：</strong>
+        <span id="outcomeStatusText">等待首次 outcome 更新 (需 ≥20 交易日)</span>
       </div>
     </section>
 
-    <section class="panel" id="portfolioAllocationPanel" style="display: none; border-color: #3b82f6; background: rgba(59, 130, 246, 0.01); box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-      <div class="sectionHead">
-        <h2 style="color: #2563eb; display: flex; align-items: center; gap: 8px;"><span style="color:#2563eb">⚖️</span> 智慧投資組合配置建議 (Smart Portfolio Allocation)</h2>
-        <span id="portfolioRegimeLabel" class="pill" style="font-weight: bold; background: #e0f2fe; color: #0369a1; border-color: #bae6fd;"></span>
-      </div>
-      <div style="display: grid; grid-template-columns: 1.2fr 2fr; gap: 20px; align-items: start;">
-        <!-- Regime exposure recommendation -->
-        <div style="background: rgba(255, 255, 255, 0.8); border: 1px solid var(--line); border-radius: 8px; padding: 14px;">
-          <h3 style="font-size: 14px; margin: 0 0 10px 0; color: var(--ink); border-bottom: 1px solid var(--line); padding-bottom: 6px;">資金曝險分配建議</h3>
-          <div style="display: flex; flex-direction: column; gap: 12px;">
-            <div>
-              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-                <span>股票部位目標 (Stock Portion)</span>
-                <strong id="stockExposureVal" style="color: var(--blue);">0%</strong>
-              </div>
-              <div style="height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden;">
-                <div id="stockExposureBar" style="height: 100%; background: var(--blue); width: 0%; transition: width 0.3s ease;"></div>
-              </div>
-            </div>
-            <div>
-              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
-                <span>保留現金比例 (Cash Portion)</span>
-                <strong id="cashExposureVal" style="color: var(--green);">100%</strong>
-              </div>
-              <div style="height: 10px; background: #e2e8f0; border-radius: 5px; overflow: hidden;">
-                <div id="cashExposureBar" style="height: 100%; background: var(--green); width: 100%; transition: width 0.3s ease;"></div>
-              </div>
-            </div>
-          </div>
-          <p id="regimeStanceText" style="font-size: 12px; margin-top: 12px; color: var(--muted); line-height: 1.5; font-style: italic;"></p>
-        </div>
-        <!-- Individual Stock allocations -->
-        <div style="background: rgba(255, 255, 255, 0.8); border: 1px solid var(--line); border-radius: 8px; padding: 14px;">
-          <h3 style="font-size: 14px; margin: 0 0 10px 0; color: var(--ink); border-bottom: 1px solid var(--line); padding-bottom: 6px;">推薦股配比明細</h3>
-          <div id="stockAllocationsGrid" style="display: flex; flex-direction: column; gap: 10px;">
-            <!-- will be populated dynamically -->
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel" id="midTermPotentialPanel" style="border-color: #10b981; background: rgba(16, 185, 129, 0.01);">
-      <div class="sectionHead">
-        <h2 style="color: #059669; display: flex; align-items: center; gap: 8px;"><span>📅</span> 中期潛力股 3–6M (長期潛力股評分)</h2>
-        <span id="midTermStatus" style="font-weight: bold; color: #059669;">尚未計算</span>
-      </div>
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>股票</th>
-              <th>評分 / 等級</th>
-              <th>目前股價</th>
-              <th>合理價區間</th>
-              <th>安全邊際 / 折價</th>
-              <th>3-6M 催化劑</th>
-              <th>價值陷阱與警訊</th>
-              <th>建議分批買進區間</th>
-              <th>停損 / 停利 / 重檢條件</th>
-              <th>AI 診斷</th>
-            </tr>
-          </thead>
-          <tbody id="midTermPotentialRows">
-            <tr><td colspan="10" style="text-align: center; color: var(--muted); padding: 20px;">請點擊上方重新計算以跑中期潛力股評分</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="sectionHead" style="margin-top: 18px;">
-        <h3 style="color: #0369a1; display: flex; align-items: center; gap: 8px; margin: 0;"><span>🤖</span> Codex 獨立 3–6M 長投評分器（安全邊際優先）</h3>
-        <span id="codexLongTermStatus" style="font-weight: bold; color: #0369a1;">尚未計算</span>
-      </div>
-      <div class="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>股票</th>
-              <th>Codex 評分 / 動作</th>
-              <th>目前股價</th>
-              <th>保守合理價</th>
-              <th>安全邊際</th>
-              <th>分數拆解</th>
-              <th>理由</th>
-              <th>警訊</th>
-              <th>建議買進區間</th>
-              <th>AI 診斷</th>
-            </tr>
-          </thead>
-          <tbody id="codexLongTermRows">
-            <tr><td colspan="10" style="text-align: center; color: var(--muted); padding: 20px;">請點擊上方重新計算以跑 Codex 長投評分</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="sectionHead">
-        <h2>🎯 明日決策中心 ②　持股決策（賣出 / 減碼 / 續抱）</h2>
-        <span>輸入持股後按「明日計畫」；格式 2327.TW:1000@500，逗號或換行分隔</span>
-      </div>
-      <textarea id="positionInput" rows="3" placeholder="2327.TW:1000@500, 2330.TW:10@900"></textarea>
-      <div id="positionSaveStatus" style="margin-top: 6px; font-size: 12px; color: var(--muted);">尚未輸入持股</div>
-      <div id="planList" class="cards planList"></div>
-    </section>
-
-    <section class="panel">
-      <div class="sectionHead">
-        <h2>模型訓練思考過程</h2>
-        <span id="learningStatus">尚未執行區間訓練</span>
-      </div>
-      <div id="learningPanel" class="learningPanel">
-        <p>按「開始區間訓練」後，這裡會顯示模型證據、策略弱點與下一輪優化方向。</p>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="sectionHead">
-        <h2>即時報價</h2>
-        <span id="quoteTime"></span>
-      </div>
-      <div class="tableWrap">
-        <table>
-          <thead><tr><th>股票</th><th>名稱</th><th>價格</th><th>漲跌</th><th>時間</th><th>來源</th><th>狀態</th></tr></thead>
-          <tbody id="quoteRows"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="sectionHead">
-        <h2>📋 今日候選 <span style="font-size:13px;font-weight:400;color:var(--muted)">研究用途 · 點擊代號可追加至股票欄</span></h2>
-        <button id="recommendToday" style="flex-shrink:0">重新計算</button>
-      </div>
-      <div id="marketStatusCard" class="market-status-card" style="display: none;"></div>
-      <div id="candidateNote" style="display: none;"></div>
-      
-      <div id="candidateGradesContainer" style="display: flex; flex-direction: column; gap: 20px; margin-top: 12px;">
-        <!-- A級 可執行 -->
-        <div id="gradeASection">
-          <h3 style="color: #059669; font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px;">
-            <span>🟢</span> A級 · 可執行 <span style="font-size: 11px; font-weight: normal; color: var(--muted); margin-left: 8px;">(大盤安全、個股站上均線且量價健康)</span>
-          </h3>
-          <div id="candidateListA" class="cards candidate-grid"></div>
-        </div>
-
-        <!-- B級 觀察反彈 -->
-        <div id="gradeBSection">
-          <h3 style="color: #d97706; font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px;">
-            <span>🟡</span> B級 · 觀察反彈 <span style="font-size: 11px; font-weight: normal; color: var(--muted); margin-left: 8px;">(短線跌深或大盤震盪，不給予買進建議)</span>
-          </h3>
-          <div id="candidateListB" class="cards candidate-grid"></div>
-        </div>
-
-        <!-- C級 禁買 -->
-        <div id="gradeCSection">
-          <h3 style="color: #dc2626; font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px;">
-            <span>🔴</span> C級 · 禁買 <span style="font-size: 11px; font-weight: normal; color: var(--muted); margin-left: 8px;">(當日重挫、跌破重要均線或大盤急停)</span>
-          </h3>
-          <div id="candidateListC" class="cards candidate-grid"></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="sectionHead">
-        <h2>區間訓練結果</h2>
-        <span id="trainingStatus">尚未執行</span>
-      </div>
-      <div class="tableWrap">
-        <table>
-          <thead><tr><th>股票</th><th>操盤手</th><th>期間</th><th>總報酬</th><th>最大回撤</th><th>交易次數</th><th>模型依據</th><th>未來資料</th></tr></thead>
-          <tbody id="trainingRows"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel" style="margin-top: 20px; border: 1px solid #10b981; background: #fafdfb;">
-      <div class="sectionHead">
-        <h2 style="color: #10b981;">🤖 AI 預測模型在線訓練與思考過程控制台</h2>
-        <span id="trainProgress">優化狀態：未執行</span>
-      </div>
-      <div id="trainConsole" class="terminal-log" style="
-        background: #0f1710; 
-        color: #34d399; 
-        font-family: monospace; 
-        padding: 15px; 
-        border-radius: 6px; 
-        max-height: 250px; 
-        overflow-y: auto; 
-        margin-bottom: 15px; 
-        font-size: 13px;
-        line-height: 1.5;
-        border: 1px solid #059669;
-        white-space: pre-wrap;
-      ">等待執行區間訓練...</div>
-      <div id="optimizedWeights" style="display: none; padding: 12px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 13px; color: #166534; line-height: 1.6;">
-        <strong>🎉 AI 預測模型優化完成！</strong>
-        <p id="weightsDetail" style="margin: 4px 0 0 0; font-family: monospace; font-size: 13px;"></p>
-      </div>
-    </section>
-
-    <section class="panel" style="margin-top: 20px;">
-      <div class="sectionHead">
-        <h2>📊 系統當前股池 (Discovery Universe)</h2>
-        <span id="universeCount">載入中…</span>
-      </div>
-      <div id="universeGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;"></div>
-    </section>
-
-    <section class="panel" style="margin-top: 20px; border-color: #3b82f6; background: #fafcff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-      <div class="sectionHead">
-        <h2 style="color: #2563eb; display: flex; align-items: center; gap: 8px;"><span>⏱️</span> 歷史日誌快照與覆盤終端 (Simulation Snapshots Log)</h2>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button id="replayOptimizeSnapshots" class="primary" style="height: 30px; font-size: 12px; padding: 0 12px; background-color: #10b981; border-color: #10b981; color: white;">一鍵覆盤與參數優化</button>
-          <button id="importSnapshotsBtn" style="height: 30px; font-size: 12px; padding: 0 12px; background-color: #f1f5f9; border-color: #cbd5e1; color: #334155;">匯入歷史日誌</button>
-          <input type="file" id="importSnapshotsFile" style="display:none;" accept=".json">
-          <button id="exportSnapshots" class="primary" style="height: 30px; font-size: 12px; padding: 0 12px;">匯出 JSON</button>
-          <button id="clearSnapshots" style="height: 30px; font-size: 12px; padding: 0 12px; color: var(--red); border-color: var(--red); background: #fef2f2;">清除歷史</button>
-        </div>
-      </div>
-      <div class="tableWrap">
-        <table style="font-size: 13px;">
-          <thead>
-            <tr>
-              <th>時間</th>
-              <th>目標日</th>
-              <th>大盤狀態</th>
-              <th>推薦代號</th>
-              <th>持倉狀態</th>
-              <th>模型準確度</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="snapshotRows">
-            <tr><td colspan="7" style="text-align: center; color: var(--muted);">尚無覆盤快照。當您執行「明日計畫」或「開始區間訓練」時將自動記錄快照。</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div id="replayResultsPanel" style="display:none; margin-top: 15px; padding: 15px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-        <!-- Replay results will be inserted here dynamically -->
-      </div>
-    </section>
+    <!-- Data freshness footer -->
+    <div style="margin-top: 20px; padding: 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; font-size: 12px; color: #991b1b; line-height: 1.6;">
+      <strong>⚠️ shadow 研究用途 — 非投資建議</strong><br>
+      本頁所有訊號皆為內部研究使用。任何 pick 在足夠樣本（≥120D + ≥20 獨立訊號）證明優於基準前，一律標 shadow。
+      顯示的每個數字皆可溯源至公開資料來源，缺值標「尚待確認」。短樣本 (&lt;60D) Sharpe/年化嚴禁作為排序或宣傳依據。
+      <span style="display: block; margin-top: 4px; color: #64748b;">
+        最後資料更新：<span id="footerDataTimestamp">—</span>
+      </span>
+    </div>
   </main>
 
   <!-- AI Analysis Modal -->
   <div id="aiAnalysisModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); backdrop-filter:blur(5px); z-index:9999; justify-content:center; align-items:center;">
     <div style="background:rgba(255,255,255,0.95); border:1px solid #00f0ff; border-radius:12px; box-shadow:0 10px 25px rgba(0,240,255,0.2); width:90%; max-width:600px; max-height:80vh; display:flex; flex-direction:column; overflow:hidden; animation: fadeIn 0.3s ease;">
-      <!-- Modal Header -->
       <div style="background:linear-gradient(135deg, #0f172a, #1e293b); color:#ffffff; padding:15px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(0,240,255,0.3);">
         <h3 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;">
           <span>🤖</span> <span id="aiModalTitle">AI 智能分析助理</span>
         </h3>
         <button onclick="closeAiModal()" style="background:none; border:none; color:#94a3b8; font-size:20px; cursor:pointer; font-weight:bold; line-height: 1;">&times;</button>
       </div>
-      <!-- Modal Body -->
-      <div id="aiModalBody" style="padding:20px; overflow-y:auto; font-size:14px; line-height:1.6; color:#1e293b; max-height: 60vh;">
-        <!-- AI content will go here -->
-      </div>
-      <!-- Modal Footer -->
+      <div id="aiModalBody" style="padding:20px; overflow-y:auto; font-size:14px; line-height:1.6; color:#1e293b; max-height: 60vh;"></div>
       <div style="background:#f1f5f9; padding:12px 20px; display:flex; justify-content:flex-end; border-top:1px solid #e2e8f0;">
         <button onclick="closeAiModal()" class="primary" style="margin:0;">關閉視窗</button>
       </div>
@@ -437,8 +133,17 @@
       from { opacity: 0; transform: scale(0.95); }
       to { opacity: 1; transform: scale(1); }
     }
+    .ledger-filter.active {
+      background: #e6f4ea !important;
+      color: #137333 !important;
+      border-color: #10b981 !important;
+      font-weight: 600;
+    }
+    .ledger-filter:hover {
+      border-color: #10b981 !important;
+    }
   </style>
 
-  <script src="/app.js?v=20260622-1" charset="utf-8"></script>
+  <script src="/app.js?v=20260701-1" charset="utf-8"></script>
 </body>
 </html>
