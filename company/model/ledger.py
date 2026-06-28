@@ -52,6 +52,16 @@ def _serialize_jsonl(events: list[dict]) -> str:
 
 
 def _remote_config() -> tuple[str, str, str] | None:
+    env_path = ROOT / ".env"
+    if env_path.exists():
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                if line.strip() and not line.startswith("#"):
+                    parts = line.split("=", 1)
+                    if len(parts) == 2:
+                        os.environ[parts[0].strip()] = parts[1].strip()
+        except Exception:
+            pass
     token = os.environ.get("GITHUB_DATA_TOKEN") or os.environ.get("GITHUB_PAT")
     repo = os.environ.get("GITHUB_DATA_REPO")
     branch = os.environ.get("GITHUB_DATA_BRANCH", "main")

@@ -7,6 +7,18 @@ import os
 import random
 import ssl
 import sys
+# load .env if available
+try:
+    from pathlib import Path as _Path
+    _env_path = _Path(__file__).resolve().parent / ".env"
+    if _env_path.exists():
+        for _line in _env_path.read_text(encoding="utf-8").splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#"):
+                _k, _v = _line.split("=", 1)
+                os.environ[_k.strip()] = _v.strip()
+except Exception:
+    pass
 import time
 import urllib.parse
 import urllib.request

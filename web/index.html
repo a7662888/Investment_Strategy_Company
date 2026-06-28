@@ -99,6 +99,46 @@
       </label>
     </section>
 
+    <!-- 🧠 價值大腦決策帳本 (Decision Ledger - Shadow Mode) -->
+    <section class="panel" style="border: 2px solid #10b981; background: rgba(16, 185, 129, 0.01);">
+      <div class="sectionHead">
+        <h2 style="color: #0f766e; display: flex; align-items: center; gap: 8px; margin: 0;">
+          <span>🧠</span> 價值大腦決策帳本 (Decision Ledger - Shadow Mode)
+        </h2>
+        <span id="ledgerStatus" class="pill" style="font-weight: bold; background: #e6f4ea; color: #137333; border-color: #ceead6;">
+          Durable: 載入中...
+        </span>
+      </div>
+      <p style="font-size: 13px; color: var(--muted); margin: 8px 0 12px 0; line-height: 1.5;">
+        由離線 <code>tw_value_method v2.2</code> 價值投資方法論驅動，每筆決策（包含選股、action 光譜與 entry/invalidation 護欄）皆在 data_cutoff 當時凍結，持久化同步至 GitHub 遠端私有資料庫，並與大盤 0050.TW 實時對打，以證明在 shadow 期間獲得超額回報。
+      </p>
+      
+      <!-- Ledger Stats -->
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px;" id="ledgerStats">
+        <div style="background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px; text-align: center;">
+          <div style="font-size: 11px; color: var(--muted);">帳本總事件</div>
+          <strong id="ledgerTotalEvents" style="font-size: 16px;">—</strong>
+        </div>
+        <div style="background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px; text-align: center;">
+          <div style="font-size: 11px; color: var(--muted);">個股信號</div>
+          <strong id="ledgerValueSignals" style="font-size: 16px;">—</strong>
+        </div>
+        <div style="background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px; text-align: center;">
+          <div style="font-size: 11px; color: var(--muted);">ETF 信號</div>
+          <strong id="ledgerEtfSignals" style="font-size: 16px;">—</strong>
+        </div>
+        <div style="background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 10px; text-align: center;">
+          <div style="font-size: 11px; color: var(--muted);">資料庫來源</div>
+          <strong id="ledgerSource" style="font-size: 16px;">—</strong>
+        </div>
+      </div>
+
+      <!-- Ledger Cards Grid -->
+      <div id="ledgerGrid" class="agent-grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+        <p style="grid-column: span 3; text-align: center; color: var(--muted); padding: 20px;">正在讀取決策帳本...</p>
+      </div>
+    </section>
+
     <section class="panel">
       <div class="sectionHead">
         <h2>📊 昨日三家選股績效回顧</h2>

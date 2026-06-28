@@ -1103,6 +1103,7 @@ if (!$("endDate").value) {
 bindActions();
 refreshQuotes();
 loadDailyPerformance();
+loadDecisionLedger();
 discoverToday();
 recommendToday();
 nextDayPlan();
@@ -1852,4 +1853,140 @@ function parseMarkdown(text) {
     return `<p style="margin: 6px 0; color: #334155;">${line}</p>`;
   }).join('\n');
   return html;
+}
+
+async function loadDecisionLedger() {
+  const grid = $("ledgerGrid");
+  const statusEl = $("ledgerStatus");
+  if (!grid) return;
+  try {
+    statusEl.textContent = "Durable: 讀取中...";
+    const res = await fetch("/api/decision-ledger?limit=150");
+    const data = await readJson(res);
+    
+    // Update status
+    const storage = data.storage || {};
+    const count = data.summary?.event_count || data.total_events || 0;
+    statusEl.textContent = `Durable: ${storage.durable ? "✅ 已同步" : "❌ 未同步"}`;
+    if (storage.durable) {
+      statusEl.style.background = "#e6f4ea";
+      statusEl.style.color = "#137333";
+      statusEl.style.borderColor = "#ceead6";
+    } else {
+      statusEl.style.background = "#fce8e6";
+      statusEl.style.color = "#c5221f";
+      statusEl.style.borderColor = "#fad2cf";
+    }
+    
+    $("ledgerTotalEvents").textContent = count;
+    
+    const signals = asArray(data.signals || data.events).filter(s => s.event_type === "signal");
+    const valueSignals = signals.filter(s => s.agent_id === "claude-value");
+    const etfSignals = signals.filter(s => s.agent_id === "claude-etf-subtrack");
+    
+    $("ledgerValueSignals").textContent = valueSignals.length;
+    $("ledgerEtfSignals").textContent = etfSignals.length;
+    $("ledgerSource").textContent = storage.source || "local";
+    
+    if (signals.length === 0) {
+      grid.innerHTML = `<p style="grid-column: span 3; text-align: center; color: var(--muted); padding: 20px;">帳本中暫無決策信號。</p>`;
+      return;
+    }
+    
+    // Render cards
+    grid.innerHTML = signals.map(s => {
+      const action = s.action || "watch";
+      const badgeCls = `badge-${action}`;
+      const symbolCode = s.symbol.split(".")[0];
+      const name = s.name || symbolCode;
+      const refPrice = s.reference_price || "—";
+      const entryRange = s.entry_range ? `${s.entry_range[0]} - ${s.entry_range[1]}` : "—";
+      
+      // Parse evidence and format pillars
+      let business = "—";
+      let valuation = "—";
+      let risk = s.market_risk || "—";
+      let chips = "—";
+      
+      const evidence = asArray(s.evidence);
+      evidence.forEach(e => {
+        const claim = e.claim || "";
+        if (claim.includes("ROE") || claim.includes("GPM") || claim.includes("OPM") || claim.includes("商業")) {
+          business = claim;
+        } else if (claim.includes("PE") || claim.includes("PB") || claim.includes("估值") || claim.includes("百分位")) {
+          valuation = claim;
+        } else if (claim.includes("法人") || claim.includes("籌碼") || claim.includes("買") || claim.includes("賣")) {
+          chips = claim;
+        }
+      });
+      
+      // Outcome
+      const oc = s.outcome || {};
+      const formatOutcome = (val) => {
+        if (val === undefined || val === null) return `<span class="outcome-val flat">Pending</span>`;
+        const num = Number(val);
+        const cls = num > 0 ? "up" : num < 0 ? "down" : "flat";
+        const sign = num > 0 ? "+" : "";
+        return `<span class="outcome-val ${cls}">${sign}${(num * 100).toFixed(1)}%</span>`;
+      };
+      
+      const isMedium = s.data_quality?.valuation === "medium";
+      const dqBadge = isMedium ? `<span style="font-size:10px; color:#d97706; background:#fffbeb; border:1px solid #fde68a; padding:1px 4px; border-radius:3px;">DQ: Med</span>` : `<span style="font-size:10px; color:#0f766e; background:#e6f4ea; border:1px solid #ceead6; padding:1px 4px; border-radius:3px;">DQ: High</span>`;
+      
+      return `
+        <div class="ledger-card">
+          <div style="font-weight: bold; font-size: 15px; display: flex; align-items: center; gap: 8px;">
+            <span>${name}</span>
+            <span style="font-family: monospace; color: var(--muted); font-size: 12px;">${s.symbol}</span>
+            ${dqBadge}
+          </div>
+          <span class="ledger-badge ${badgeCls}">${action.toUpperCase()}</span>
+          
+          <div class="ledger-meta">
+            <span>Cutoff: ${s.data_cutoff}</span>
+            <span>Ref: $${refPrice}</span>
+            <span>Entry: [${entryRange}]</span>
+          </div>
+          
+          <div class="ledger-pillars">
+            <div class="pillar-box" style="grid-column: span 2;">
+              <span class="pillar-title">💼 商業與品質</span>
+              <span class="pillar-desc">${business}</span>
+            </div>
+            <div class="pillar-box" style="grid-column: span 2;">
+              <span class="pillar-title">📊 估值與百分位</span>
+              <span class="pillar-desc">${valuation}</span>
+            </div>
+            <div class="pillar-box" style="grid-column: span 2;">
+              <span class="pillar-title">🚀 法人籌碼</span>
+              <span class="pillar-desc">${chips}</span>
+            </div>
+            <div class="pillar-box" style="grid-column: span 2;">
+              <span class="pillar-title">⚠️ 風險與失效條件</span>
+              <span class="pillar-desc" style="color:var(--red); font-size:11px;">${s.invalidation || risk}</span>
+            </div>
+          </div>
+          
+          <div class="ledger-outcome">
+            <div class="outcome-item">
+              <span style="font-size:10px; color:var(--muted);">20D Return</span>
+              ${formatOutcome(oc.return_20d)}
+            </div>
+            <div class="outcome-item">
+              <span style="font-size:10px; color:var(--muted);">60D Return</span>
+              ${formatOutcome(oc.return_60d)}
+            </div>
+            <div class="outcome-item">
+              <span style="font-size:10px; color:var(--muted);">120D Return</span>
+              ${formatOutcome(oc.return_120d)}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    console.error("Error loading decision ledger:", err);
+    statusEl.textContent = `Durable: 載入失敗`;
+    grid.innerHTML = `<p style="grid-column: span 3; text-align: center; color: var(--red); padding: 20px;">載入帳本失敗: ${err.message}</p>`;
+  }
 }
