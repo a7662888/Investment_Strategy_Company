@@ -1762,7 +1762,7 @@ async function loadDecisionLedger() {
     
     // Update status
     const storage = data.storage || {};
-    const count = data.summary?.event_count || data.total_events || 0;
+    const count = data.storage?.event_count ?? data.signal_count ?? 0;
     statusEl.textContent = `Durable: ${storage.durable ? "✅ 已同步" : "❌ 未同步"}`;
     if (storage.durable) {
       statusEl.style.background = "#e6f4ea";
@@ -1926,7 +1926,44 @@ function renderLedger(filterType) {
     const dqBadge = isMedium ? `<span style="font-size:10px; color:#d97706; background:#fffbeb; border:1px solid #fde68a; padding:1px 4px; border-radius:3px;">DQ: Med</span>` : `<span style="font-size:10px; color:#0f766e; background:#e6f4ea; border:1px solid #ceead6; padding:1px 4px; border-radius:3px;">DQ: High</span>`;
     
     const agentLabel = s.agent_id || "unknown";
-    
+
+    // ML challenger cards get a distinct, honest presentation (NOT the value 4-pane).
+    const isMl = s.agent_id && s.agent_id !== "claude-value" && s.agent_id !== "claude-etf-subtrack";
+    if (isMl) {
+      const mr = s.market_risk || "";
+      const pm = mr.match(/probability_up=([\d.]+)%/);
+      const em = mr.match(/empirical_up_rate['":\s]+([\d.]+)/);
+      const nm = mr.match(/sample_count['":\s]+(\d+)/);
+      const emp = em ? (parseFloat(em[1]) * 100).toFixed(1) : null;
+      const calWarn = (pm && emp)
+        ? `⚠️ 校準失準：模型稱 ${pm[1]}% 漲，歷史同信心區間實際僅 ${emp}% 漲${nm ? `（樣本 ${nm[1]}）` : ""}。`
+        : (mr || "—");
+      const factors = asArray(s.evidence)
+        .map(e => (typeof e === "string" ? e : (e.claim || "")))
+        .filter(Boolean);
+      return `
+      <div class="ledger-card" style="opacity:0.92;">
+        <div style="font-weight:bold; font-size:15px; display:flex; align-items:center; gap:8px;">
+          <span>${name}</span>
+          <span style="font-family:monospace; color:var(--muted); font-size:12px;">${s.symbol}</span>
+          <span style="font-size:10px; color:#6b7280; background:#f3f4f6; border:1px solid #d1d5db; padding:1px 5px; border-radius:3px;">🤖 ML 挑戰者</span>
+        </div>
+        <span class="ledger-badge ${badgeCls}">${action.toUpperCase()}</span>
+        <div class="ledger-meta"><span>Agent: ${agentLabel}</span><span>Cutoff: ${s.data_cutoff}</span></div>
+        <div class="ledger-meta" style="border-top:none; padding-top:0; margin-top:-4px;"><span>Ref: $${refPrice}</span><span>機率模型訊號（非價值論述）</span></div>
+        <div style="margin:8px 0; padding:8px 10px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#b91c1c; font-size:11px; line-height:1.5;">
+          ${calWarn}<br>本模型 OOS AUC 0.466（比擲銅板差）已暫停採用，僅作 shadow 對照基準，<b>不構成投資建議</b>。
+        </div>
+        ${factors.length ? `<div class="pillar-box" style="margin-bottom:8px;"><span class="pillar-title">📈 技術/動能因子（模型輸入，非價值品質）</span><span class="pillar-desc" style="font-size:11px;">${factors.join("；")}</span></div>` : ""}
+        <div class="ledger-outcome">
+          <div class="outcome-item"><span style="font-size:10px; color:var(--muted);">20D Return</span>${formatOutcome(oc.return_20d)}</div>
+          <div class="outcome-item"><span style="font-size:10px; color:var(--muted);">60D Return</span>${formatOutcome(oc.return_60d)}</div>
+          <div class="outcome-item"><span style="font-size:10px; color:var(--muted);">120D Return</span>${formatOutcome(oc.return_120d)}</div>
+        </div>
+      </div>
+      `;
+    }
+
     return `
       <div class="ledger-card">
         <div style="font-weight: bold; font-size: 15px; display: flex; align-items: center; gap: 8px;">

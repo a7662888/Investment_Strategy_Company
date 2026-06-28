@@ -36,7 +36,7 @@
         <div><strong>三大支柱</strong><br>商業品質 (ROE/GPM/OPM) · 估值百分位 (PE/PB) · 法人籌碼趨勢</div>
         <div><strong>資料來源</strong><br>twstock 盤後日線 + Yahoo Finance · 離線計算 · 無 LLM 在線污染</div>
         <div><strong>持久化</strong><br>每筆決策寫入 <code>decision_ledger.jsonl</code>，GitHub 遠端同步</div>
-        <div><strong>Champion/Challenger</strong><br>value-engine (63 訊號) vs ml-quant (33 訊號) vs 0050 基準</div>
+        <div><strong>Champion/Challenger</strong><br>value-engine（價值方法論） vs ml-quant（ML 量化·OOS AUC 0.466 已暫停採用，僅對照） vs 0050 基準</div>
       </div>
     </details>
 
@@ -53,8 +53,8 @@
       <p style="font-size: 13px; color: var(--muted); margin: 8px 0 12px 0; line-height: 1.5;">
         每筆決策在 data_cutoff 時凍結，禁止事後修改。action 光譜包含 accumulate / watch / hold / avoid，
         附 entry_range (分批買進區間) 與 invalidation (失效條件)。<strong style="color: #0f766e;">Champion/Challenger 框架：</strong>
-        <span style="background: #e6f4ea; padding: 1px 6px; border-radius: 3px;">value-engine</span>（價值方法論，63 訊號） vs
-        <span style="background: #fef7e0; padding: 1px 6px; border-radius: 3px;">ml-quant</span>（ML 量化模型，33 訊號） vs
+        <span style="background: #e6f4ea; padding: 1px 6px; border-radius: 3px;">value-engine</span>（價值方法論） vs
+        <span style="background: #fef7e0; padding: 1px 6px; border-radius: 3px;">ml-quant</span>（ML 量化·已暫停採用，僅對照） vs
         <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 3px;">0050.TW</span>（大盤基準）。
       </p>
 
