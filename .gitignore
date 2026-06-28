@@ -10,3 +10,4 @@ cloudflared*.log
 data_cache/
 reports/
 data/decision_ledger.jsonl
+data/snapshots_archive.json

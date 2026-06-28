@@ -1254,76 +1254,36 @@ function updatePortfolioAllocation(marketIndex, candidates) {
 }
 
 // --- 2. Historical Simulation Snapshots ---
+// [DEPRECATED 2026-07-01] saveSnapshot — snapshot panel removed.
+//   Kept as trimmed stub because still called from runTraining() / nextDayPlan().
+//   Writes to localStorage for potential future restore, but does not render or sync.
 function saveSnapshot(actionType) {
   try {
-    const dateVal = $("endDate").value;
-    const regimeText = $("portfolioRegimeLabel").textContent.replace("當前狀態：", "") || "中性震盪";
-    const picks = lastAgentPicks.slice(0, 5).join(",") || symbols().slice(0, 3).join(",");
-    const pos = $("positionInput").value || "無持倉";
-    
-    let accuracy = "未優化";
-    const banner = $("weightsDetail");
-    if (banner && banner.textContent.includes("準確率")) {
-      const parts = banner.textContent.split("準確率:");
-      if (parts.length > 1) {
-        accuracy = parts[1].trim();
-      }
-    }
-    
+    const dateVal = $("endDate")?.value || "unknown";
     const snapshot = {
       timestamp: new Date().toLocaleString(),
       targetDate: dateVal,
-      regime: regimeText,
-      picks: picks,
-      positions: pos,
-      accuracy: accuracy
+      actionType: actionType,
+      _deprecated: true
     };
-    
     let list = [];
     const saved = localStorage.getItem("quant_snapshots");
-    if (saved) {
-      list = JSON.parse(saved);
-    }
-    list.unshift(snapshot); // prepend new ones
+    if (saved) list = JSON.parse(saved);
+    list.unshift(snapshot);
     localStorage.setItem("quant_snapshots", JSON.stringify(list));
-    renderSnapshots();
-    
-    fetch("/api/save-snapshots", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ snapshots: list })
-    }).catch(err => console.error("Failed to sync new snapshot to server:", err));
+    // renderSnapshots() and fetch(/api/save-snapshots) removed — see DEPRECATED note above.
   } catch (err) {
     console.error("Failed to save snapshot:", err);
   }
 }
 
+// [DEPRECATED 2026-07-01] renderSnapshots — snapshot panel removed from DOM.
+//   No-op: the #snapshotRows element no longer exists in lab.html.
+//   If the panel is ever restored, uncomment the original body (see git prior to 5f6f97e).
+//   Reason for removal: Render ephemeral FS + in-sample overfit (AUC 0.466).
 function renderSnapshots() {
-  const rowsEl = $("snapshotRows");
-  if (!rowsEl) return;
-  const saved = localStorage.getItem("quant_snapshots");
-  if (!saved) {
-    rowsEl.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--muted);">尚無覆盤快照。當您執行「明日計畫」或「開始區間訓練」時將自動記錄快照。</td></tr>`;
-    return;
-  }
-  const list = JSON.parse(saved);
-  if (list.length === 0) {
-    rowsEl.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--muted);">尚無覆盤快照。當您執行「明日計畫」或「開始區間訓練」時將自動記錄快照。</td></tr>`;
-    return;
-  }
-  rowsEl.innerHTML = list.map((item, idx) => `
-    <tr>
-      <td>${item.timestamp}</td>
-      <td><strong>${item.targetDate}</strong></td>
-      <td>${item.regime}</td>
-      <td><span style="font-family: monospace; font-size: 12px;">${item.picks}</span></td>
-      <td title="${item.positions}">${item.positions.length > 30 ? item.positions.slice(0, 30) + "..." : item.positions}</td>
-      <td>${item.accuracy}</td>
-      <td>
-        <button class="danger" onclick="deleteSnapshot(${idx})" style="height: 24px; line-height: 22px; padding: 0 6px; font-size: 11px; border-color: var(--red); color: var(--red); background: #fef2f2;">刪除</button>
-      </td>
-    </tr>
-  `).join("");
+  // intentionally no-op
+}
 }
 
 window.deleteSnapshot = function(idx) {
@@ -1361,92 +1321,11 @@ if ($("slippageRate")) {
   });
 }
 
-if ($("clearSnapshots")) {
-  $("clearSnapshots").addEventListener("click", async () => {
-    if (confirm("確定要清除所有歷史快照日誌嗎？這將會同步清除雲端與本地存檔。")) {
-      localStorage.removeItem("quant_snapshots");
-      renderSnapshots();
-      try {
-        await fetch("/api/save-snapshots", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ snapshots: [] })
-        });
-      } catch (err) {
-        console.error("Failed to sync clear event to server:", err);
-      }
-    }
-  });
-}
-
-if ($("exportSnapshots")) {
-  $("exportSnapshots").addEventListener("click", () => {
-    const saved = localStorage.getItem("quant_snapshots");
-    if (!saved || JSON.parse(saved).length === 0) {
-      alert("沒有任何日誌可以匯出。");
-      return;
-    }
-    const blob = new Blob([saved], {type: "application/json"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `solopreneur_quant_snapshots_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  });
-}
-
-if ($("importSnapshotsBtn")) {
-  $("importSnapshotsBtn").addEventListener("click", () => {
-    const fileEl = $("importSnapshotsFile");
-    if (fileEl) fileEl.click();
-  });
-}
-
-if ($("importSnapshotsFile")) {
-  $("importSnapshotsFile").addEventListener("change", (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async function(event) {
-      try {
-        const list = JSON.parse(event.target.result);
-        if (!Array.isArray(list)) {
-          alert("錯誤的檔案格式：應為快照陣列 JSON。");
-          return;
-        }
-        localStorage.setItem("quant_snapshots", JSON.stringify(list));
-        renderSnapshots();
-
-        await fetch("/api/save-snapshots", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ snapshots: list })
-        });
-
-        alert(`成功匯入 ${list.length} 筆歷史快照日誌，並已同步至雲端存檔！`);
-      } catch (err) {
-        alert("載入檔案失敗：" + err.message);
-      }
-    };
-    reader.readAsText(file);
-  });
-}
-
-if ($("replayOptimizeSnapshots")) {
-  $("replayOptimizeSnapshots").addEventListener("click", async () => {
-  const saved = localStorage.getItem("quant_snapshots");
-  if (!saved || JSON.parse(saved).length === 0) {
-    alert("沒有歷史日誌快照可供覆盤。請先執行「明日計畫」或「開始區間訓練」以產生快照。");
-    return;
-  }
-  
-  const panel = $("replayResultsPanel");
-  panel.style.display = "block";
-  panel.innerHTML = `
-    <div style="text-align: center; padding: 25px; color: var(--muted);">
-      <span class="loading-spinner" style="display: inline-block; width: 22px; height: 22px; border: 3px solid var(--blue); border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite; margin-right: 10px; vertical-align: middle;"></span>
-      正在與後端資料庫對齊歷史價格，進行一鍵覆盤與因子權重校準，請稍候...
+// [DEPRECATED 2026-07-01] All snapshot/replay/optimize click handlers removed.
+//   Snapshot panel removed from lab.html. DOM bindings below became dead code.
+//   Panel reason: Render ephemeral FS + in-sample overfit (AUC 0.466).
+//   Model evaluation replaced by walk-forward + ledger scoreboard.
+//   If you restore the panel, re-add from git history (commit prior to 5f6f97e).
     </div>
     <style>
       @keyframes spin { to { transform: rotate(360deg); } }
@@ -1472,7 +1351,11 @@ if ($("replayOptimizeSnapshots")) {
 });
 }
 
+// [DEPRECATED 2026-07-01] renderReplayResults — see renderSnapshots deprecation note.
+//   No-op: the #replayResultsPanel element no longer exists in lab.html.
 function renderReplayResults(data) {
+  // intentionally no-op
+  if (true) return;
   const panel = $("replayResultsPanel");
   if (!panel) return;
   
@@ -1755,7 +1638,11 @@ function renderReplayResults(data) {
 }
 
 
+// [DEPRECATED 2026-07-01] syncSnapshotsFromServer — snapshot/replay panel removed.
+//   No-op: kept as stub in case localStorage restore is ever needed.
 async function syncSnapshotsFromServer() {
+  // intentionally no-op
+  return;
   try {
     const response = await fetch("/api/load-snapshots");
     if (response.ok) {
@@ -1801,8 +1688,10 @@ if ($("positionInput")) {
 }
 loadUniverse();
 loadMarketNews();
-renderSnapshots();
-syncSnapshotsFromServer();
+// [DEPRECATED 2026-07-01] renderSnapshots() removed — snapshot/replay panel deleted.
+//     Reason: Render ephemeral FS + in-sample overfit (AUC 0.466).
+//     Model evaluation replaced by walk-forward + ledger scoreboard.
+// syncSnapshotsFromServer() removed for the same reason.
 if ($("endDate")) {
   $("endDate").addEventListener("change", loadMarketNews);
 }

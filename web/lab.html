@@ -327,37 +327,8 @@
       <div id="universeGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;"></div>
     </section>
 
-    <section class="panel" style="margin-top: 20px; border-color: #3b82f6; background: #fafcff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-      <div class="sectionHead">
-        <h2 style="color: #2563eb; display: flex; align-items: center; gap: 8px;">歷史日誌快照與覆盤終端 (Simulation Snapshots Log)</h2>
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <button id="replayOptimizeSnapshots" class="primary" style="height: 30px; font-size: 12px; padding: 0 12px; background-color: #10b981; border-color: #10b981; color: white;">一鍵覆盤與參數優化</button>
-          <button id="importSnapshotsBtn" style="height: 30px; font-size: 12px; padding: 0 12px; background-color: #f1f5f9; border-color: #cbd5e1; color: #334155;">匯入歷史日誌</button>
-          <input type="file" id="importSnapshotsFile" style="display:none;" accept=".json">
-          <button id="exportSnapshots" class="primary" style="height: 30px; font-size: 12px; padding: 0 12px;">匯出 JSON</button>
-          <button id="clearSnapshots" style="height: 30px; font-size: 12px; padding: 0 12px; color: var(--red); border-color: var(--red); background: #fef2f2;">清除歷史</button>
-        </div>
-      </div>
-      <div class="tableWrap">
-        <table style="font-size: 13px;">
-          <thead>
-            <tr>
-              <th>時間</th>
-              <th>目標日</th>
-              <th>大盤狀態</th>
-              <th>推薦代號</th>
-              <th>持倉狀態</th>
-              <th>模型準確度</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody id="snapshotRows">
-            <tr><td colspan="7" style="text-align: center; color: var(--muted); padding: 20px;">尚無覆盤快照。當您執行「明日計畫」或「開始區間訓練」時將自動記錄快照。</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div id="replayResultsPanel" style="display:none; margin-top: 15px; padding: 15px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);"></div>
-    </section>
+    <!-- 🗑️ 覆盤優化面板已移除 (2026-07-01) — 原因：Render ephemeral FS 導致持久化不可靠 +
+         in-sample 過擬合已被 OOS AUC 0.466 否證。模型評估改由 walk-forward + ledger 記分板取代。 -->
 
     <div style="margin-top: 20px; padding: 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; font-size: 12px; color: #991b1b; line-height: 1.6;">
       <strong>⚠️ shadow 研究用途 — 非投資建議</strong><br>

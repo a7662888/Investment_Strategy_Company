@@ -1795,6 +1795,11 @@ def save_optimized_weights(weights: dict) -> None:
     except Exception as e:
         print(f"Error saving optimized weights: {e}")
 
+# DEPRECATED 2026-07-01 — snapshot/replay/optimize panel removed.
+#   Render ephemeral FS makes D:/E:/ paths unreliable;
+#   in-sample overfit invalidated by model OOS AUC 0.466.
+#   Kept as dead code (not deleting) to avoid breaking old clients during transition.
+#   Remove entirely after 2026-Q3.
 def save_snapshots_to_archives(snapshots: list[dict]) -> dict:
     proj_path = PROJECT / "data" / "snapshots_archive.json"
     d_path = Path("D:/secondbrain/Skills/Stock/snapshots_archive.json")
@@ -2921,6 +2926,7 @@ class Handler(SimpleHTTPRequestHandler):
                 from company.model.archive import load_archive, propose_update
                 self.send_json({**propose_update(), "archive": load_archive()})
                 return
+            # [DEPRECATED 2026-07-01] load-snapshots — see save_snapshots_to_archives docstring.
             if parsed.path == "/api/load-snapshots":
                 archive_path = PROJECT / "data" / "snapshots_archive.json"
                 d_path = Path("D:/secondbrain/Skills/Stock/snapshots_archive.json")
@@ -3283,6 +3289,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "ledger": ledger,
                 })
                 return
+            # [DEPRECATED 2026-07-01] replay-snapshots — see save_snapshots_to_archives docstring.
             if self.path == "/api/replay-snapshots":
                 body = self.read_body()
                 snapshots = body.get("snapshots") or []
@@ -3463,6 +3470,7 @@ class Handler(SimpleHTTPRequestHandler):
                 
                 self.send_json(result_data)
                 return
+            # [DEPRECATED 2026-07-01] save-weights — see save_snapshots_to_archives docstring.
             if self.path == "/api/save-weights":
                 body = self.read_body()
                 weights = body.get("weights")
@@ -3472,6 +3480,7 @@ class Handler(SimpleHTTPRequestHandler):
                 save_optimized_weights(weights)
                 self.send_json({"success": True, "message": "優化因子權重已成功保存且立即套用！"})
                 return
+            # [DEPRECATED 2026-07-01] save-snapshots — see save_snapshots_to_archives docstring.
             if self.path == "/api/save-snapshots":
                 body = self.read_body()
                 snapshots = body.get("snapshots") or []
