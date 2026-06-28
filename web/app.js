@@ -1284,7 +1284,6 @@ function saveSnapshot(actionType) {
 function renderSnapshots() {
   // intentionally no-op
 }
-}
 
 window.deleteSnapshot = function(idx) {
   const saved = localStorage.getItem("quant_snapshots");
@@ -1326,30 +1325,6 @@ if ($("slippageRate")) {
 //   Panel reason: Render ephemeral FS + in-sample overfit (AUC 0.466).
 //   Model evaluation replaced by walk-forward + ledger scoreboard.
 //   If you restore the panel, re-add from git history (commit prior to 5f6f97e).
-    </div>
-    <style>
-      @keyframes spin { to { transform: rotate(360deg); } }
-    </style>
-  `;
-  
-  try {
-    const response = await fetch("/api/replay-snapshots", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ snapshots: JSON.parse(saved) })
-    });
-    
-    if (!response.ok) {
-      throw new Error(`伺服器錯誤: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    renderReplayResults(data);
-  } catch (err) {
-    panel.innerHTML = `<div style="color: var(--red); padding: 12px; border: 1px solid var(--red); background: #fef2f2; border-radius: 6px; font-size: 13px;">覆盤失敗：${err.message}</div>`;
-  }
-});
-}
 
 // [DEPRECATED 2026-07-01] renderReplayResults — see renderSnapshots deprecation note.
 //   No-op: the #replayResultsPanel element no longer exists in lab.html.
