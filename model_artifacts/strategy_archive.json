@@ -1689,6 +1689,94 @@
           "picks": []
         }
       ]
+    },
+    {
+      "timestamp": "2026-07-01T11:28:29.928295",
+      "pick_date": "2026-06-30",
+      "eval_date": "2026-07-01",
+      "agents": [
+        {
+          "agent": "🤖 Codex",
+          "n": 5,
+          "avg_return": 0.04767,
+          "picks": [
+            {
+              "symbol": "2330.TW",
+              "return": 0.03942
+            },
+            {
+              "symbol": "2383.TW",
+              "return": 0.0269
+            },
+            {
+              "symbol": "2345.TW",
+              "return": 0.06613
+            },
+            {
+              "symbol": "3443.TW",
+              "return": 0.04128
+            },
+            {
+              "symbol": "3661.TW",
+              "return": 0.06459
+            }
+          ]
+        },
+        {
+          "agent": "🌌 Antigravity",
+          "n": 5,
+          "avg_return": 0.01628,
+          "picks": [
+            {
+              "symbol": "8046.TW",
+              "return": -0.00844
+            },
+            {
+              "symbol": "3443.TW",
+              "return": 0.04128
+            },
+            {
+              "symbol": "2454.TW",
+              "return": 0.0212
+            },
+            {
+              "symbol": "2327.TW",
+              "return": 0.0
+            },
+            {
+              "symbol": "2303.TW",
+              "return": 0.02736
+            }
+          ]
+        },
+        {
+          "agent": "🧠 Claude",
+          "n": 5,
+          "avg_return": 0.02592,
+          "picks": [
+            {
+              "symbol": "1303.TW",
+              "return": 0.0991
+            },
+            {
+              "symbol": "8046.TW",
+              "return": -0.00844
+            },
+            {
+              "symbol": "6213.TW",
+              "return": -0.02834
+            },
+            {
+              "symbol": "2327.TW",
+              "return": 0.0
+            },
+            {
+              "symbol": "2492.TW",
+              "return": 0.06726
+            }
+          ]
+        }
+      ]
     }
   ]
 }
