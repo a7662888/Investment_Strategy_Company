@@ -1,0 +1,39 @@
+name: Ledger Outcomes Daily
+
+# TASK-010 閘門時鐘：每個交易日盤後計算 Decision Ledger 的 1/5/20/60/120D outcome
+# （還原權值、excess vs 0050），寫入私有 data repo（durable）。
+# 沒有這個排程，shadow 對打永遠不會累積成績。
+
+on:
+  schedule:
+    - cron: "15 8 * * 1-5"   # 16:15 台北（台股 13:30 收盤後；錯開 daily-performance 的 08:00）
+  workflow_dispatch: {}
+
+jobs:
+  outcomes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Guard - durable secret must exist
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.GITHUB_DATA_TOKEN }}
+        run: |
+          if [ -z "$GITHUB_DATA_TOKEN" ]; then
+            echo "::error::GITHUB_DATA_TOKEN secret 未設定 — outcome 只會寫進 ephemeral runner 然後消失。請在 repo Settings → Secrets → Actions 加入（與 Render 同一把 PAT）。"
+            exit 1
+          fi
+
+      - name: Update ledger outcomes (durable)
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.GITHUB_DATA_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        run: python run_ledger_outcomes.py
