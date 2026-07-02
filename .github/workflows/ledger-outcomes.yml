@@ -22,18 +22,20 @@ jobs:
         with:
           python-version: "3.12"
 
+      # 注意：GitHub 禁止 secret 名稱以 GITHUB_ 開頭，故 repo secret 取名 DATA_REPO_TOKEN，
+      # 於此映射為程式所需的 GITHUB_DATA_TOKEN 環境變數。
       - name: Guard - durable secret must exist
         env:
-          GITHUB_DATA_TOKEN: ${{ secrets.GITHUB_DATA_TOKEN }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
         run: |
           if [ -z "$GITHUB_DATA_TOKEN" ]; then
-            echo "::error::GITHUB_DATA_TOKEN secret 未設定 — outcome 只會寫進 ephemeral runner 然後消失。請在 repo Settings → Secrets → Actions 加入（與 Render 同一把 PAT）。"
+            echo "::error::DATA_REPO_TOKEN secret 未設定 — outcome 只會寫進 ephemeral runner 然後消失。"
             exit 1
           fi
 
       - name: Update ledger outcomes (durable)
         env:
-          GITHUB_DATA_TOKEN: ${{ secrets.GITHUB_DATA_TOKEN }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
           GITHUB_DATA_REPO: a7662888/investment-strategy-data
           GITHUB_DATA_BRANCH: main
         run: python run_ledger_outcomes.py
