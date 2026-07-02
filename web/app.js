@@ -1002,7 +1002,8 @@ async function nextDayPlan() {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
-        symbols: symbols(),
+        // 修正：持股欄的標的也要納入規劃，否則持股(如 ETF)會被誤標「查無報價」。
+        symbols: [...new Set([...symbols(), ...positions().map(p => p.symbol)])],
         positions: positions(),
         end: $("endDate").value,
         lookback_days: 320
@@ -1037,8 +1038,8 @@ async function nextDayPlan() {
       </article>`;
     });
     const missingCards = missingPositions.map(item => `<article class="candidate" style="border-color: var(--red);">
-      <strong><span>${item.symbol} · <span class="neg">查無報價或歷史資料</span></span></strong>
-      <p>請確認代號是否正確；台灣上市 ETF 通常使用 .TW。</p>
+      <strong><span>${item.symbol} · <span class="neg">未能產生計畫</span></span></strong>
+      <p>可能原因：代號格式（上市 .TW／上櫃 .TWO）、資料源查無此代號、或上市未滿 80 個交易日（計畫需 ≥80 根日 K）。持股仍會列入報價追蹤。</p>
     </article>`);
     $("planList").innerHTML = [...planCards, ...missingCards].join("") || "<p>沒有明日計畫資料，請確認股票代號或區間。</p>";
     refreshQuotes();   // 持股/決策中心更新後,報價同步涵蓋
@@ -1072,12 +1073,17 @@ async function loadDailyPerformance() {
         const rc = r === null ? "watch" : r >= 0 ? "pos" : "neg";
         return `<li><span>${p.symbol}</span> <span class="${rc}">${r === null ? "—" : pct(r)}</span></li>`;
       }).join("");
+      // Claude 0 檔＝風控紀律（BLACK 期選股器全數觀望、拒絕進場），不是故障；需明說以免誤判。
+      const zeroNote = (a.agent.includes("Claude") && a.n === 0)
+        ? `<p style="font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 8px;margin:6px 0 0;">0 檔＝風控紀律：大盤避險（BLACK/空頭）期間，Claude 短線選股器全數「觀望、拒絕進場」，故無實現報酬可計（非故障）。Claude 主力已轉中長線價值引擎 → 見<a href="/">首頁決策帳本</a>。</p>`
+        : "";
       return `<article class="candidate">
         <strong>
           <span>${a.agent}</span>
           <span class="${cls}">平均 ${avgText}</span>
         </strong>
         <p style="font-size:12px;color:var(--muted)">前一交易日選股 ${a.n} 檔的實現報酬</p>
+        ${zeroNote}
         <ul style="list-style:none;padding-left:0;margin:6px 0 0;font-size:13px">${picks}</ul>
       </article>`;
     }).join("");
@@ -1788,9 +1794,10 @@ async function loadDecisionLedger() {
     
     // Setup filter click handlers
     setupLedgerFilters();
-    
-    // Initial render: Default to 'all' as requested by active tab style
-    renderLedger("all");
+
+    // 預設視圖 = 價值引擎（分層整合：首頁主打價值論點卡；挑戰者請點 ML-Quant/全部）
+    const defBtn = document.querySelector('.ledger-filter[data-filter="value-engine"]');
+    if (defBtn) defBtn.click(); else renderLedger("value-engine");
     
   } catch (err) {
     console.error("Error loading decision ledger:", err);
@@ -1828,31 +1835,52 @@ function setupLedgerFilters() {
   });
 }
 
+// 使用者持股（策略實驗室輸入、localStorage 同源共享）→ 首頁卡片標記 💼
+function heldSymbolSet() {
+  try {
+    const raw = localStorage.getItem(POSITION_STORAGE_KEY) || "";
+    return new Set(raw.split(/[,\n]/).map(x => x.trim()).filter(Boolean)
+      .map(item => item.split("@")[0].split(":")[0].trim().toUpperCase()));
+  } catch (err) { return new Set(); }
+}
+let _heldSet = null;
+function heldBadge(symbol) {
+  if (!_heldSet) _heldSet = heldSymbolSet();
+  return _heldSet.has((symbol || "").toUpperCase())
+    ? `<span style="font-size:10px; color:#1d4ed8; background:#eff6ff; border:1px solid #bfdbfe; padding:1px 5px; border-radius:3px;">💼 您持有</span>`
+    : "";
+}
+
 function renderLedger(filterType) {
   const grid = $("ledgerGrid");
   if (!grid || !ledgerSignals) return;
-  
+  _heldSet = heldSymbolSet(); // refresh per render
+
+  const isValueAgent = (s) => s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack";
+  const valueSignals = ledgerSignals.filter(isValueAgent);
+
   let filtered = [];
   if (filterType === "all") {
     filtered = ledgerSignals;
   } else if (filterType === "value-engine") {
-    filtered = ledgerSignals.filter(s => s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack");
+    filtered = valueSignals;
   } else if (filterType === "ml-quant") {
-    filtered = ledgerSignals.filter(s => s.agent_id !== "claude-value" && s.agent_id !== "claude-etf-subtrack");
+    filtered = ledgerSignals.filter(s => !isValueAgent(s));
   } else if (filterType === "accumulate") {
-    filtered = ledgerSignals.filter(s => {
+    // 動作光譜只對價值引擎有意義；挑戰者訊號請走 ML-Quant/全部分頁。
+    filtered = valueSignals.filter(s => {
       const act = (s.action || "").toLowerCase();
       return act.includes("accumulate") || act.includes("buy_zone") || act.includes("buy");
     });
   } else if (filterType === "watch") {
-    filtered = ledgerSignals.filter(s => (s.action || "").toLowerCase().includes("watch"));
+    filtered = valueSignals.filter(s => (s.action || "").toLowerCase().includes("watch"));
   } else if (filterType === "hold") {
-    filtered = ledgerSignals.filter(s => {
+    filtered = valueSignals.filter(s => {
       const act = (s.action || "").toLowerCase();
       return act.includes("hold") || act.includes("benchmark");
     });
   } else if (filterType === "avoid") {
-    filtered = ledgerSignals.filter(s => (s.action || "").toLowerCase().includes("avoid"));
+    filtered = valueSignals.filter(s => (s.action || "").toLowerCase().includes("avoid"));
   }
   
   if (filtered.length === 0) {
@@ -1935,9 +1963,18 @@ function renderLedger(filterType) {
       const em = mr.match(/empirical_up_rate['":\s]+([\d.]+)/);
       const nm = mr.match(/sample_count['":\s]+(\d+)/);
       const emp = em ? (parseFloat(em[1]) * 100).toFixed(1) : null;
-      const calWarn = (pm && emp)
-        ? `⚠️ 校準失準：模型稱 ${pm[1]}% 漲，歷史同信心區間實際僅 ${emp}% 漲${nm ? `（樣本 ${nm[1]}）` : ""}。`
-        : (mr || "—");
+      const isMlQuant = s.agent_id === "ml-quant";
+      const warnLines = [];
+      if (pm && emp) {
+        warnLines.push(`⚠️ 校準失準：模型稱 ${pm[1]}% 漲，歷史同信心區間實際僅 ${emp}% 漲${nm ? `（樣本 ${nm[1]}）` : ""}。`);
+      } else if (mr) {
+        warnLines.push(mr);
+      }
+      // AUC 0.466 是 ml-quant 專屬事實，不可誤掛到其他挑戰者 agent。
+      warnLines.push(isMlQuant
+        ? "本模型 OOS AUC 0.466（比擲銅板差）已暫停採用，僅作 shadow 對照基準，<b>不構成投資建議</b>。"
+        : "挑戰者引擎訊號（策略實驗室）— 僅 shadow 對照，<b>不構成投資建議</b>。");
+      const calWarn = warnLines.join("<br>");
       const factors = asArray(s.evidence)
         .map(e => (typeof e === "string" ? e : (e.claim || "")))
         .filter(Boolean);
@@ -1946,13 +1983,14 @@ function renderLedger(filterType) {
         <div style="font-weight:bold; font-size:15px; display:flex; align-items:center; gap:8px;">
           <span>${name}</span>
           <span style="font-family:monospace; color:var(--muted); font-size:12px;">${s.symbol}</span>
-          <span style="font-size:10px; color:#6b7280; background:#f3f4f6; border:1px solid #d1d5db; padding:1px 5px; border-radius:3px;">🤖 ML 挑戰者</span>
+          <span style="font-size:10px; color:#6b7280; background:#f3f4f6; border:1px solid #d1d5db; padding:1px 5px; border-radius:3px;">${isMlQuant ? "🤖 ML 挑戰者" : "🔬 挑戰者"}</span>
+          ${heldBadge(s.symbol)}
         </div>
         <span class="ledger-badge ${badgeCls}">${action.toUpperCase()}</span>
         <div class="ledger-meta"><span>Agent: ${agentLabel}</span><span>Cutoff: ${s.data_cutoff}</span></div>
-        <div class="ledger-meta" style="border-top:none; padding-top:0; margin-top:-4px;"><span>Ref: $${refPrice}</span><span>機率模型訊號（非價值論述）</span></div>
+        <div class="ledger-meta" style="border-top:none; padding-top:0; margin-top:-4px;"><span>Ref: $${refPrice}</span><span>${isMlQuant ? "機率模型訊號（非價值論述）" : "挑戰者訊號（非價值論述）"}</span></div>
         <div style="margin:8px 0; padding:8px 10px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#b91c1c; font-size:11px; line-height:1.5;">
-          ${calWarn}<br>本模型 OOS AUC 0.466（比擲銅板差）已暫停採用，僅作 shadow 對照基準，<b>不構成投資建議</b>。
+          ${calWarn}
         </div>
         ${factors.length ? `<div class="pillar-box" style="margin-bottom:8px;"><span class="pillar-title">📈 技術/動能因子（模型輸入，非價值品質）</span><span class="pillar-desc" style="font-size:11px;">${factors.join("；")}</span></div>` : ""}
         <div class="ledger-outcome">
@@ -1970,6 +2008,7 @@ function renderLedger(filterType) {
           <span>${name}</span>
           <span style="font-family: monospace; color: var(--muted); font-size: 12px;">${s.symbol}</span>
           ${dqBadge}
+          ${heldBadge(s.symbol)}
         </div>
         <span class="ledger-badge ${badgeCls}">${action.toUpperCase()}</span>
         

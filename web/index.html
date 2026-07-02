@@ -56,6 +56,7 @@
         <span style="background: #e6f4ea; padding: 1px 6px; border-radius: 3px;">value-engine</span>（價值方法論） vs
         <span style="background: #fef7e0; padding: 1px 6px; border-radius: 3px;">ml-quant</span>（ML 量化·已暫停採用，僅對照） vs
         <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 3px;">0050.TW</span>（大盤基準）。
+        <br><span style="color:#92400e;">註：「🤲 持有」是<b>訊號動作</b>（如基準 ETF 的 hold 建議），不是您的個人持股；於<a href="/lab.html">策略實驗室</a>輸入持股後，本頁對應卡片會標記 <b>💼 您持有</b>。買進(accumulate)訊號稀少屬價值紀律——多數權值股現處自身估值歷史高位，沒便宜貨時本來就不該有很多買進。</span>
       </p>
 
       <!-- Ledger Stats -->
@@ -80,13 +81,13 @@
 
       <!-- Filter tabs for ledger -->
       <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;" id="ledgerFilters">
-        <button class="ledger-filter active" data-filter="all" style="padding: 4px 12px; border-radius: 16px; border: 1px solid #10b981; background: #e6f4ea; color: #137333; cursor: pointer; font-size: 12px; font-weight: 600;">全部</button>
+        <button class="ledger-filter" data-filter="all" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">全部(含挑戰者)</button>
         <button class="ledger-filter" data-filter="accumulate" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">📈 買進</button>
         <button class="ledger-filter" data-filter="watch" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">👀 觀察</button>
         <button class="ledger-filter" data-filter="hold" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">🤲 持有</button>
         <button class="ledger-filter" data-filter="avoid" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">⛔ 避開</button>
         <button class="ledger-filter" data-filter="ml-quant" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">🤖 ML-Quant</button>
-        <button class="ledger-filter" data-filter="value-engine" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">📐 Value-Engine</button>
+        <button class="ledger-filter active" data-filter="value-engine" style="padding: 4px 12px; border-radius: 16px; border: 1px solid #10b981; background: #e6f4ea; color: #137333; cursor: pointer; font-size: 12px; font-weight: 600;">📐 Value-Engine</button>
       </div>
 
       <!-- Ledger Cards Grid -->

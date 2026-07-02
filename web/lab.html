@@ -19,6 +19,17 @@
       </div>
     </header>
 
+    <!-- 定位說明：避免把挑戰者引擎的風控行為誤判為故障 -->
+    <details class="panel" style="margin-bottom:14px; border-left:4px solid #f59e0b; font-size:13px;">
+      <summary style="cursor:pointer; font-weight:600; color:#92400e;">⚠️ 使用前必讀：本頁是「挑戰者引擎」，幾個看似異常其實是設計行為</summary>
+      <ul style="margin:10px 0 4px; line-height:1.7; color:#374151;">
+        <li><b>幾乎天天 C 級禁買</b>：大盤風險級別為 BLACK（避險/空頭）時，短線引擎<b>系統性停止新買進、全數強制 C 級</b>——這是風控熔斷設計，不是壞掉。大盤風險解除前本頁本來就不會給買進。</li>
+        <li><b>Claude 前一交易日選股 0 檔</b>：同上，BLACK 期間 Claude 短線選股器全數「觀望、拒絕進場」＝紀律行為。Claude 的主力判斷已轉為<a href="/">首頁決策帳本</a>的中長線價值論點卡（120 天視野）。</li>
+        <li><b>長投評分器安全邊際多為負</b>：代表<b>現價高於估算合理價</b>＝市場貴，與價值引擎「多數權值股處於自身估值歷史高位」結論一致。它誠實反映沒便宜貨，而非計算錯誤。</li>
+        <li><b>本頁所有輸出僅為 champion/challenger 的 shadow 對照</b>（ML 模型 OOS AUC 0.466 已暫停採用），不構成投資建議；中長線決策請以首頁價值論點卡為主。</li>
+      </ul>
+    </details>
+
     <!-- Market Risk Panel -->
     <section id="marketRiskPanel" class="panel risk-panel" style="display: none; border: 2px solid #ccc; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
       <div style="display: grid; grid-template-columns: 1.2fr 2fr 1.5fr; gap: 20px; align-items: start;">
