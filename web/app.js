@@ -1923,17 +1923,32 @@ function renderLedger(filterType) {
     let risk = s.market_risk || "—";
     let chips = "—";
     
+    const isEtf = s.agent_id === "claude-etf-subtrack" || s.symbol.startsWith("00");
     const evidence = asArray(s.evidence);
-    evidence.forEach(e => {
-      const claim = e.claim || (typeof e === "string" ? e : "");
-      if (claim.includes("ROE") || claim.includes("GPM") || claim.includes("OPM") || claim.includes("商業")) {
-        business = claim;
-      } else if (claim.includes("PE") || claim.includes("PB") || claim.includes("估值") || claim.includes("百分位")) {
-        valuation = claim;
-      } else if (claim.includes("法人") || claim.includes("籌碼") || claim.includes("買") || claim.includes("賣")) {
-        chips = claim;
-      }
-    });
+    
+    if (isEtf) {
+      evidence.forEach(e => {
+        const claim = e.claim || (typeof e === "string" ? e : "");
+        if (claim.includes("指數") || claim.includes("追蹤") || claim.includes("成分") || claim.includes("編製") || claim.includes("選股")) {
+          business = claim;
+        } else if (claim.includes("費用") || claim.includes("費率") || claim.includes("內扣") || claim.includes("成本")) {
+          valuation = claim;
+        } else if (claim.includes("規模") || claim.includes("配息") || claim.includes("殖利率") || claim.includes("平準金") || claim.includes("流動性")) {
+          chips = claim;
+        }
+      });
+    } else {
+      evidence.forEach(e => {
+        const claim = e.claim || (typeof e === "string" ? e : "");
+        if (claim.includes("ROE") || claim.includes("GPM") || claim.includes("OPM") || claim.includes("商業")) {
+          business = claim;
+        } else if (claim.includes("PE") || claim.includes("PB") || claim.includes("估值") || claim.includes("百分位")) {
+          valuation = claim;
+        } else if (claim.includes("法人") || claim.includes("籌碼") || claim.includes("買") || claim.includes("賣")) {
+          chips = claim;
+        }
+      });
+    }
     
     // If evidence was a list of strings and didn't match the criteria, list the first few
     if (business === "—" && evidence.length > 0) {
@@ -2002,6 +2017,10 @@ function renderLedger(filterType) {
       `;
     }
 
+    const pillar1Title = isEtf ? "📈 追蹤指數與邏輯" : "💼 商業與品質";
+    const pillar2Title = isEtf ? "💰 內扣費用與成本" : "📊 估值與百分位";
+    const pillar3Title = isEtf ? "🏦 基金規模與配息" : "🚀 法人籌碼";
+
     return `
       <div class="ledger-card">
         <div style="font-weight: bold; font-size: 15px; display: flex; align-items: center; gap: 8px;">
@@ -2023,15 +2042,15 @@ function renderLedger(filterType) {
         
         <div class="ledger-pillars">
           <div class="pillar-box" style="grid-column: span 2;">
-            <span class="pillar-title">💼 商業與品質</span>
+            <span class="pillar-title">${pillar1Title}</span>
             <span class="pillar-desc">${business}</span>
           </div>
           <div class="pillar-box" style="grid-column: span 2;">
-            <span class="pillar-title">📊 估值與百分位</span>
+            <span class="pillar-title">${pillar2Title}</span>
             <span class="pillar-desc">${valuation}</span>
           </div>
           <div class="pillar-box" style="grid-column: span 2;">
-            <span class="pillar-title">🚀 法人籌碼</span>
+            <span class="pillar-title">${pillar3Title}</span>
             <span class="pillar-desc">${chips}</span>
           </div>
           <div class="pillar-box" style="grid-column: span 2;">
