@@ -2117,6 +2117,73 @@
           "picks": []
         }
       ]
+    },
+    {
+      "timestamp": "2026-07-09T11:09:31.473009",
+      "pick_date": "2026-07-08",
+      "eval_date": "2026-07-09",
+      "agents": [
+        {
+          "agent": "🤖 Codex",
+          "n": 5,
+          "avg_return": 0.06967,
+          "picks": [
+            {
+              "symbol": "3711.TW",
+              "return": 0.0832
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.00153
+            },
+            {
+              "symbol": "2408.TW",
+              "return": 0.09975
+            },
+            {
+              "symbol": "2409.TW",
+              "return": 0.0643
+            },
+            {
+              "symbol": "8046.TW",
+              "return": 0.09955
+            }
+          ]
+        },
+        {
+          "agent": "🌌 Antigravity",
+          "n": 5,
+          "avg_return": 0.02726,
+          "picks": [
+            {
+              "symbol": "6213.TW",
+              "return": -0.0216
+            },
+            {
+              "symbol": "3481.TW",
+              "return": 0.00153
+            },
+            {
+              "symbol": "2303.TW",
+              "return": -0.04294
+            },
+            {
+              "symbol": "2408.TW",
+              "return": 0.09975
+            },
+            {
+              "symbol": "8046.TW",
+              "return": 0.09955
+            }
+          ]
+        },
+        {
+          "agent": "🧠 Claude",
+          "n": 0,
+          "avg_return": null,
+          "picks": []
+        }
+      ]
     }
   ]
 }
