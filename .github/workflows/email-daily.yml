@@ -1,0 +1,25 @@
+name: Daily Email Digest
+
+# 每交易日 16:35 台北（08:35 UTC）寄每日投資摘要（雲端執行，本機免開機）。
+# 個資（信箱/SMTP 密碼/持股）全在加密 secrets，不入庫（repo 為公開）。
+
+on:
+  schedule:
+    - cron: "35 8 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Send daily digest
+        env:
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
+          STOCK_POSITIONS: ${{ secrets.STOCK_POSITIONS }}
+        run: python run_daily_email.py
