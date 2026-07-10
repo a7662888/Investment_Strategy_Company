@@ -1763,8 +1763,15 @@ async function loadDecisionLedger() {
   if (!grid) return;
   try {
     statusEl.textContent = "Durable: 讀取中...";
-    const res = await fetch("/api/decision-ledger?limit=150");
+    // 分開取數：帳本膨脹後價值卡會被每日挑戰者訊號擠出 newest-N 視窗，必須用 agents 過濾。
+    const res = await fetch("/api/decision-ledger?limit=120&agents=claude-value,claude-etf-subtrack");
     const data = await readJson(res);
+    let challengerSignals = [];
+    try {
+      const resC = await fetch("/api/decision-ledger?limit=80&agents=ml-quant,next-day-plan,decision-center,codex-long-term,codex,antigravity,claude");
+      const dataC = await readJson(resC);
+      challengerSignals = asArray(dataC.signals).filter(s => s.event_type === "signal");
+    } catch (err) { console.warn("challenger signals unavailable:", err); }
     
     // Update status
     const storage = data.storage || {};
@@ -1782,7 +1789,10 @@ async function loadDecisionLedger() {
     
     $("ledgerTotalEvents").textContent = count;
     
-    const signals = asArray(data.signals || data.events).filter(s => s.event_type === "signal");
+    const signals = [
+      ...asArray(data.signals || data.events).filter(s => s.event_type === "signal"),
+      ...challengerSignals,
+    ];
     ledgerSignals = signals;
     
     const valueSignals = signals.filter(s => s.agent_id === "claude-value");

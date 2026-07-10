@@ -2725,6 +2725,10 @@ def is_live_decision_request(end: str) -> bool:
 def freeze_candidate_groups(end: str, groups: list[tuple[str, list[dict], str]]) -> dict:
     if not is_live_decision_request(end):
         return {"status": "skipped", "reason": "historical_request", "durable": False, "added": 0}
+    # 2026-07-09 事故：訪客每次瀏覽即凍結 → 帳本膨脹逾 1MB 觸發 contents-API 盲點 → 被整檔覆蓋。
+    # 請求路徑預設不再凍結；如需恢復（或排程走 HTTP 觸發）於部署環境設 LEDGER_FREEZE_ON_REQUEST=1。
+    if os.environ.get("LEDGER_FREEZE_ON_REQUEST", "0") != "1":
+        return {"status": "skipped", "reason": "request_path_freeze_disabled", "durable": False, "added": 0}
     version = build_version().get("render_git_commit") or build_version().get("app_version") or "unknown"
     signals = []
     for agent_id, candidates, horizon in groups:
@@ -2807,9 +2811,17 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(get_data_status())
                 return
             if parsed.path == "/api/decision-ledger":
-                from company.model.ledger import ledger_summary
+                from company.model.ledger import load_events, materialize
                 limit = max(0, min(500, int(query.get("limit", ["100"])[0])))
-                self.send_json(ledger_summary(limit=limit))
+                # agents=a,b 過濾：帳本膨脹後價值卡會被每日挑戰者訊號擠出 newest-N 視窗，
+                # 前端各分頁需可指定 agent 取數。
+                agents_param = (query.get("agents", [""])[0] or "").strip()
+                events, storage = load_events()
+                signals = materialize(events)
+                if agents_param:
+                    allowed = {a.strip() for a in agents_param.split(",") if a.strip()}
+                    signals = [s for s in signals if s.get("agent_id") in allowed]
+                self.send_json({"storage": storage, "signals": signals[:limit], "signal_count": len(signals)})
                 return
             if parsed.path == "/api/version":
                 self.send_json(build_version())

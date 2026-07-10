@@ -38,6 +38,9 @@ def main() -> None:
     original_remote_config = ledger._remote_config
     with tempfile.TemporaryDirectory() as tmp:
         ledger.LEDGER_PATH = Path(tmp) / "decision_ledger.jsonl"
+        # 隔離：本機若設有 GITHUB_DATA_TOKEN，未斷開 remote 會把測試訊號寫進真帳本（曾發生 'test' 污染）。
+        ledger._remote_config = lambda: None
+        ledger._invalidate_read_cache()
         signal = {
             "agent_id": "codex-long-term",
             "model_version": "test-v1",

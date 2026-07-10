@@ -94,7 +94,24 @@ def _fetch_remote() -> tuple[list[dict] | None, str | None, str | None]:
     token, repo, branch = config
     try:
         data = _remote_request("GET", token, repo, branch)
-        raw = base64.b64decode(str(data.get("content", "")).replace("\n", "")).decode("utf-8")
+        content = str(data.get("content") or "")
+        # >1MB 檔案 contents API 回傳 content=""/encoding="none"（但 sha 有效）——
+        # 若誤當空帳本會導致後續寫入整檔覆蓋（2026-07-09 事故根因）。改走 blob API（上限 100MB）。
+        if (not content.strip()) and data.get("sha") and int(data.get("size") or 0) > 0:
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "investment-strategy-company-ledger",
+            }
+            blob_url = f"https://api.github.com/repos/{repo}/git/blobs/{data['sha']}"
+            request = urllib.request.Request(blob_url, headers=headers)
+            with urllib.request.urlopen(request, timeout=20) as response:
+                blob = json.loads(response.read().decode("utf-8"))
+            content = str(blob.get("content") or "")
+            if not content.strip():
+                return None, None, "blob_read_empty"
+        raw = base64.b64decode(content.replace("\n", "")).decode("utf-8")
         return _parse_jsonl(raw), data.get("sha"), None
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
