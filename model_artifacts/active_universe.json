@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-07-12T16:48:24.337521",
-  "as_of": "2026-07-12",
+  "generated_at": "2026-07-19T16:46:12.962364",
+  "as_of": "2026-07-19",
   "tier": "週選(週更,供每日推薦)",
   "n": 30,
   "basis": "母池100 → 加權複合分(成交額×0.6 + 60日動能×0.4,百分位)+ 各產業上限8分散",
@@ -12,273 +12,273 @@
   "pool_size": 100,
   "stocks": [
     {
-      "symbol": "2454.TW",
-      "name": "聯發科",
-      "sector": "半導體",
-      "avg_turnover": 50935275813.0,
-      "mom60": 1.282,
-      "composite": 0.9737,
-      "rank": 1
-    },
-    {
       "symbol": "2327.TW",
       "name": "國巨",
       "sector": "被動元件",
-      "avg_turnover": 36888350332.0,
-      "mom60": 1.8846,
+      "avg_turnover": 39382091002.0,
+      "mom60": 1.1641,
       "composite": 0.9737,
-      "rank": 2
-    },
-    {
-      "symbol": "2303.TW",
-      "name": "聯電",
-      "sector": "半導體",
-      "avg_turnover": 33909249921.0,
-      "mom60": 1.6131,
-      "composite": 0.9576,
-      "rank": 3
+      "rank": 1
     },
     {
       "symbol": "2408.TW",
       "name": "南亞科",
       "sector": "記憶體",
-      "avg_turnover": 42078471992.0,
-      "mom60": 0.9795,
-      "composite": 0.9556,
+      "avg_turnover": 44925466290.0,
+      "mom60": 0.7977,
+      "composite": 0.9596,
+      "rank": 2
+    },
+    {
+      "symbol": "2454.TW",
+      "name": "聯發科",
+      "sector": "半導體",
+      "avg_turnover": 50788220894.0,
+      "mom60": 0.6124,
+      "composite": 0.9576,
+      "rank": 3
+    },
+    {
+      "symbol": "2303.TW",
+      "name": "聯電",
+      "sector": "半導體",
+      "avg_turnover": 33516759140.0,
+      "mom60": 0.8898,
+      "composite": 0.9495,
       "rank": 4
     },
     {
       "symbol": "3481.TW",
       "name": "群創",
       "sector": "面板",
-      "avg_turnover": 26164371148.0,
-      "mom60": 1.3963,
-      "composite": 0.9414,
+      "avg_turnover": 27060340352.0,
+      "mom60": 1.0231,
+      "composite": 0.9475,
       "rank": 5
     },
     {
       "symbol": "2344.TW",
       "name": "華邦電",
       "sector": "記憶體",
-      "avg_turnover": 34081226691.0,
-      "mom60": 0.8877,
-      "composite": 0.9354,
+      "avg_turnover": 34836252898.0,
+      "mom60": 0.7014,
+      "composite": 0.9434,
       "rank": 6
     },
     {
       "symbol": "8046.TW",
       "name": "南電",
       "sector": "ABF載板",
-      "avg_turnover": 17579446121.0,
-      "mom60": 0.8808,
-      "composite": 0.8828,
+      "avg_turnover": 18426659974.0,
+      "mom60": 0.4575,
+      "composite": 0.8747,
       "rank": 7
-    },
-    {
-      "symbol": "3711.TW",
-      "name": "日月光投控",
-      "sector": "半導體",
-      "avg_turnover": 15611871619.0,
-      "mom60": 0.5967,
-      "composite": 0.8646,
-      "rank": 8
-    },
-    {
-      "symbol": "3037.TW",
-      "name": "欣興",
-      "sector": "PCB",
-      "avg_turnover": 23952655677.0,
-      "mom60": 0.4657,
-      "composite": 0.8626,
-      "rank": 9
     },
     {
       "symbol": "1303.TW",
       "name": "南亞",
       "sector": "塑化",
-      "avg_turnover": 8574587223.0,
-      "mom60": 1.0393,
-      "composite": 0.8303,
-      "rank": 10
-    },
-    {
-      "symbol": "2383.TW",
-      "name": "台光電",
-      "sector": "PCB",
-      "avg_turnover": 12935174874.0,
-      "mom60": 0.4688,
-      "composite": 0.8182,
-      "rank": 11
-    },
-    {
-      "symbol": "2409.TW",
-      "name": "友達",
-      "sector": "面板",
-      "avg_turnover": 10475923799.0,
-      "mom60": 0.5884,
-      "composite": 0.8121,
-      "rank": 12
-    },
-    {
-      "symbol": "6182.TW",
-      "name": "合晶",
-      "sector": "半導體",
-      "avg_turnover": 5808452371.0,
-      "mom60": 3.6496,
-      "composite": 0.8121,
-      "rank": 13
+      "avg_turnover": 10204728737.0,
+      "mom60": 1.2511,
+      "composite": 0.8687,
+      "rank": 8
     },
     {
       "symbol": "2330.TW",
       "name": "台積電",
       "sector": "半導體",
-      "avg_turnover": 96101324881.0,
-      "mom60": 0.1752,
-      "composite": 0.8061,
-      "rank": 14
+      "avg_turnover": 99319448298.0,
+      "mom60": 0.1171,
+      "composite": 0.8384,
+      "rank": 9
     },
     {
-      "symbol": "3443.TW",
-      "name": "創意",
-      "sector": "ASIC",
-      "avg_turnover": 11492964032.0,
-      "mom60": 0.423,
-      "composite": 0.7939,
-      "rank": 15
-    },
-    {
-      "symbol": "3008.TW",
-      "name": "大立光",
-      "sector": "光學",
-      "avg_turnover": 9409508841.0,
-      "mom60": 0.4794,
-      "composite": 0.7879,
-      "rank": 16
-    },
-    {
-      "symbol": "8299.TW",
-      "name": "群聯",
-      "sector": "IC設計",
-      "avg_turnover": 18893964443.0,
-      "mom60": 0.2614,
-      "composite": 0.7838,
-      "rank": 17
-    },
-    {
-      "symbol": "6213.TW",
-      "name": "聯茂",
-      "sector": "PCB",
-      "avg_turnover": 6152508422.0,
-      "mom60": 0.7188,
-      "composite": 0.7758,
-      "rank": 18
+      "symbol": "3711.TW",
+      "name": "日月光投控",
+      "sector": "半導體",
+      "avg_turnover": 16101869644.0,
+      "mom60": 0.3008,
+      "composite": 0.8343,
+      "rank": 10
     },
     {
       "symbol": "6770.TW",
       "name": "力積電",
       "sector": "記憶體",
-      "avg_turnover": 15509413694.0,
-      "mom60": 0.3022,
-      "composite": 0.7737,
-      "rank": 19
+      "avg_turnover": 16560950807.0,
+      "mom60": 0.2759,
+      "composite": 0.8323,
+      "rank": 11
     },
     {
-      "symbol": "6669.TW",
-      "name": "緯穎",
-      "sector": "AI伺服器",
-      "avg_turnover": 11267335468.0,
-      "mom60": 0.3422,
-      "composite": 0.7636,
-      "rank": 20
+      "symbol": "6182.TW",
+      "name": "合晶",
+      "sector": "半導體",
+      "avg_turnover": 7292996871.0,
+      "mom60": 2.4566,
+      "composite": 0.8303,
+      "rank": 12
     },
     {
-      "symbol": "2492.TW",
-      "name": "華新科",
-      "sector": "被動元件",
-      "avg_turnover": 3846247599.0,
-      "mom60": 2.2552,
-      "composite": 0.7596,
-      "rank": 21
+      "symbol": "2409.TW",
+      "name": "友達",
+      "sector": "面板",
+      "avg_turnover": 10390764960.0,
+      "mom60": 0.3651,
+      "composite": 0.8101,
+      "rank": 13
     },
     {
-      "symbol": "2345.TW",
-      "name": "智邦",
-      "sector": "網通",
-      "avg_turnover": 10547591053.0,
-      "mom60": 0.3069,
-      "composite": 0.7414,
-      "rank": 22
+      "symbol": "3008.TW",
+      "name": "大立光",
+      "sector": "光學",
+      "avg_turnover": 9702776961.0,
+      "mom60": 0.5161,
+      "composite": 0.8101,
+      "rank": 14
     },
     {
-      "symbol": "3661.TW",
-      "name": "世芯-KY",
-      "sector": "ASIC",
-      "avg_turnover": 10099549279.0,
-      "mom60": 0.3156,
-      "composite": 0.7333,
-      "rank": 23
-    },
-    {
-      "symbol": "2356.TW",
-      "name": "英業達",
-      "sector": "AI伺服器",
-      "avg_turnover": 4140780293.0,
-      "mom60": 0.565,
-      "composite": 0.7172,
-      "rank": 24
+      "symbol": "3037.TW",
+      "name": "欣興",
+      "sector": "PCB",
+      "avg_turnover": 25870512532.0,
+      "mom60": 0.1183,
+      "composite": 0.7939,
+      "rank": 15
     },
     {
       "symbol": "2317.TW",
       "name": "鴻海",
       "sector": "電子代工",
-      "avg_turnover": 21998012048.0,
-      "mom60": 0.1446,
-      "composite": 0.7131,
-      "rank": 25
+      "avg_turnover": 21988486006.0,
+      "mom60": 0.109,
+      "composite": 0.7717,
+      "rank": 16
     },
     {
-      "symbol": "2301.TW",
-      "name": "光寶科",
-      "sector": "電子零組件",
-      "avg_turnover": 7630353346.0,
-      "mom60": 0.3556,
-      "composite": 0.7131,
-      "rank": 26
+      "symbol": "2492.TW",
+      "name": "華新科",
+      "sector": "被動元件",
+      "avg_turnover": 4149774131.0,
+      "mom60": 1.0638,
+      "composite": 0.7697,
+      "rank": 17
     },
     {
-      "symbol": "6415.TW",
-      "name": "矽力-KY",
-      "sector": "IC設計",
-      "avg_turnover": 3556699826.0,
-      "mom60": 0.9406,
-      "composite": 0.7091,
-      "rank": 27
+      "symbol": "2383.TW",
+      "name": "台光電",
+      "sector": "PCB",
+      "avg_turnover": 12748986428.0,
+      "mom60": 0.138,
+      "composite": 0.7535,
+      "rank": 18
     },
     {
       "symbol": "2881.TW",
       "name": "富邦金",
       "sector": "金融",
-      "avg_turnover": 4997141999.0,
-      "mom60": 0.4212,
-      "composite": 0.7051,
-      "rank": 28
+      "avg_turnover": 5130019600.0,
+      "mom60": 0.4196,
+      "composite": 0.7414,
+      "rank": 19
+    },
+    {
+      "symbol": "2301.TW",
+      "name": "光寶科",
+      "sector": "電子零組件",
+      "avg_turnover": 7676372588.0,
+      "mom60": 0.1458,
+      "composite": 0.703,
+      "rank": 20
+    },
+    {
+      "symbol": "6446.TW",
+      "name": "藥華藥",
+      "sector": "生技",
+      "avg_turnover": 3216459751.0,
+      "mom60": 0.8385,
+      "composite": 0.697,
+      "rank": 21
+    },
+    {
+      "symbol": "6669.TW",
+      "name": "緯穎",
+      "sector": "AI伺服器",
+      "avg_turnover": 10920155175.0,
+      "mom60": 0.0948,
+      "composite": 0.6949,
+      "rank": 22
+    },
+    {
+      "symbol": "2356.TW",
+      "name": "英業達",
+      "sector": "AI伺服器",
+      "avg_turnover": 4264191371.0,
+      "mom60": 0.2355,
+      "composite": 0.6949,
+      "rank": 23
+    },
+    {
+      "symbol": "8299.TW",
+      "name": "群聯",
+      "sector": "IC設計",
+      "avg_turnover": 18529286838.0,
+      "mom60": 0.0113,
+      "composite": 0.6869,
+      "rank": 24
     },
     {
       "symbol": "2379.TW",
       "name": "瑞昱",
       "sector": "IC設計",
-      "avg_turnover": 3711225491.0,
-      "mom60": 0.6031,
-      "composite": 0.7051,
+      "avg_turnover": 3844533595.0,
+      "mom60": 0.3031,
+      "composite": 0.6808,
+      "rank": 25
+    },
+    {
+      "symbol": "3443.TW",
+      "name": "創意",
+      "sector": "ASIC",
+      "avg_turnover": 11486336847.0,
+      "mom60": 0.0268,
+      "composite": 0.6687,
+      "rank": 26
+    },
+    {
+      "symbol": "2357.TW",
+      "name": "華碩",
+      "sector": "AI伺服器",
+      "avg_turnover": 4221626238.0,
+      "mom60": 0.1686,
+      "composite": 0.6626,
+      "rank": 27
+    },
+    {
+      "symbol": "2882.TW",
+      "name": "國泰金",
+      "sector": "金融",
+      "avg_turnover": 3893851554.0,
+      "mom60": 0.249,
+      "composite": 0.6626,
+      "rank": 28
+    },
+    {
+      "symbol": "2887.TW",
+      "name": "台新金",
+      "sector": "金融",
+      "avg_turnover": 3008817617.0,
+      "mom60": 0.4843,
+      "composite": 0.6606,
       "rank": 29
     },
     {
-      "symbol": "2308.TW",
-      "name": "台達電",
-      "sector": "電源",
-      "avg_turnover": 27306679060.0,
-      "mom60": 0.0743,
-      "composite": 0.701,
+      "symbol": "6213.TW",
+      "name": "聯茂",
+      "sector": "PCB",
+      "avg_turnover": 5584115885.0,
+      "mom60": 0.1154,
+      "composite": 0.6465,
       "rank": 30
     }
   ]
