@@ -34,17 +34,45 @@ def build_html(positions):
     plans = {p["symbol"]: p for p in plan.get("plans", [])}
     led = api("/api/decision-ledger?limit=120&agents=claude-value,claude-etf-subtrack")
     sigs = [s for s in led.get("signals", []) if s.get("event_type") == "signal"]
+    # 同一標的可能有多版凍結（如 ETF 卡修正參考價後重凍）→ 只取最新，避免舊錯卡的失真報酬混入
+    newest = {}
+    for s in sigs:
+        key = (s.get("agent_id"), s.get("symbol"))
+        if key not in newest or (s.get("data_cutoff") or "") > (newest[key].get("data_cutoff") or ""):
+            newest[key] = s
+    sigs = list(newest.values())
+    by_symbol = {s.get("symbol"): s for s in sigs}
     accum = [s for s in sigs if "accumulate" in (s.get("action") or "")]
     avoid = [s for s in sigs if "avoid" in (s.get("action") or "")]
-    matured = []
+    # 成績回顧：涵蓋所有已成熟期數（先前只找 20D/60D/120D，漏掉已算出的 1D/5D）
+    HORIZONS = ("1D", "5D", "20D", "60D", "120D")
+    agg = {}
     for s in sigs:
         oc = s.get("outcomes") or {}
-        for h in ("20D", "60D", "120D"):
+        for h in HORIZONS:
             o = oc.get(h)
             if isinstance(o, dict) and o.get("gross_return") is not None:
-                matured.append((s.get("symbol"), h, o.get("gross_return"), o.get("excess_return")))
+                agg.setdefault(h, []).append((s.get("symbol"), o.get("gross_return"), o.get("excess_return")))
     risk = m.get("risk_level") or "?"
     risk_color = {"GREEN": "#137333", "YELLOW": "#b45309", "RED": "#c5221f", "BLACK": "#111"}.get(risk, "#555")
+    def holding_advice(sym):
+        """持有中該怎麼辦：以價值引擎 action 翻成白話（與網站首頁一致）。"""
+        s = by_symbol.get(sym)
+        if not s:
+            return "未納入價值分析，僅供價格參考"
+        act = (s.get("action") or "").lower()
+        er = s.get("entry_range")
+        er_txt = f"（便宜區約 {er[0]}–{er[1]}）" if isinstance(er, list) and len(er) == 2 else ""
+        if "accumulate" in act:
+            return f"目前在便宜區，可考慮分批加碼{er_txt}"
+        if "avoid" in act:
+            return "體質轉弱且偏貴，宜檢視是否減碼，別再加碼"
+        if "watch" in act:
+            return f"續抱可以（尤其領息型），但<b>此價位不建議加碼</b>{er_txt}"
+        if "hold" in act:
+            return "價格合理，續抱領息即可"
+        return "—"
+
     rows = ""
     for p in positions:
         pl = plans.get(p["symbol"])
@@ -54,18 +82,39 @@ def build_html(positions):
             rows += (f"<tr><td>{p['symbol']}</td><td>{pl.get('action','—')}</td>"
                      f"<td align='right'>{pl.get('last_close','—')}</td>"
                      f"<td align='right'>{p.get('cost','—')}</td>"
-                     f"<td align='right' style='color:{cls};font-weight:600'>{pct(ug)}</td></tr>")
+                     f"<td align='right' style='color:{cls};font-weight:600'>{pct(ug)}</td></tr>"
+                     f"<tr><td colspan='5' style='font-size:12px;color:#1e3a8a;background:#eff6ff;padding:4px 8px;'>"
+                     f"👉 {holding_advice(p['symbol'])}</td></tr>")
         else:
             rows += f"<tr><td>{p['symbol']}</td><td colspan='4' style='color:#c5221f'>今日未取得計畫</td></tr>"
     acc_html = "".join(
         f"<li><b>{s.get('name','')} {s.get('symbol','')}</b>：買進區間 {s.get('entry_range','—')}｜參考價 {s.get('reference_price','—')}（{s.get('data_cutoff','')} 凍結）</li>"
         for s in accum) or "<li>目前無 accumulate 標的（市場不便宜時，沒有買進本來就是紀律）</li>"
     avoid_html = "、".join(f"{s.get('name','')}{s.get('symbol','')}" for s in avoid) or "無"
-    if matured:
-        mat_html = "".join(f"<li>{sym} {h}：報酬 {pct(g)}｜對 0050 超額 {pct(e)}</li>" for sym, h, g, e in matured[:12])
-        mat_block = f"<h3>📊 已成熟成績（≥20 交易日）</h3><ul>{mat_html}</ul>"
+    if agg:
+        cells = ""
+        for h in HORIZONS:
+            arr = agg.get(h)
+            if not arr:
+                continue
+            avg = sum(g for _, g, _ in arr) / len(arr)
+            ex = [e for _, _, e in arr if e is not None]
+            avg_ex = sum(ex) / len(ex) if ex else None
+            win = (sum(1 for e in ex if e > 0) / len(ex)) if ex else None
+            ex_color = "#137333" if (avg_ex or 0) >= 0 else "#c5221f"
+            cells += (f"<td align='center' style='border:1px solid #ddd;padding:6px'>"
+                      f"<div style='font-size:11px;color:#777'>{h}（{len(arr)} 筆）</div>"
+                      f"<div style='font-size:15px;font-weight:600'>{pct(avg)}</div>"
+                      f"<div style='font-size:11px;color:{ex_color}'>對0050 {pct(avg_ex) if avg_ex is not None else '—'}</div>"
+                      f"<div style='font-size:11px;color:#777'>勝率 {f'{win*100:.0f}%' if win is not None else '—'}</div></td>")
+        max_days = max(int(h[:-1]) for h in agg)
+        mat_block = (f"<h3>📊 成績回顧（復盤）</h3>"
+                     f"<table style='border-collapse:collapse;width:100%'><tr>{cells}</tr></table>"
+                     f"<p style='font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;"
+                     f"border-radius:6px;padding:6px 8px;margin-top:8px'>⚠️ 目前最長僅 {max_days} 個交易日，"
+                     f"屬雜訊區間、<b>不能當作方法有效的證據</b>；判定標準為 60／120 個交易日。</p>")
     else:
-        mat_block = "<p style='color:#777'>📊 20/60/120 日成績尚在累積，到期會自動出現在此。</p>"
+        mat_block = "<p style='color:#777'>📊 成績累積中，凍結後第 1 個交易日起會自動出現在此。</p>"
     return f"""
 <div style="font-family:'Microsoft JhengHei',sans-serif;max-width:640px;margin:auto;color:#222">
   <h2>📈 每日投資摘要 <span style="font-size:13px;color:#777">{today}</span></h2>
