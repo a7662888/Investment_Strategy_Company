@@ -56,7 +56,7 @@ def qualitative(result: dict, old: dict | None) -> list[dict]:
                         "source": "weekly rescreen (no LLM key)", "data_quality": "medium"})
         return carried
     try:
-        from company.analysis.gemini_analyst import analyze_value_thesis  # type: ignore
+        from company.model.gemini_analyst import analyze_value_thesis  # type: ignore
         extra = analyze_value_thesis(result)
         if extra:
             carried.extend(extra)

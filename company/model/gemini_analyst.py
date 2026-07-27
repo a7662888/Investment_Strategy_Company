@@ -132,3 +132,86 @@ def generate_rule_based_analysis(symbol: str, name: str, quant_data: dict, news_
 
 ### 📋 操盤檢核表 (Checklist)
 {checklist_md}"""
+
+
+# ---------------------------------------------------------------------------
+# 價值引擎 4-agent 質性層（TASK-019）
+# 規則層（估值位階／品質硬篩）算得出數字，但「商業模式、護城河、風險」需要敘事判斷。
+# 每週重篩時呼叫；無 key 或呼叫失敗時由呼叫端沿用前次論述，排程不因此中斷。
+# ---------------------------------------------------------------------------
+VALUE_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+
+def analyze_value_thesis(result: dict, timeout: int = 45) -> list[dict]:
+    """對單一標的產生 4-agent 質性要點，回傳 evidence 陣列。
+
+    result 來自 company.screener.value_rescreen.evaluate()，含代號/名稱/估值位階/ROE 等。
+    回傳格式與凍結卡 evidence 一致：{claim, source, data_quality}。
+    """
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return []
+
+    sym = result.get("symbol", "")
+    name = result.get("name", "")
+    facts = {
+        "現價": result.get("price"),
+        "估值基準": result.get("valuation_basis"),
+        "估值百分位(近3年,越低越便宜)": result.get("valuation_pct"),
+        "PE": result.get("pe"), "PB": result.get("pb"),
+        "ROE_ttm(%)": result.get("roe_ttm"),
+        "品質硬篩通過": result.get("quality_pass"),
+        "未通過項目": result.get("failed"),
+        "規則層判定": result.get("action"),
+    }
+    prompt = (
+        "你是台股價值投資分析師。以下是某標的的量化事實（由規則引擎計算，數字為真）。\n"
+        f"標的：{name} {sym}\n事實：{json.dumps(facts, ensure_ascii=False)}\n\n"
+        "請針對四個面向各給一句繁體中文要點（每句 40 字內，務必具體、避免空話）：\n"
+        "1. business：商業模式與獲利來源\n"
+        "2. moat：競爭護城河與其趨勢（擴大/穩定/侵蝕）\n"
+        "3. risk：最關鍵的下行風險\n"
+        "4. bear_case：若這筆判斷錯了，最可能錯在哪\n\n"
+        "限制：只依據上述事實與你對該公司的既有認識；不得捏造具體數字、"
+        "不得宣稱短期報酬、不得給投資建議。\n"
+        '輸出嚴格 JSON：{"business":"...","moat":"...","risk":"...","bear_case":"..."}'
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048,
+                             "responseMimeType": "application/json"},
+    }
+    # 模型備援：不同 API key 綁定的專案可用模型不同（新帳號已無 2.5-flash 權限），
+    # 且免費層配額用盡會回 429。逐一嘗試，全部失敗則回空由呼叫端沿用前次論述。
+    candidates = [VALUE_MODEL, "gemini-2.0-flash", "gemini-flash-latest"]
+    data = None
+    last_err = None
+    for model in dict.fromkeys(candidates):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            break
+        except Exception as exc:
+            last_err = exc
+            continue
+    if data is None:
+        print(f"[Gemini Analyst] 質性層跳過（{type(last_err).__name__}）：可能為免費配額用盡或模型無權限。")
+        return []
+    parts = (((data.get("candidates") or [{}])[0].get("content") or {}).get("parts") or [{}])
+    text = "".join(p.get("text", "") for p in parts).strip()
+    if not text:
+        return []
+    parsed = json.loads(text)
+    labels = {"business": "商業模式", "moat": "護城河", "risk": "關鍵風險", "bear_case": "可能錯在哪"}
+    out = []
+    for k, label in labels.items():
+        v = (parsed.get(k) or "").strip()
+        if v:
+            out.append({"claim": f"{label}：{v}",
+                        "source": f"4-agent 質性層（{VALUE_MODEL}，依規則層事實生成）",
+                        "data_quality": "medium"})
+    return out
