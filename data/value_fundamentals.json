@@ -1,0 +1,5168 @@
+{
+  "2330": {
+    "symbol": "2330",
+    "name": "台積電",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 592644201000.0,
+        "gross_profit_margin": 53.06814248233908,
+        "operating_income_margin": 42.01817980836026,
+        "net_profit_margin": 38.00277850014768,
+        "eps": 8.7,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 436311108000.0,
+        "earnings_quality": 1.9372554002594329
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 673510177000.0,
+        "gross_profit_margin": 53.17283839647162,
+        "operating_income_margin": 42.54657936668417,
+        "net_profit_margin": 36.77174398509497,
+        "eps": 9.56,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 813979318000.0,
+        "earnings_quality": 3.2866615189402237
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 759692143000.0,
+        "gross_profit_margin": 57.83206658753084,
+        "operating_income_margin": 47.48848495067297,
+        "net_profit_margin": 42.791040159539996,
+        "eps": 12.55,
+        "debt_ratio": 34.768970705261495,
+        "roe": 8.082706389614826,
+        "operating_cash_flow": 1205971785000.0,
+        "earnings_quality": 3.7097673014013743
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 868461178000.0,
+        "gross_profit_margin": 58.99839439915644,
+        "operating_income_margin": 49.019222019847156,
+        "net_profit_margin": 43.118667533576264,
+        "eps": 14.45,
+        "debt_ratio": 35.391274321429755,
+        "roe": 8.66109210737765,
+        "operating_cash_flow": 1826177068000.0,
+        "earnings_quality": 4.87671239593074
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 839253664000.0,
+        "gross_profit_margin": 58.789743454727414,
+        "operating_income_margin": 48.50509750053352,
+        "net_profit_margin": 42.98255419948932,
+        "eps": 13.95,
+        "debt_ratio": 35.49083071995437,
+        "roe": 7.839245996079771,
+        "operating_cash_flow": 625573672000.0,
+        "earnings_quality": 1.7341753038547292
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 933791869000.0,
+        "gross_profit_margin": 58.61790578517021,
+        "operating_income_margin": 49.628150917214725,
+        "net_profit_margin": 42.56766814918582,
+        "eps": 15.36,
+        "debt_ratio": 34.107885744025985,
+        "roe": 8.610030795503002,
+        "operating_cash_flow": 1122637757000.0,
+        "earnings_quality": 2.8242926529521655
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 989918318000.0,
+        "gross_profit_margin": 59.4536759547064,
+        "operating_income_margin": 50.57839711579112,
+        "net_profit_margin": 45.635620008801574,
+        "eps": 17.44,
+        "debt_ratio": 31.526999131770594,
+        "roe": 8.971271614958955,
+        "operating_cash_flow": 1549466838000.0,
+        "earnings_quality": 3.4298803474965727
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 1046090421000.0,
+        "gross_profit_margin": 62.32604972873565,
+        "operating_income_margin": 54.00129870800146,
+        "net_profit_margin": 48.314688945995044,
+        "eps": 19.51,
+        "debt_ratio": 31.16376091916258,
+        "roe": 9.255342982246713,
+        "operating_cash_flow": 2274975625000.0,
+        "earnings_quality": 4.501200253455706
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 1134103440000.0,
+        "gross_profit_margin": 66.24575805889452,
+        "operating_income_margin": 58.104588942962735,
+        "net_profit_margin": 50.5069717450112,
+        "eps": 22.08,
+        "debt_ratio": 31.504175214475914,
+        "roe": 9.655491432335914,
+        "operating_cash_flow": 698976265000.0,
+        "earnings_quality": 1.2202770142436687
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 263708978000.0,
+        "yoy": 26.863249195490923
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 323165707000.0,
+        "yoy": 25.76838334416709
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 335771691000.0,
+        "yoy": 33.84484085168404
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 330980920000.0,
+        "yoy": 31.408007958241857
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 367473051000.0,
+        "yoy": 16.9403597946896
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 343613802000.0,
+        "yoy": 24.471435854878187
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 335003568000.0,
+        "yoy": 20.434219912563755
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 401255128000.0,
+        "yoy": 36.81264695834612
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 317656613000.0,
+        "yoy": 22.17148722922435
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 415191699000.0,
+        "yoy": 45.19383887421049
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 410725118000.0,
+        "yoy": 17.495412466636573
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 416975163000.0,
+        "yoy": 30.094980202716968
+      }
+    ],
+    "chips": {
+      "days_30_net": -117716.4,
+      "days_60_net": -145760.12
+    },
+    "valuation": {
+      "pe": 30.86,
+      "pb": 10.1,
+      "yield": 0.96,
+      "date": "2026-05-28"
+    }
+  },
+  "2454": {
+    "symbol": "2454",
+    "name": "聯發科",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 133458147000.0,
+        "gross_profit_margin": 52.37636785111365,
+        "operating_income_margin": 24.112326390984585,
+        "net_profit_margin": 23.718901926609245,
+        "eps": 19.85,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 25203802000.0,
+        "earnings_quality": 0.7962077292083948
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 127271121000.0,
+        "gross_profit_margin": 48.8220905982277,
+        "operating_income_margin": 19.608545759567875,
+        "net_profit_margin": 20.393617810595067,
+        "eps": 16.19,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 75144111000.0,
+        "earnings_quality": 2.8951482374273874
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 131813494000.0,
+        "gross_profit_margin": 48.817172694018716,
+        "operating_income_margin": 18.104493914712556,
+        "net_profit_margin": 19.413598883889687,
+        "eps": 15.94,
+        "debt_ratio": 37.407188435428345,
+        "roe": 6.04304037799406,
+        "operating_cash_flow": 111369501000.0,
+        "earnings_quality": 4.352114868836314
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 138043124000.0,
+        "gross_profit_margin": 48.53637476358475,
+        "operating_income_margin": 15.511037695727605,
+        "net_profit_margin": 17.34304926335918,
+        "eps": 14.94,
+        "debt_ratio": 41.95813251262743,
+        "roe": 5.910522395844339,
+        "operating_cash_flow": 156054607000.0,
+        "earnings_quality": 6.518330210572398
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 153312237000.0,
+        "gross_profit_margin": 48.14324899583847,
+        "operating_income_margin": 19.60266942031509,
+        "net_profit_margin": 19.260647145863512,
+        "eps": 18.43,
+        "debt_ratio": 44.8975755907716,
+        "roe": 7.460722897150314,
+        "operating_cash_flow": 13422960000.0,
+        "earnings_quality": 0.45456982202097473
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 150368571000.0,
+        "gross_profit_margin": 49.131044811219226,
+        "operating_income_margin": 19.537974461431837,
+        "net_profit_margin": 18.663759862424975,
+        "eps": 17.5,
+        "debt_ratio": 42.54043675309372,
+        "roe": 7.298415964196199,
+        "operating_cash_flow": 59091662000.0,
+        "earnings_quality": 2.105571504768545
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 142096864000.0,
+        "gross_profit_margin": 46.52593247941066,
+        "operating_income_margin": 15.614352333630672,
+        "net_profit_margin": 17.910797806206336,
+        "eps": 15.84,
+        "debt_ratio": 37.69825233543462,
+        "roe": 5.938877391045516,
+        "operating_cash_flow": 98272589000.0,
+        "earnings_quality": 3.861294915397552
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 150188010000.0,
+        "gross_profit_margin": 46.12945334317966,
+        "operating_income_margin": 14.54838239084465,
+        "net_profit_margin": 15.363100556429238,
+        "eps": 14.4,
+        "debt_ratio": 44.98475657888709,
+        "roe": 5.638762403220933,
+        "operating_cash_flow": 162792872000.0,
+        "earnings_quality": 7.055393636042331
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 149150510000.0,
+        "gross_profit_margin": 46.29910618475257,
+        "operating_income_margin": 15.347480206403585,
+        "net_profit_margin": 16.343480153034676,
+        "eps": 15.17,
+        "debt_ratio": 46.066612307659014,
+        "roe": 6.117849237924281,
+        "operating_cash_flow": -17656664000.0,
+        "earnings_quality": -0.7243348316140736
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 56433621000.0,
+        "yoy": 30.960613714973363
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 43220164000.0,
+        "yoy": -5.239143855357331
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 44546643000.0,
+        "yoy": 7.269360418138815
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 54330057000.0,
+        "yoy": 21.60921933454287
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 52026251000.0,
+        "yoy": 1.7780715071525233
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 46895680000.0,
+        "yoy": 3.6543949334546078
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 51266079000.0,
+        "yoy": 22.989108621819266
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 46977055000.0,
+        "yoy": -8.147992987995067
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 38954271000.0,
+        "yoy": -15.631757991790774
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 63219184000.0,
+        "yoy": 12.899008586757255
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 46736664000.0,
+        "yoy": -4.1386192973995595
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 47434191000.0,
+        "yoy": 4.9881336042878255
+      }
+    ],
+    "chips": {
+      "days_30_net": -20812.08,
+      "days_60_net": 3345.06
+    },
+    "valuation": {
+      "pe": 70.28,
+      "pb": 18.04,
+      "yield": 1.21,
+      "date": "2026-05-28"
+    }
+  },
+  "2303": {
+    "symbol": "2303",
+    "name": "聯電",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 54632099000.0,
+        "gross_profit_margin": 30.93315158914176,
+        "operating_income_margin": 21.351002823450003,
+        "net_profit_margin": 19.090599099990648,
+        "eps": 0.84,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 20819871000.0,
+        "earnings_quality": 1.9962300549541951
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 56799290000.0,
+        "gross_profit_margin": 35.18217217151834,
+        "operating_income_margin": 24.45705219202564,
+        "net_profit_margin": 24.252440479449653,
+        "eps": 1.11,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 43547628000.0,
+        "earnings_quality": 3.1613031928215416
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 60485085000.0,
+        "gross_profit_margin": 33.77501246794974,
+        "operating_income_margin": 23.310925329773447,
+        "net_profit_margin": 23.87656064300811,
+        "eps": 1.16,
+        "debt_ratio": 35.8356749524807,
+        "roe": 3.919163087206617,
+        "operating_cash_flow": 60894868000.0,
+        "earnings_quality": 4.2165827733714965
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 60386110000.0,
+        "gross_profit_margin": 30.375496947890827,
+        "operating_income_margin": 19.80091779384365,
+        "net_profit_margin": 14.009329297747444,
+        "eps": 0.68,
+        "debt_ratio": 33.67510435277859,
+        "roe": 2.236918151307766,
+        "operating_cash_flow": 93872042000.0,
+        "earnings_quality": 11.096393969092718
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 57858957000.0,
+        "gross_profit_margin": 26.697067836877874,
+        "operating_income_margin": 16.913372634767683,
+        "net_profit_margin": 13.382956419349213,
+        "eps": 0.62,
+        "debt_ratio": 31.788070070922974,
+        "roe": 1.9812363746708208,
+        "operating_cash_flow": 23825705000.0,
+        "earnings_quality": 3.076968824028291
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 58757657000.0,
+        "gross_profit_margin": 28.72493367119795,
+        "operating_income_margin": 18.414131114860485,
+        "net_profit_margin": 15.058432299300156,
+        "eps": 0.71,
+        "debt_ratio": 38.51145449730591,
+        "roe": 2.625159464372149,
+        "operating_cash_flow": 45923736000.0,
+        "earnings_quality": 5.19030621897739
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 59127040000.0,
+        "gross_profit_margin": 29.805851941852662,
+        "operating_income_margin": 18.80296392310523,
+        "net_profit_margin": 25.274759230294634,
+        "eps": 1.2,
+        "debt_ratio": 34.96521942883425,
+        "roe": 4.137377899636455,
+        "operating_cash_flow": 66861300000.0,
+        "earnings_quality": 4.474058426747952
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 61809545000.0,
+        "gross_profit_margin": 30.672346803394202,
+        "operating_income_margin": 19.77920885843764,
+        "net_profit_margin": 16.177614638645213,
+        "eps": 0.8,
+        "debt_ratio": 34.394117732165576,
+        "roe": 2.6323987883390587,
+        "operating_cash_flow": 99864187000.0,
+        "earnings_quality": 9.98710781043892
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 61037902000.0,
+        "gross_profit_margin": 29.192500751418354,
+        "operating_income_margin": 18.474440684412777,
+        "net_profit_margin": 26.404878726008636,
+        "eps": 1.29,
+        "debt_ratio": 32.202946271695886,
+        "roe": 3.9625156709082154,
+        "operating_cash_flow": 21981335000.0,
+        "earnings_quality": 1.3638615636771743
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 18823070000.0,
+        "yoy": 7.263659682502355
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 20040049000.0,
+        "yoy": -4.100268188399636
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 19159816000.0,
+        "yoy": -7.196136842257205
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 19927175000.0,
+        "yoy": 5.197043042512273
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 21294974000.0,
+        "yoy": -0.35625664740858154
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 21233847000.0,
+        "yoy": 5.9087946829950555
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 19280724000.0,
+        "yoy": 1.6603871238245471
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 20862150000.0,
+        "yoy": 5.328247200013925
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 19345126000.0,
+        "yoy": 6.329788388884716
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 20830626000.0,
+        "yoy": 4.894487524754321
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 22663945000.0,
+        "yoy": 10.801592605647748
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 22943755000.0,
+        "yoy": 17.780738526586436
+      }
+    ],
+    "chips": {
+      "days_30_net": -351003.7,
+      "days_60_net": 180230.6
+    },
+    "valuation": {
+      "pe": 35.68,
+      "pb": 4.39,
+      "yield": 1.83,
+      "date": "2026-05-28"
+    }
+  },
+  "3711": {
+    "symbol": "3711",
+    "name": "日月光投控",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 132802855000.0,
+        "gross_profit_margin": 15.713552242532739,
+        "operating_income_margin": 5.666256949069356,
+        "net_profit_margin": 4.484339587428297,
+        "eps": 1.32,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 16693966000.0,
+        "earnings_quality": 2.8031970011406586
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 140238063000.0,
+        "gross_profit_margin": 16.44769651446198,
+        "operating_income_margin": 6.432384908225665,
+        "net_profit_margin": 5.822339402962233,
+        "eps": 1.8,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 33480115000.0,
+        "earnings_quality": 4.100374445692025
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 160105106000.0,
+        "gross_profit_margin": 16.472394703014658,
+        "operating_income_margin": 7.130472153711325,
+        "net_profit_margin": 6.345618983569457,
+        "eps": 2.24,
+        "debt_ratio": 53.673144347859015,
+        "roe": 3.068362894304547,
+        "operating_cash_flow": 55542682000.0,
+        "earnings_quality": 5.466982359645893
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 162263561000.0,
+        "gross_profit_margin": 16.408256934531344,
+        "operating_income_margin": 6.905143663154292,
+        "net_profit_margin": 5.944350623489645,
+        "eps": 2.17,
+        "debt_ratio": 53.316103850703044,
+        "roe": 2.789441562938552,
+        "operating_cash_flow": 90787754000.0,
+        "earnings_quality": 9.412431995595881
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 148153262000.0,
+        "gross_profit_margin": 16.802016819582413,
+        "operating_income_margin": 6.527902841585763,
+        "net_profit_margin": 5.2569244138546205,
+        "eps": 1.75,
+        "debt_ratio": 56.72524919289169,
+        "roe": 2.3247052536627506,
+        "operating_cash_flow": 19973302000.0,
+        "earnings_quality": 2.564524886994025
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 150750323000.0,
+        "gross_profit_margin": 17.039777752250654,
+        "operating_income_margin": 6.761565612035206,
+        "net_profit_margin": 5.093639500858648,
+        "eps": 1.74,
+        "debt_ratio": 58.84142664637061,
+        "roe": 2.4381786330801813,
+        "operating_cash_flow": 56818177000.0,
+        "earnings_quality": 7.399473841721192
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 168568888000.0,
+        "gross_profit_margin": 17.130528855360307,
+        "operating_income_margin": 7.831039972215987,
+        "net_profit_margin": 6.739718185718827,
+        "eps": 2.5,
+        "debt_ratio": 59.703926712883856,
+        "roe": 3.3458951837003266,
+        "operating_cash_flow": 71444098000.0,
+        "earnings_quality": 6.288501926051318
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 177915237000.0,
+        "gross_profit_margin": 19.523834262716914,
+        "operating_income_margin": 9.943191655923208,
+        "net_profit_margin": 8.437998483513809,
+        "eps": 3.38,
+        "debt_ratio": 58.01713369675326,
+        "roe": 4.020831928942272,
+        "operating_cash_flow": 142249287000.0,
+        "earnings_quality": 9.475399109474548
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 173662152000.0,
+        "gross_profit_margin": 20.067607477304552,
+        "operating_income_margin": 10.095344781861277,
+        "net_profit_margin": 8.386971387985565,
+        "eps": 3.24,
+        "debt_ratio": 60.1949838212679,
+        "roe": 3.821389490019301,
+        "operating_cash_flow": 36387434000.0,
+        "earnings_quality": 2.4982798826913433
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 49512621000.0,
+        "yoy": 5.513467715696163
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 51542033000.0,
+        "yoy": -0.10450625644018441
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 56465628000.0,
+        "yoy": 6.680300332359335
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 60561227000.0,
+        "yoy": 8.963459135419448
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 60231106000.0,
+        "yoy": 6.74432198600412
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 58819584000.0,
+        "yoy": 11.120121606549894
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 58864547000.0,
+        "yoy": 11.26536620744738
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 59988631000.0,
+        "yoy": 21.325771255838966
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 52096847000.0,
+        "yoy": 15.871739169696042
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 61576674000.0,
+        "yoy": 14.565062842182307
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 62247107000.0,
+        "yoy": 19.22274001452613
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 63033313000.0,
+        "yoy": 28.56874083603227
+      }
+    ],
+    "chips": {
+      "days_30_net": -28245.38,
+      "days_60_net": -25053.36
+    },
+    "valuation": {
+      "pe": 58.22,
+      "pb": 7.85,
+      "yield": 1.05,
+      "date": "2026-05-28"
+    }
+  },
+  "3034": {
+    "symbol": "3034",
+    "name": "聯詠",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 24427885000.0,
+        "gross_profit_margin": 41.09105229535836,
+        "operating_income_margin": 21.059092917786373,
+        "net_profit_margin": 20.032978704460085,
+        "eps": 8.04,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 4366612000.0,
+        "earnings_quality": 0.8923047559962097
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 25231019000.0,
+        "gross_profit_margin": 41.14043511282679,
+        "operating_income_margin": 21.816134338450617,
+        "net_profit_margin": 21.356905957702303,
+        "eps": 8.86,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 9456068000.0,
+        "earnings_quality": 1.7548397393369106
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 27866328000.0,
+        "gross_profit_margin": 39.73959539986754,
+        "operating_income_margin": 22.39765497628536,
+        "net_profit_margin": 18.870290337499796,
+        "eps": 8.64,
+        "debt_ratio": 34.47008044415021,
+        "roe": 8.286544610599895,
+        "operating_cash_flow": 9053323000.0,
+        "earnings_quality": 1.7216691132018385
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 25262519000.0,
+        "gross_profit_margin": 39.50739829230807,
+        "operating_income_margin": 19.45930253431972,
+        "net_profit_margin": 19.005887734315014,
+        "eps": 7.89,
+        "debt_ratio": 33.668972632905295,
+        "roe": 7.068798056727808,
+        "operating_cash_flow": 16652289000.0,
+        "earnings_quality": 3.4682398717365017
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 27120202000.0,
+        "gross_profit_margin": 39.758981146231875,
+        "operating_income_margin": 21.00187159372928,
+        "net_profit_margin": 19.409165905180203,
+        "eps": 8.65,
+        "debt_ratio": 32.11215290097786,
+        "roe": 7.1977679419831855,
+        "operating_cash_flow": 5575882000.0,
+        "earnings_quality": 1.0592873406214707
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 26152063000.0,
+        "gross_profit_margin": 36.301717382678376,
+        "operating_income_margin": 18.44225061709281,
+        "net_profit_margin": 14.298122484639167,
+        "eps": 6.14,
+        "debt_ratio": 44.8323625752509,
+        "roe": 6.269535427293051,
+        "operating_cash_flow": 7315918000.0,
+        "earnings_quality": 1.9565180648332527
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 24573670000.0,
+        "gross_profit_margin": 36.29421653338716,
+        "operating_income_margin": 15.695290935379209,
+        "net_profit_margin": 14.87292699869413,
+        "eps": 6.01,
+        "debt_ratio": 32.40784844169384,
+        "roe": 5.748305277107136,
+        "operating_cash_flow": 10439338000.0,
+        "earnings_quality": 2.856317568233108
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 22817209000.0,
+        "gross_profit_margin": 38.18533195712061,
+        "operating_income_margin": 16.923217909780288,
+        "net_profit_margin": 16.171171504805866,
+        "eps": 6.07,
+        "debt_ratio": 30.42823907879392,
+        "roe": 5.447078559937343,
+        "operating_cash_flow": 13628744000.0,
+        "earnings_quality": 3.6936167444936188
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 23145303000.0,
+        "gross_profit_margin": 39.0571728527382,
+        "operating_income_margin": 17.401137500770673,
+        "net_profit_margin": 16.27592432036859,
+        "eps": 6.19,
+        "debt_ratio": 30.61619962915147,
+        "roe": 5.237350807889827,
+        "operating_cash_flow": 6877960000.0,
+        "earnings_quality": 1.8257912161889531
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 8425263000.0,
+        "yoy": -0.4488464833249606
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 8120418000.0,
+        "yoy": -12.38181865264848
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 8174953000.0,
+        "yoy": -15.5493584555206
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 8278299000.0,
+        "yoy": -7.175350843868699
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 7878870000.0,
+        "yoy": -7.554350408702404
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 7618617000.0,
+        "yoy": -7.233338451443361
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 7319722000.0,
+        "yoy": -14.159777003961583
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 7617321000.0,
+        "yoy": -10.182305610427422
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 7059376000.0,
+        "yoy": -23.82433893698367
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 8468607000.0,
+        "yoy": -9.640240714461001
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 9225016000.0,
+        "yoy": 1.1574475383035132
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 9412486000.0,
+        "yoy": 9.354217221888717
+      }
+    ],
+    "chips": {
+      "days_30_net": 14241.55,
+      "days_60_net": 30837.74
+    },
+    "valuation": {
+      "pe": 19.61,
+      "pb": 4.05,
+      "yield": 4.81,
+      "date": "2026-05-28"
+    }
+  },
+  "2317": {
+    "symbol": "2317",
+    "name": "鴻海",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 1323991647000.0,
+        "gross_profit_margin": 6.318940167754699,
+        "operating_income_margin": 2.775737451461429,
+        "net_profit_margin": 1.878607169188583,
+        "eps": 1.59,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 18247498000.0,
+        "earnings_quality": 0.7336384830183831
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 1550550895000.0,
+        "gross_profit_margin": 6.417501245581494,
+        "operating_income_margin": 2.8766848701215966,
+        "net_profit_margin": 2.5116858869698695,
+        "eps": 2.53,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 43785971000.0,
+        "earnings_quality": 1.1243036841113851
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 1854569119000.0,
+        "gross_profit_margin": 6.186530651489836,
+        "operating_income_margin": 2.953320716864584,
+        "net_profit_margin": 2.9842397046836626,
+        "eps": 3.55,
+        "debt_ratio": 57.920231623706684,
+        "roe": 3.0785302146126585,
+        "operating_cash_flow": -18633645000.0,
+        "earnings_quality": -0.33668292306043346
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 2130503832000.0,
+        "gross_profit_margin": 6.150825266387035,
+        "operating_income_margin": 3.0265544248971805,
+        "net_profit_margin": 2.46499800710051,
+        "eps": 3.34,
+        "debt_ratio": 57.865780998149255,
+        "roe": 2.8363154027012816,
+        "operating_cash_flow": 166028839000.0,
+        "earnings_quality": 3.1614377793256825
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 1644315563000.0,
+        "gross_profit_margin": 6.1149106207176365,
+        "operating_income_margin": 2.827922027032472,
+        "net_profit_margin": 2.787397202297233,
+        "eps": 3.03,
+        "debt_ratio": 59.89799344787527,
+        "roe": 2.4917851944158826,
+        "operating_cash_flow": -51063465000.0,
+        "earnings_quality": -1.114105335722439
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 1793468046000.0,
+        "gross_profit_margin": 6.330137648853321,
+        "operating_income_margin": 3.15568583037916,
+        "net_profit_margin": 2.762062647867215,
+        "eps": 3.19,
+        "debt_ratio": 60.57911727231787,
+        "roe": 3.036067716723895,
+        "operating_cash_flow": 21875585000.0,
+        "earnings_quality": 0.44160350088644357
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 2058949127000.0,
+        "gross_profit_margin": 6.3506494786745655,
+        "operating_income_margin": 3.425834814227539,
+        "net_profit_margin": 3.2070060952020794,
+        "eps": 4.15,
+        "debt_ratio": 62.775737796330276,
+        "roe": 3.6242234861018527,
+        "operating_cash_flow": -49535724000.0,
+        "earnings_quality": -0.7501931830903188
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 2606372027000.0,
+        "gross_profit_margin": 5.882773810171805,
+        "operating_income_margin": 3.2838974679496125,
+        "net_profit_margin": 2.0577854751508196,
+        "eps": 3.23,
+        "debt_ratio": 61.39295004838159,
+        "roe": 2.721460436329252,
+        "operating_cash_flow": 226852474000.0,
+        "earnings_quality": 4.229675178099825
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 2119533391000.0,
+        "gross_profit_margin": 6.1796884425681595,
+        "operating_income_margin": 3.569119945041715,
+        "net_profit_margin": 2.6872082903646977,
+        "eps": 3.56,
+        "debt_ratio": 61.97674355399537,
+        "roe": 2.8638536225663196,
+        "operating_cash_flow": 3217154000.0,
+        "earnings_quality": 0.05648462591752618
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 540236697000.0,
+        "yoy": 10.089438148645268
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 613864601000.0,
+        "yoy": 7.253009275149269
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 606512275000.0,
+        "yoy": 10.614456780542735
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 837067572000.0,
+        "yoy": 14.193753697466116
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 895708525000.0,
+        "yoy": 11.289202304506718
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 844275843000.0,
+        "yoy": 25.5269467729895
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 862861362000.0,
+        "yoy": 31.769680632647646
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 730039420000.0,
+        "yoy": 35.527348416441676
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 595813348000.0,
+        "yoy": 8.058006051772937
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 803737716000.0,
+        "yoy": 45.57180667269449
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 832097956000.0,
+        "yoy": 29.73847675836594
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 859409333000.0,
+        "yoy": 39.57229478330113
+      }
+    ],
+    "chips": {
+      "days_30_net": 88265.97,
+      "days_60_net": 598350.89
+    },
+    "valuation": {
+      "pe": 18.68,
+      "pb": 2.07,
+      "yield": 2.74,
+      "date": "2026-05-28"
+    }
+  },
+  "2382": {
+    "symbol": "2382",
+    "name": "廣達",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 258939378000.0,
+        "gross_profit_margin": 8.476738520627789,
+        "operating_income_margin": 4.517585579432418,
+        "net_profit_margin": 4.722995820280375,
+        "eps": 3.13,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 23740213000.0,
+        "earnings_quality": 1.9411940411274327
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 309954132000.0,
+        "gross_profit_margin": 8.584703752231313,
+        "operating_income_margin": 4.906542429961863,
+        "net_profit_margin": 4.930652448924282,
+        "eps": 3.92,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 3669641000.0,
+        "earnings_quality": 0.24011636379054804
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 424549240000.0,
+        "gross_profit_margin": 7.33125702921998,
+        "operating_income_margin": 4.6066142999101825,
+        "net_profit_margin": 3.93936236936851,
+        "eps": 4.32,
+        "debt_ratio": 75.96533876170615,
+        "roe": 7.999879938658699,
+        "operating_cash_flow": -43483030000.0,
+        "earnings_quality": -2.5999548089025866
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 417312909000.0,
+        "gross_profit_margin": 7.44691892576944,
+        "operating_income_margin": 3.632490314360249,
+        "net_profit_margin": 3.8450622192470925,
+        "eps": 4.12,
+        "debt_ratio": 75.3008984810726,
+        "roe": 6.967229701745503,
+        "operating_cash_flow": -39515916000.0,
+        "earnings_quality": -2.462673644381467
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 485671990000.0,
+        "gross_profit_margin": 7.923589540339767,
+        "operating_income_margin": 5.06523940159695,
+        "net_profit_margin": 4.055647104540659,
+        "eps": 5.06,
+        "debt_ratio": 80.77428892269644,
+        "roe": 9.814391596115202,
+        "operating_cash_flow": -34901689000.0,
+        "earnings_quality": -1.7719164028974357
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 504121652000.0,
+        "gross_profit_margin": 7.048542719605306,
+        "operating_income_margin": 4.047201884516557,
+        "net_profit_margin": 3.387161200527051,
+        "eps": 4.37,
+        "debt_ratio": 79.99373423810788,
+        "roe": 8.728644061328858,
+        "operating_cash_flow": 42037828000.0,
+        "earnings_quality": 2.461892312648602
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 495258381000.0,
+        "gross_profit_margin": 6.848625949855455,
+        "operating_income_margin": 3.7100405979803095,
+        "net_profit_margin": 3.357799612885299,
+        "eps": 4.26,
+        "debt_ratio": 78.58221911569075,
+        "roe": 7.380951397108639,
+        "operating_cash_flow": 76578746000.0,
+        "earnings_quality": 4.604915253258851
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 638637424000.0,
+        "gross_profit_margin": 6.325683945512093,
+        "operating_income_margin": 3.7609058124974526,
+        "net_profit_margin": 3.5049577677114017,
+        "eps": 5.75,
+        "debt_ratio": 80.95880693971418,
+        "roe": 8.75247444226562,
+        "operating_cash_flow": -10364961000.0,
+        "earnings_quality": -0.4630528040331716
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 809221055000.0,
+        "gross_profit_margin": 4.78200990457422,
+        "operating_income_margin": 2.8452067402027748,
+        "net_profit_margin": 2.6329162925697727,
+        "eps": 5.5,
+        "debt_ratio": 87.44796224208834,
+        "roe": 9.708936105974358,
+        "operating_cash_flow": -92209981000.0,
+        "earnings_quality": -4.327865012261974
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 189868451000.0,
+        "yoy": 70.5637399030419
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 158342022000.0,
+        "yoy": 27.425304568662725
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 152807846000.0,
+        "yoy": 5.256357259150302
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 184108513000.0,
+        "yoy": 18.69561332064753
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 173195793000.0,
+        "yoy": 27.449900651787406
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 192946811000.0,
+        "yoy": 36.49939075484214
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 272494820000.0,
+        "yoy": 96.86717467454835
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 230834858000.0,
+        "yoy": 61.92068898324934
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 215583149000.0,
+        "yoy": 43.18302383955883
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 362803048000.0,
+        "yoy": 88.42330499989298
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 339921315000.0,
+        "yoy": 120.71254202479236
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 311481017000.0,
+        "yoy": 94.38123673778152
+      }
+    ],
+    "chips": {
+      "days_30_net": 44758.64,
+      "days_60_net": 107770.29
+    },
+    "valuation": {
+      "pe": 19.63,
+      "pb": 7.25,
+      "yield": 3.99,
+      "date": "2026-06-05"
+    }
+  },
+  "2308": {
+    "symbol": "2308",
+    "name": "台達電",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 91297990000.0,
+        "gross_profit_margin": 29.517129566598342,
+        "operating_income_margin": 8.099503614482641,
+        "net_profit_margin": 7.6313235373527935,
+        "eps": 2.22,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 15058092000.0,
+        "earnings_quality": 2.1612691960739143
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 103443972000.0,
+        "gross_profit_margin": 34.12639356114438,
+        "operating_income_margin": 12.695378711869262,
+        "net_profit_margin": 11.556029577054524,
+        "eps": 3.83,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 31925909000.0,
+        "earnings_quality": 2.670726641155575
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 112203112000.0,
+        "gross_profit_margin": 34.930956282210786,
+        "operating_income_margin": 14.636881907517859,
+        "net_profit_margin": 12.608291114064643,
+        "eps": 4.75,
+        "debt_ratio": 48.767731446836294,
+        "roe": 5.284138198118808,
+        "operating_cash_flow": 51190776000.0,
+        "earnings_quality": 3.61851671338481
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 114202483000.0,
+        "gross_profit_margin": 30.76667868946422,
+        "operating_income_margin": 9.370586977517819,
+        "net_profit_margin": 6.412245870345918,
+        "eps": 2.76,
+        "debt_ratio": 47.44001956300933,
+        "roe": 2.6194034299016242,
+        "operating_cash_flow": 72894957000.0,
+        "earnings_quality": 9.954323971342673
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 118919406000.0,
+        "gross_profit_margin": 31.77649743726436,
+        "operating_income_margin": 11.802955019805598,
+        "net_profit_margin": 10.127297474055664,
+        "eps": 3.94,
+        "debt_ratio": 47.14330102045724,
+        "roe": 4.021552138174687,
+        "operating_cash_flow": 16266606000.0,
+        "earnings_quality": 1.3506743405183388
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 124035086000.0,
+        "gross_profit_margin": 35.5132280877364,
+        "operating_income_margin": 15.051200915844088,
+        "net_profit_margin": 12.362413325532746,
+        "eps": 5.37,
+        "debt_ratio": 52.253142166110514,
+        "roe": 5.877292295031179,
+        "operating_cash_flow": 43593574000.0,
+        "earnings_quality": 2.842985627110951
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 150317577000.0,
+        "gross_profit_margin": 34.870224790810724,
+        "operating_income_margin": 16.50428080010896,
+        "net_profit_margin": 13.91821263856588,
+        "eps": 7.16,
+        "debt_ratio": 50.30211933875203,
+        "roe": 7.12803041766147,
+        "operating_cash_flow": 60317197000.0,
+        "earnings_quality": 2.8830217402942044
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 161613099000.0,
+        "gross_profit_margin": 34.59075801770251,
+        "operating_income_margin": 16.34673498835636,
+        "net_profit_margin": 12.151079412195418,
+        "eps": 6.67,
+        "debt_ratio": 49.127651541090266,
+        "roe": 6.035156633735406,
+        "operating_cash_flow": 98474281000.0,
+        "earnings_quality": 5.0145434789427865
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 159352652000.0,
+        "gross_profit_margin": 37.00024458959114,
+        "operating_income_margin": 17.832965214786636,
+        "net_profit_margin": 14.957108464062463,
+        "eps": 7.91,
+        "debt_ratio": 47.782403298810074,
+        "roe": 6.671500281306956,
+        "operating_cash_flow": 19931192000.0,
+        "earnings_quality": 0.8362311365740548
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 42208156000.0,
+        "yoy": 21.187887274090002
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 45397038000.0,
+        "yoy": 21.580617949437485
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 47859758000.0,
+        "yoy": 26.71354526726619
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 57060781000.0,
+        "yoy": 53.827401709315524
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 57383550000.0,
+        "yoy": 47.83155119056674
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 50543404000.0,
+        "yoy": 37.91931373963144
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 53686145000.0,
+        "yoy": 38.585833048173825
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 49675223000.0,
+        "yoy": 32.87285305984145
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 49897441000.0,
+        "yoy": 30.999224859624764
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 59779988000.0,
+        "yoy": 37.60240626098901
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 58691652000.0,
+        "yoy": 43.91500166592435
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 58961817000.0,
+        "yoy": 43.652462289588875
+      }
+    ],
+    "chips": {
+      "days_30_net": -27678.68,
+      "days_60_net": -30542.55
+    },
+    "valuation": {
+      "pe": 88.13,
+      "pb": 20.72,
+      "yield": 0.49,
+      "date": "2026-05-28"
+    }
+  },
+  "3008": {
+    "symbol": "3008",
+    "name": "大立光",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 11313191000.0,
+        "gross_profit_margin": 49.15289594244453,
+        "operating_income_margin": 35.01035207484785,
+        "net_profit_margin": 54.017526973600994,
+        "eps": 45.79,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 13144866000.0,
+        "earnings_quality": 2.15097987172862
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 10985235000.0,
+        "gross_profit_margin": 48.48867593638188,
+        "operating_income_margin": 35.41096753961112,
+        "net_profit_margin": 40.94748997176665,
+        "eps": 33.7,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 16968568000.0,
+        "earnings_quality": 3.7723202594472696
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 18949140000.0,
+        "gross_profit_margin": 50.46770988023731,
+        "operating_income_margin": 41.167060879807735,
+        "net_profit_margin": 34.987213140015854,
+        "eps": 49.67,
+        "debt_ratio": 13.64263386831473,
+        "roe": 3.8041154058423947,
+        "operating_cash_flow": 15498069000.0,
+        "earnings_quality": 2.3376459476157265
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 18209987000.0,
+        "gross_profit_margin": 59.08162372658475,
+        "operating_income_margin": 46.023981236230426,
+        "net_profit_margin": 49.26907416243625,
+        "eps": 65.01,
+        "debt_ratio": 14.381227230880683,
+        "roe": 4.839531721446363,
+        "operating_cash_flow": 31578529000.0,
+        "earnings_quality": 3.5197179145714195
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 14579231000.0,
+        "gross_profit_margin": 54.629163911320155,
+        "operating_income_margin": 41.74659143544677,
+        "net_profit_margin": 44.879603046278646,
+        "eps": 48.28,
+        "debt_ratio": 18.277376693101342,
+        "roe": 3.558246787780165,
+        "operating_cash_flow": 9830081000.0,
+        "earnings_quality": 1.5023581326346636
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 11672625000.0,
+        "gross_profit_margin": 53.62995898523254,
+        "operating_income_margin": 41.79721356592883,
+        "net_profit_margin": 9.047570704961394,
+        "eps": 7.73,
+        "debt_ratio": 15.114723705382833,
+        "roe": 0.5883509094854398,
+        "operating_cash_flow": 13016854000.0,
+        "earnings_quality": 12.325527488687033
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 17677392000.0,
+        "gross_profit_margin": 47.248723114812414,
+        "operating_income_margin": 35.43797637117512,
+        "net_profit_margin": 40.49848529692615,
+        "eps": 53.05,
+        "debt_ratio": 13.41694321047929,
+        "roe": 3.8973448203489824,
+        "operating_cash_flow": 15560548000.0,
+        "earnings_quality": 2.1735413899782596
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 17218640000.0,
+        "gross_profit_margin": 47.97229049448737,
+        "operating_income_margin": 36.754296506576594,
+        "net_profit_margin": 39.503648371764555,
+        "eps": 50.35,
+        "debt_ratio": 13.551102324765289,
+        "roe": 3.563715740744209,
+        "operating_cash_flow": 26080226000.0,
+        "earnings_quality": 3.8342047203532026
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 15544079000.0,
+        "gross_profit_margin": 49.40510788706104,
+        "operating_income_margin": 37.39184547376529,
+        "net_profit_margin": 39.731604555020596,
+        "eps": 46.63,
+        "debt_ratio": 17.564204511248516,
+        "roe": 3.309303478946815,
+        "operating_cash_flow": 9316789000.0,
+        "earnings_quality": 1.5085689368630901
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 4145868000.0,
+        "yoy": 2.5878142284871064
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 5413207000.0,
+        "yoy": -0.39692506355824
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 5968004000.0,
+        "yoy": -14.96614748747077
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 6235248000.0,
+        "yoy": -4.425952372448972
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 6260810000.0,
+        "yoy": -4.36908026107835
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 5302915000.0,
+        "yoy": -11.799423718168779
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 5617058000.0,
+        "yoy": -0.33623089250405247
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 5498867000.0,
+        "yoy": 11.142446264187477
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 4613227000.0,
+        "yoy": -2.5659812124014136
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 5419732000.0,
+        "yoy": 10.766324227836744
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 5362271000.0,
+        "yoy": 22.571433338979286
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 4592691000.0,
+        "yoy": 41.82755228023281
+      }
+    ],
+    "chips": {
+      "days_30_net": 1385.41,
+      "days_60_net": 7336.43
+    },
+    "valuation": {
+      "pe": 22.97,
+      "pb": 2.61,
+      "yield": 2.17,
+      "date": "2026-06-05"
+    }
+  },
+  "2357": {
+    "symbol": "2357",
+    "name": "華碩",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 121696889000.0,
+        "gross_profit_margin": 16.049458749927453,
+        "operating_income_margin": 3.983300674185681,
+        "net_profit_margin": 5.10840174394269,
+        "eps": 7.33,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -11140247000.0,
+        "earnings_quality": -1.791968203403506
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 144906624000.0,
+        "gross_profit_margin": 19.33553775981973,
+        "operating_income_margin": 7.934918834352252,
+        "net_profit_margin": 8.640849986264259,
+        "eps": 15.9,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -25667092000.0,
+        "earnings_quality": -2.049896639002572
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 166560783000.0,
+        "gross_profit_margin": 17.941748028405943,
+        "operating_income_margin": 7.009208163964983,
+        "net_profit_margin": 7.845058581406884,
+        "eps": 16.83,
+        "debt_ratio": 46.79090680913789,
+        "roe": 4.469818610682831,
+        "operating_cash_flow": -7464509000.0,
+        "earnings_quality": -0.5712580081827283
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 153922801000.0,
+        "gross_profit_margin": 16.915241816577907,
+        "operating_income_margin": 1.023242813779097,
+        "net_profit_margin": 1.5814304210849177,
+        "eps": 2.21,
+        "debt_ratio": 46.59750290749108,
+        "roe": 0.8190451980827108,
+        "operating_cash_flow": 8030374000.0,
+        "earnings_quality": 3.2990031148040697
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 147693211000.0,
+        "gross_profit_margin": 16.658264001044707,
+        "operating_income_margin": 8.51735629202347,
+        "net_profit_margin": 9.247758856024872,
+        "eps": 17.22,
+        "debt_ratio": 46.457235544400966,
+        "roe": 4.397405804909263,
+        "operating_cash_flow": 13206678000.0,
+        "earnings_quality": 0.9669333955762616
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 188006262000.0,
+        "gross_profit_margin": 13.81113199303968,
+        "operating_income_margin": 4.167423423375122,
+        "net_profit_margin": 5.559044091839877,
+        "eps": 13.2,
+        "debt_ratio": 52.739074391152386,
+        "roe": 3.8891394113610276,
+        "operating_cash_flow": 24444290000.0,
+        "earnings_quality": 2.338864133450307
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 200281372000.0,
+        "gross_profit_margin": 14.33446741117791,
+        "operating_income_margin": 4.912406931184794,
+        "net_profit_margin": 5.799679662669776,
+        "eps": 14.21,
+        "debt_ratio": 51.7528317795047,
+        "roe": 4.086147394468669,
+        "operating_cash_flow": 7403544000.0,
+        "earnings_quality": 0.6373751063002951
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 202923942000.0,
+        "gross_profit_margin": 15.935681951220914,
+        "operating_income_margin": 4.633687334932612,
+        "net_profit_margin": 6.155639338013649,
+        "eps": 15.36,
+        "debt_ratio": 52.89162799200747,
+        "roe": 4.197853137059822,
+        "operating_cash_flow": 30330334000.0,
+        "earnings_quality": 2.4281232983109957
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 208369726000.0,
+        "gross_profit_margin": 14.863261854075674,
+        "operating_income_margin": 5.709015041849217,
+        "net_profit_margin": 5.3543305998300355,
+        "eps": 13.19,
+        "debt_ratio": 52.828367236733634,
+        "roe": 3.522496630347742,
+        "operating_cash_flow": -46595734000.0,
+        "earnings_quality": -4.1764410309619135
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 68573006000.0,
+        "yoy": 17.394524180123284
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 54871158000.0,
+        "yoy": 15.935945801522312
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 62815315000.0,
+        "yoy": 9.932930835391062
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 82594906000.0,
+        "yoy": 33.08777822096558
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 66330479000.0,
+        "yoy": 32.8429209193585
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 66884631000.0,
+        "yoy": 20.609344817067687
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 69711805000.0,
+        "yoy": 47.03736658275848
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 67935513000.0,
+        "yoy": 79.97334237021315
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 54353831000.0,
+        "yoy": 19.115390703487556
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 86083764000.0,
+        "yoy": 33.8465156694796
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 81915499000.0,
+        "yoy": 45.7115250630479
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 69094002000.0,
+        "yoy": 9.298767921946748
+      }
+    ],
+    "chips": {
+      "days_30_net": 12702.94,
+      "days_60_net": 9131.08
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "2412": {
+    "symbol": "2412",
+    "name": "中華電",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 54943471000.0,
+        "gross_profit_margin": 37.29138080846767,
+        "operating_income_margin": 21.702706041269217,
+        "net_profit_margin": 17.480116973316086,
+        "eps": 1.21,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 14128442000.0,
+        "earnings_quality": 1.4710717194788978
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 54115733000.0,
+        "gross_profit_margin": 38.490824840162475,
+        "operating_income_margin": 22.04071411173531,
+        "net_profit_margin": 18.68440920868613,
+        "eps": 1.27,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 29230641000.0,
+        "earnings_quality": 2.89091567226656
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 55613476000.0,
+        "gross_profit_margin": 36.69203485860154,
+        "operating_income_margin": 20.455941290200958,
+        "net_profit_margin": 16.69610797210374,
+        "eps": 1.16,
+        "debt_ratio": 24.12278089054848,
+        "roe": 2.4012370647488126,
+        "operating_cash_flow": 49756848000.0,
+        "earnings_quality": 5.358676943284245
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 65295612000.0,
+        "gross_profit_margin": 33.173757526003435,
+        "operating_income_margin": 17.83452462318601,
+        "net_profit_margin": 14.605618521501873,
+        "eps": 1.16,
+        "debt_ratio": 25.517129376049375,
+        "roe": 2.3955568128010976,
+        "operating_cash_flow": 79244321000.0,
+        "earnings_quality": 8.309295396750366
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 55808409000.0,
+        "gross_profit_margin": 38.7131104203311,
+        "operating_income_margin": 22.438708116549247,
+        "net_profit_margin": 18.269309558708258,
+        "eps": 1.26,
+        "debt_ratio": 24.003632998354014,
+        "roe": 2.497287957707287,
+        "operating_cash_flow": 12951016000.0,
+        "earnings_quality": 1.2702291166440807
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 56730396000.0,
+        "gross_profit_margin": 38.38379517040565,
+        "operating_income_margin": 22.11349097580775,
+        "net_profit_margin": 18.69302304887842,
+        "eps": 1.31,
+        "debt_ratio": 30.27839670434608,
+        "roe": 2.793460827852096,
+        "operating_cash_flow": 29282911000.0,
+        "earnings_quality": 2.7613336858838773
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 57924337000.0,
+        "gross_profit_margin": 37.13790112090536,
+        "operating_income_margin": 20.889625374564062,
+        "net_profit_margin": 17.01331341953901,
+        "eps": 1.22,
+        "debt_ratio": 23.906986245657524,
+        "roe": 2.5241022029175064,
+        "operating_cash_flow": 45456730000.0,
+        "earnings_quality": 4.612625723641225
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 65651267000.0,
+        "gross_profit_margin": 33.62750638156001,
+        "operating_income_margin": 17.333660902538256,
+        "net_profit_margin": 15.021513598511357,
+        "eps": 1.2,
+        "debt_ratio": 25.207864443720435,
+        "roe": 2.4605933606000763,
+        "operating_cash_flow": 77445547000.0,
+        "earnings_quality": 7.853073177003744
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 59988435000.0,
+        "gross_profit_margin": 37.92355476518099,
+        "operating_income_margin": 21.845087307245137,
+        "net_profit_margin": 17.682945054325888,
+        "eps": 1.3,
+        "debt_ratio": 24.89550196189531,
+        "roe": 2.578240017297605,
+        "operating_cash_flow": 11103505000.0,
+        "earnings_quality": 1.0467379329888171
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 19157690000.0,
+        "yoy": 5.803450149603462
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 19179026000.0,
+        "yoy": 7.920731741971276
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 18556785000.0,
+        "yoy": 1.0944939117877306
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 20188526000.0,
+        "yoy": 3.6042543762009105
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 20932738000.0,
+        "yoy": 4.049780686482651
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 21453973000.0,
+        "yoy": 6.068616702125085
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 23264555000.0,
+        "yoy": -6.975551595748675
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 20413606000.0,
+        "yoy": 12.207448499915108
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 18786334000.0,
+        "yoy": 2.7301026440637477
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 20788495000.0,
+        "yoy": 7.553063611352173
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 20497863000.0,
+        "yoy": 7.608984617555592
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 19523164000.0,
+        "yoy": 5.39252921537019
+      }
+    ],
+    "chips": {
+      "days_30_net": -9214.61,
+      "days_60_net": -17029.47
+    },
+    "valuation": {
+      "pe": 27.14,
+      "pb": 2.67,
+      "yield": 3.81,
+      "date": "2026-05-28"
+    }
+  },
+  "3045": {
+    "symbol": "3045",
+    "name": "台灣大",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 48276631000.0,
+        "gross_profit_margin": 19.29458582145055,
+        "operating_income_margin": 9.642965765361714,
+        "net_profit_margin": 7.213703458304703,
+        "eps": 0.98,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 10316376000.0,
+        "earnings_quality": 2.9623196678969013
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 47743896000.0,
+        "gross_profit_margin": 20.233357160462983,
+        "operating_income_margin": 10.36985963608835,
+        "net_profit_margin": 7.698682570856806,
+        "eps": 1.07,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 18743951000.0,
+        "earnings_quality": 5.0994914914392035
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 47201517000.0,
+        "gross_profit_margin": 20.949356352254526,
+        "operating_income_margin": 10.96555434860282,
+        "net_profit_margin": 9.643173120897789,
+        "eps": 1.38,
+        "debt_ratio": 62.27621272067001,
+        "roe": 5.081083073523209,
+        "operating_cash_flow": 27151913000.0,
+        "earnings_quality": 5.965193188339187
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 56151861000.0,
+        "gross_profit_margin": 19.29010153376751,
+        "operating_income_margin": 9.738402080743146,
+        "net_profit_margin": 7.276049141096143,
+        "eps": 1.14,
+        "debt_ratio": 61.09452140565872,
+        "roe": 4.349735821097931,
+        "operating_cash_flow": 36045112000.0,
+        "earnings_quality": 8.822397094993999
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 48167353000.0,
+        "gross_profit_margin": 20.522443905107263,
+        "operating_income_margin": 10.690971538336349,
+        "net_profit_margin": 8.607406763664176,
+        "eps": 1.21,
+        "debt_ratio": 58.52292835645251,
+        "roe": 4.201654229322481,
+        "operating_cash_flow": 9067341000.0,
+        "earnings_quality": 2.187030506806626
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 47471015000.0,
+        "gross_profit_margin": 21.076648561232574,
+        "operating_income_margin": 10.887662713763335,
+        "net_profit_margin": 7.733443238995416,
+        "eps": 1.09,
+        "debt_ratio": 63.422726355032744,
+        "roe": 4.240699500607045,
+        "operating_cash_flow": 17837698000.0,
+        "earnings_quality": 4.858893576498225
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 46339806000.0,
+        "gross_profit_margin": 21.308369309962153,
+        "operating_income_margin": 11.057478315727087,
+        "net_profit_margin": 8.505272982800143,
+        "eps": 1.19,
+        "debt_ratio": 61.434646081686914,
+        "roe": 4.375093064306712,
+        "operating_cash_flow": 27185731000.0,
+        "earnings_quality": 6.897608597307455
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 56786409000.0,
+        "gross_profit_margin": 19.707352863252893,
+        "operating_income_margin": 10.580045658460284,
+        "net_profit_margin": 7.832398769923979,
+        "eps": 1.28,
+        "debt_ratio": 59.70790826525304,
+        "roe": 4.704149524277549,
+        "operating_cash_flow": 37501271000.0,
+        "earnings_quality": 8.431537783925222
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 49778303000.0,
+        "gross_profit_margin": 21.560387464393873,
+        "operating_income_margin": 11.918337192009137,
+        "net_profit_margin": 9.092798924864915,
+        "eps": 1.37,
+        "debt_ratio": 57.76691453706785,
+        "roe": 4.53318061955144,
+        "operating_cash_flow": 10736177000.0,
+        "earnings_quality": 2.3719852743148233
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 16254677000.0,
+        "yoy": -2.4865845150058408
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 15092708000.0,
+        "yoy": -2.4428415363277667
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 15468138000.0,
+        "yoy": -2.210628259498104
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 15778960000.0,
+        "yoy": -0.8427975108519226
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 15624963000.0,
+        "yoy": -1.9146801962163007
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 23112130000.0,
+        "yoy": 0.20277594638782315
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 18049316000.0,
+        "yoy": 5.203761762794579
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 17145458000.0,
+        "yoy": 4.152262713526178
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 15523555000.0,
+        "yoy": -0.02903130931398712
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 17109290000.0,
+        "yoy": 5.760613558170813
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 15669304000.0,
+        "yoy": 1.7929741668229138
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 16440683000.0,
+        "yoy": 3.9034933380656778
+      }
+    ],
+    "chips": {
+      "days_30_net": 72344.38,
+      "days_60_net": 122568.53
+    },
+    "valuation": {
+      "pe": 22.52,
+      "pb": 3.69,
+      "yield": 4.32,
+      "date": "2026-05-28"
+    }
+  },
+  "2881": {
+    "symbol": "2881",
+    "name": "富邦金",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 89205467000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 34.11923733329035,
+        "eps": 2.34,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -59881723000.0,
+        "earnings_quality": -1.967449084109478
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 84808772000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 59.927442411263776,
+        "eps": 3.63,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -17845010000.0,
+        "earnings_quality": -0.3511157229552307
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 69995002000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 57.316745272755334,
+        "eps": 2.64,
+        "debt_ratio": 91.9027582103314,
+        "roe": 4.193425002034449,
+        "operating_cash_flow": 2053852000.0,
+        "earnings_quality": 0.05119418033270489
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 103454254000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 28.497841181088603,
+        "eps": 2.16,
+        "debt_ratio": 91.99660356451433,
+        "roe": 3.0526391707314664,
+        "operating_cash_flow": 77414186000.0,
+        "earnings_quality": 2.6257914895105117
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 108974429000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 37.7173088927128,
+        "eps": 3.0,
+        "debt_ratio": 91.86280031424786,
+        "roe": 4.194036979980016,
+        "operating_cash_flow": 11102568000.0,
+        "earnings_quality": 0.27012087083759123
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 3794962000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 266.0425321781878,
+        "eps": 0.49,
+        "debt_ratio": 93.0237326872104,
+        "roe": 1.2159350724795523,
+        "operating_cash_flow": 36787898000.0,
+        "earnings_quality": 3.6437323578652707
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 124667860000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 31.94463753528776,
+        "eps": 2.74,
+        "debt_ratio": 92.2784072539564,
+        "roe": 4.158645644845023,
+        "operating_cash_flow": 9048353000.0,
+        "earnings_quality": 0.22720457175617864
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 143868884000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 20.823581977601215,
+        "eps": 2.14,
+        "debt_ratio": 92.25032332729319,
+        "roe": 3.0024470831849785,
+        "operating_cash_flow": 14407546000.0,
+        "earnings_quality": 0.48091431340959734
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 66193246000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 50.703210717298866,
+        "eps": null,
+        "debt_ratio": 92.11359173109697,
+        "roe": 3.243639512858884,
+        "operating_cash_flow": -32098859000.0,
+        "earnings_quality": -0.9564019546928841
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 30969325000.0,
+        "yoy": -5.464479740034777
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 31613208000.0,
+        "yoy": -27.22811640496692
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 57387331000.0,
+        "yoy": 1442.5972050784694
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 35649114000.0,
+        "yoy": 56.528198190963266
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 48388311000.0,
+        "yoy": 63.05697788430111
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 52974090000.0,
+        "yoy": 53.47116009357975
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 42650900000.0,
+        "yoy": 8.099168819839232
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 23880545000.0,
+        "yoy": -40.111775759931746
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 29373464000.0,
+        "yoy": -22.968012154775387
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 13238212000.0,
+        "yoy": -57.44235545557088
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 53356168000.0,
+        "yoy": null
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 30407516000.0,
+        "yoy": null
+      }
+    ],
+    "chips": {
+      "days_30_net": 58841.33,
+      "days_60_net": 102217.88
+    },
+    "valuation": {
+      "pe": 14.19,
+      "pb": 1.75,
+      "yield": 3.86,
+      "date": "2026-05-28"
+    }
+  },
+  "2882": {
+    "symbol": "2882",
+    "name": "國泰金",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 116567744000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 32.2236904576278,
+        "eps": 2.6,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -18595098000.0,
+        "earnings_quality": -0.4950451420487211
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 71515401000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 47.68497068204931,
+        "eps": 2.06,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 62382668000.0,
+        "earnings_quality": 1.8292912066583118
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 95794987000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 33.08103063889972,
+        "eps": 2.12,
+        "debt_ratio": 92.94722591763717,
+        "roe": 3.3752071592668007,
+        "operating_cash_flow": 135039988000.0,
+        "earnings_quality": 4.261284951083417
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 73838785000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 10.66163534516447,
+        "eps": 0.51,
+        "debt_ratio": 93.41529159768338,
+        "roe": 0.8684158951500497,
+        "operating_cash_flow": -92142061000.0,
+        "earnings_quality": -11.704410789970355
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 106262653000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 30.31606598416096,
+        "eps": 2.18,
+        "debt_ratio": 92.84748356382148,
+        "roe": 3.2842159180923973,
+        "operating_cash_flow": -19294485000.0,
+        "earnings_quality": -0.5989350002682009
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 24582869000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 55.70528403336487,
+        "eps": 0.71,
+        "debt_ratio": 94.33244764262497,
+        "roe": 1.7525535889159511,
+        "operating_cash_flow": 202827888000.0,
+        "earnings_quality": 14.811488600409655
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 118933895000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 24.375570984200927,
+        "eps": 1.95,
+        "debt_ratio": 93.62551339181024,
+        "roe": 3.1931861603131315,
+        "operating_cash_flow": 249717846000.0,
+        "earnings_quality": 8.61368807280209
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 100625498000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 32.53022708021778,
+        "eps": 2.22,
+        "debt_ratio": 93.9178846908905,
+        "roe": 3.777146735999066,
+        "operating_cash_flow": 188257172000.0,
+        "earnings_quality": 5.751172484212984
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 72538053000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 43.64044896545541,
+        "eps": null,
+        "debt_ratio": 94.3458485728552,
+        "roe": 3.8745278366506914,
+        "operating_cash_flow": -30157900000.0,
+        "earnings_quality": -0.9526776845489812
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": -1721092000.0,
+        "yoy": -105.63627637118917
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 36892402000.0,
+        "yoy": -31.628132481855996
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 46429024000.0,
+        "yoy": 115.02045052802457
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 34686259000.0,
+        "yoy": 77.59845629866915
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 42272426000.0,
+        "yoy": 107.83238785758198
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 32142794000.0,
+        "yoy": 25.613957147166545
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 26693198000.0,
+        "yoy": -3.4971389733202796
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 26002151000.0,
+        "yoy": -27.819045212686078
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 26123903000.0,
+        "yoy": -30.619668993189762
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 19897630000.0,
+        "yoy": -37.93619055497144
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 30515220000.0,
+        "yoy": 359.9298693018808
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 25059074000.0,
+        "yoy": 28.844806043610284
+      }
+    ],
+    "chips": {
+      "days_30_net": 25171.54,
+      "days_60_net": -14519.01
+    },
+    "valuation": {
+      "pe": 12.83,
+      "pb": 1.48,
+      "yield": 4.13,
+      "date": "2026-05-28"
+    }
+  },
+  "2891": {
+    "symbol": "2891",
+    "name": "中信金",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 48511550000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 43.64461246857707,
+        "eps": 1.07,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -51154457000.0,
+        "earnings_quality": -2.4160598390057224
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 42574436000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 38.96236464530029,
+        "eps": 0.78,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -27600506000.0,
+        "earnings_quality": -1.6638831898250344
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 50197012000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 43.39946170501145,
+        "eps": 1.1,
+        "debt_ratio": 94.12646245597149,
+        "roe": 4.267686452267001,
+        "operating_cash_flow": -10247260000.0,
+        "earnings_quality": -0.4703764242503167
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 48126575000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 28.71208266950224,
+        "eps": 0.69,
+        "debt_ratio": 94.22653543601508,
+        "roe": 2.7075721899947327,
+        "operating_cash_flow": -65355927000.0,
+        "earnings_quality": -4.729718872479382
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 61451825000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 33.08126813158112,
+        "eps": 1.02,
+        "debt_ratio": 93.67304220015077,
+        "roe": 3.582098155822628,
+        "operating_cash_flow": -66836663000.0,
+        "earnings_quality": -3.287742713712593
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 48067373000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 33.70913363624012,
+        "eps": 0.76,
+        "debt_ratio": 94.68777252031508,
+        "roe": 3.4542138358370993,
+        "operating_cash_flow": 96721584000.0,
+        "earnings_quality": 5.969327711773584
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 64439705000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 39.48469193023153,
+        "eps": 1.28,
+        "debt_ratio": 94.23766467942805,
+        "roe": 4.888403593821423,
+        "operating_cash_flow": 80559583000.0,
+        "earnings_quality": 3.166174975541211
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 70935768000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 28.691993579318126,
+        "eps": 1.02,
+        "debt_ratio": 94.13281799089911,
+        "roe": 3.7177307230344505,
+        "operating_cash_flow": 6709387000.0,
+        "earnings_quality": 0.32965285611092204
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 59859484000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 39.439451232155626,
+        "eps": null,
+        "debt_ratio": 93.82631746963648,
+        "roe": 3.971848722376334,
+        "operating_cash_flow": 4883668000.0,
+        "earnings_quality": 0.20686275290521297
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 26892657000.0,
+        "yoy": 59.25575042109183
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 10546858000.0,
+        "yoy": -52.892565822437554
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 25028996000.0,
+        "yoy": 117.5157333711546
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 28972659000.0,
+        "yoy": 77.73215566067597
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 24208396000.0,
+        "yoy": 52.30734172545137
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 23881840000.0,
+        "yoy": 45.81076076214809
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 22845536000.0,
+        "yoy": 44.10413454046178
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 25856645000.0,
+        "yoy": 18.95594562465035
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 20907830000.0,
+        "yoy": 1.1817963428300216
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 13095003000.0,
+        "yoy": -31.266609909363275
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 19691968000.0,
+        "yoy": 93.98245584828206
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 19217919000.0,
+        "yoy": 76.07717853135732
+      }
+    ],
+    "chips": {
+      "days_30_net": 100439.7,
+      "days_60_net": 15962.89
+    },
+    "valuation": {
+      "pe": 14.29,
+      "pb": 2.12,
+      "yield": 4.22,
+      "date": "2026-05-28"
+    }
+  },
+  "2886": {
+    "symbol": "2886",
+    "name": "兆豐金",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 22425683000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 51.23670480850014,
+        "eps": 0.8,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -11041152000.0,
+        "earnings_quality": -0.9609206330170081
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 21154682000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 42.10175789926788,
+        "eps": 0.58,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -35348786000.0,
+        "earnings_quality": -3.9688782105369644
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 21904013000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 40.74182205790327,
+        "eps": 0.6,
+        "debt_ratio": 92.16217530607413,
+        "roe": 2.468398900733197,
+        "operating_cash_flow": -4508155000.0,
+        "earnings_quality": -0.5051666869488376
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 18000753000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 30.24939012273542,
+        "eps": 0.37,
+        "debt_ratio": 92.20730884340968,
+        "roe": 1.4957312042317887,
+        "operating_cash_flow": -4957642000.0,
+        "earnings_quality": -0.9104746673993107
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 18862242000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 42.469988456303334,
+        "eps": 0.54,
+        "debt_ratio": 91.92955696296664,
+        "roe": 2.131872464325544,
+        "operating_cash_flow": -53949800000.0,
+        "earnings_quality": -6.734639970679553
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 20658022000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 49.27753005587853,
+        "eps": 0.69,
+        "debt_ratio": 92.08340122764663,
+        "roe": 2.811968552675509,
+        "operating_cash_flow": -5259781000.0,
+        "earnings_quality": -0.516689926867649
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 22672932000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 44.52376957686813,
+        "eps": 0.68,
+        "debt_ratio": 92.03569949779073,
+        "roe": 2.6376857576767914,
+        "operating_cash_flow": 123461754000.0,
+        "earnings_quality": 12.23017948568596
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 19814478000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 34.07978247017156,
+        "eps": 0.45,
+        "debt_ratio": 92.32342955016452,
+        "roe": 1.72101497431365,
+        "operating_cash_flow": 161337370000.0,
+        "earnings_quality": 23.89216599920832
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 20768442000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 45.24822805677961,
+        "eps": null,
+        "debt_ratio": 91.96620177265378,
+        "roe": 2.3379207988476396,
+        "operating_cash_flow": -133113578000.0,
+        "earnings_quality": -14.16500924941409
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 8138314000.0,
+        "yoy": 4.618205204972692
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 8493625000.0,
+        "yoy": 0.8589179832598104
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 6893028000.0,
+        "yoy": 1.703365846900251
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 7286279000.0,
+        "yoy": 8.667083560832967
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 6853182000.0,
+        "yoy": 10.676323712140023
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 5947092000.0,
+        "yoy": 15.167902987018401
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 7014202000.0,
+        "yoy": 5.559041983718438
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 8155833000.0,
+        "yoy": 20.078400021201137
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 6460103000.0,
+        "yoy": -3.5945382252007607
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 6152506000.0,
+        "yoy": 14.58930413955204
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 9055059000.0,
+        "yoy": 59.680095225499265
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 8373125000.0,
+        "yoy": 22.25399834544175
+      }
+    ],
+    "chips": {
+      "days_30_net": 109509.28,
+      "days_60_net": 163912.95
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "2884": {
+    "symbol": "2884",
+    "name": "玉山金",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 17486529000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 35.76620037058241,
+        "eps": 0.4,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 14118097000.0,
+        "earnings_quality": 2.2573543790183566
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 18646944000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 34.62529838669543,
+        "eps": 0.39,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 29113706000.0,
+        "earnings_quality": 4.509166800897072
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 22464626000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 36.50169826998233,
+        "eps": 0.52,
+        "debt_ratio": 93.70474955602164,
+        "roe": 3.3126061595688787,
+        "operating_cash_flow": 68489651000.0,
+        "earnings_quality": 8.352427021074467
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 17546446000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 29.851783090433244,
+        "eps": 0.32,
+        "debt_ratio": 93.76943081119374,
+        "roe": 2.0664524261915775,
+        "operating_cash_flow": 59294132000.0,
+        "earnings_quality": 11.320152419077242
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 21438907000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 41.093545487183654,
+        "eps": 0.55,
+        "debt_ratio": 93.59552887778962,
+        "roe": 3.3425086070192194,
+        "operating_cash_flow": 23408986000.0,
+        "earnings_quality": 2.657090510824793
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 21681346000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 36.740389641860794,
+        "eps": 0.49,
+        "debt_ratio": 94.03765569292233,
+        "roe": 3.206376591836101,
+        "operating_cash_flow": 2969273000.0,
+        "earnings_quality": 0.3727521278122215
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 24625986000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 38.36152997082026,
+        "eps": 0.58,
+        "debt_ratio": 93.94089184865811,
+        "roe": 3.6252935502274606,
+        "operating_cash_flow": 21245281000.0,
+        "earnings_quality": 2.248914432822178
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 23963596000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 34.016150998372694,
+        "eps": 0.5,
+        "debt_ratio": 93.95235288387627,
+        "roe": 2.9843208338576295,
+        "operating_cash_flow": 36561011000.0,
+        "earnings_quality": 4.485191976488234
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 25169421000.0,
+        "gross_profit_margin": null,
+        "operating_income_margin": null,
+        "net_profit_margin": 39.99895746509227,
+        "eps": null,
+        "debt_ratio": 93.90638483839832,
+        "roe": 3.530639384085438,
+        "operating_cash_flow": -26294044000.0,
+        "earnings_quality": -2.6117733627375044
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 7472291000.0,
+        "yoy": 23.419366208756575
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 8364381000.0,
+        "yoy": 6.198718664933156
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 8248345000.0,
+        "yoy": 6.821375917812111
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 8015455000.0,
+        "yoy": 16.78101037303259
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 8153665000.0,
+        "yoy": 55.11169585292204
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 8094111000.0,
+        "yoy": 46.61241924563202
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 7774142000.0,
+        "yoy": 14.992625607623754
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 9245634000.0,
+        "yoy": 40.51670734709882
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 7478992000.0,
+        "yoy": 4.006442593430326
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 8441262000.0,
+        "yoy": 10.194078371522796
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 10046680000.0,
+        "yoy": 47.81839901115801
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 9259083000.0,
+        "yoy": 24.75649862484781
+      }
+    ],
+    "chips": {
+      "days_30_net": 55318.15,
+      "days_60_net": -1760.62
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "1301": {
+    "symbol": "1301",
+    "name": "台塑",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 48108493000.0,
+        "gross_profit_margin": 3.8106265353188262,
+        "operating_income_margin": -3.00392282086242,
+        "net_profit_margin": 0.45907902373911397,
+        "eps": 0.03,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -2309665000.0,
+        "earnings_quality": -10.457786974318108
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 51108854000.0,
+        "gross_profit_margin": 7.314435185731223,
+        "operating_income_margin": 0.33200118320007727,
+        "net_profit_margin": 2.6699698647126775,
+        "eps": 0.21,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": -8205295000.0,
+        "earnings_quality": -6.013006827686831
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 50492246000.0,
+        "gross_profit_margin": 4.934070470939241,
+        "operating_income_margin": -2.98497911936815,
+        "net_profit_margin": -6.124633473424811,
+        "eps": -0.49,
+        "debt_ratio": 39.631500152640534,
+        "roe": -0.9819582522320838,
+        "operating_cash_flow": 6676381000.0,
+        "earnings_quality": null
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 50330754000.0,
+        "gross_profit_margin": 4.143661348685537,
+        "operating_income_margin": -2.74008809802452,
+        "net_profit_margin": 0.5468882902092029,
+        "eps": 0.05,
+        "debt_ratio": 41.835056330868916,
+        "roe": 0.09524953609828968,
+        "operating_cash_flow": 11461388000.0,
+        "earnings_quality": 41.63946623651695
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 47202204000.0,
+        "gross_profit_margin": 5.212407030824238,
+        "operating_income_margin": -1.8887762105345758,
+        "net_profit_margin": 0.10687636534938072,
+        "eps": 0.01,
+        "debt_ratio": 42.608851274374445,
+        "roe": 0.017374741213720315,
+        "operating_cash_flow": -106577000.0,
+        "earnings_quality": -2.1126110053916904
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 45387102000.0,
+        "gross_profit_margin": 3.49822951903825,
+        "operating_income_margin": -3.4432954102246933,
+        "net_profit_margin": -14.598222199778254,
+        "eps": -1.04,
+        "debt_ratio": 43.282755724989705,
+        "roe": -2.4853051868541423,
+        "operating_cash_flow": -1035309000.0,
+        "earnings_quality": null
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 41717952000.0,
+        "gross_profit_margin": 1.3808252140469408,
+        "operating_income_margin": -6.435131331470921,
+        "net_profit_margin": -1.4433234881712314,
+        "eps": -0.09,
+        "debt_ratio": 40.35825593038054,
+        "roe": -0.20628000438373917,
+        "operating_cash_flow": 6358061000.0,
+        "earnings_quality": null
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 41104145000.0,
+        "gross_profit_margin": 2.382102826856026,
+        "operating_income_margin": -5.757380429637935,
+        "net_profit_margin": -6.985358775860682,
+        "eps": -0.45,
+        "debt_ratio": 34.84822946144438,
+        "roe": -0.7904996417498216,
+        "operating_cash_flow": 6619088000.0,
+        "earnings_quality": null
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 41985122000.0,
+        "gross_profit_margin": 3.7048076220905113,
+        "operating_income_margin": -3.1007269670432303,
+        "net_profit_margin": 7.785203053595986,
+        "eps": 0.51,
+        "debt_ratio": 34.25474764030092,
+        "roe": 0.837644512858206,
+        "operating_cash_flow": 1178822000.0,
+        "earnings_quality": 0.3606474522788926
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 14362122000.0,
+        "yoy": -15.773068465087759
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 14597054000.0,
+        "yoy": -17.576957861862606
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 13103184000.0,
+        "yoy": -18.819518678311354
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 14017714000.0,
+        "yoy": -15.766624683322195
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 13410015000.0,
+        "yoy": -14.796940241461776
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 13389395000.0,
+        "yoy": -26.215333554274846
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 14304735000.0,
+        "yoy": -13.01618220860048
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 13891082000.0,
+        "yoy": -0.6361935624993986
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 10739649000.0,
+        "yoy": -33.41742396489384
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 17354391000.0,
+        "yoy": 1.5330121411533337
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 18326272000.0,
+        "yoy": 13.314293731195836
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 14951422000.0,
+        "yoy": 0.6692623624404481
+      }
+    ],
+    "chips": {
+      "days_30_net": 92602.14,
+      "days_60_net": 241900.32
+    },
+    "valuation": {
+      "pe": 0.0,
+      "pb": 0.73,
+      "yield": 1.11,
+      "date": "2026-05-28"
+    }
+  },
+  "2002": {
+    "symbol": "2002",
+    "name": "中鋼",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 93753916000.0,
+        "gross_profit_margin": 4.38046875823299,
+        "operating_income_margin": 0.8197460253286915,
+        "net_profit_margin": 1.206966117553959,
+        "eps": 0.04,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 3349265000.0,
+        "earnings_quality": 2.9598180593825614
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 94572214000.0,
+        "gross_profit_margin": 5.0380432036834835,
+        "operating_income_margin": 1.3792803877891662,
+        "net_profit_margin": 1.734380459782828,
+        "eps": 0.09,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 19306184000.0,
+        "earnings_quality": 11.770326573761677
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 85615737000.0,
+        "gross_profit_margin": 2.208667549051175,
+        "operating_income_margin": -1.4287022957006141,
+        "net_profit_margin": 0.24488839008650945,
+        "eps": -0.01,
+        "debt_ratio": 50.85421963878157,
+        "roe": 0.06113328329666395,
+        "operating_cash_flow": 27705585000.0,
+        "earnings_quality": 132.14341586259854
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 86593847000.0,
+        "gross_profit_margin": 4.96426380040605,
+        "operating_income_margin": 1.0881015599179928,
+        "net_profit_margin": 1.0329890990984614,
+        "eps": 0.01,
+        "debt_ratio": 50.869533603574915,
+        "roe": 0.26194493410026476,
+        "operating_cash_flow": 42286497000.0,
+        "earnings_quality": 47.27362843136707
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 83170223000.0,
+        "gross_profit_margin": 5.535601365406944,
+        "operating_income_margin": 1.64936313805483,
+        "net_profit_margin": 0.9785016447533151,
+        "eps": 0.02,
+        "debt_ratio": 50.75086889374831,
+        "roe": 0.23700313910296916,
+        "operating_cash_flow": 6836786000.0,
+        "earnings_quality": 8.400837038074664
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 85096705000.0,
+        "gross_profit_margin": 0.6805328126394553,
+        "operating_income_margin": -3.0732764564738435,
+        "net_profit_margin": -2.7229738213718147,
+        "eps": -0.12,
+        "debt_ratio": 52.131147832301664,
+        "roe": -0.7180316832505534,
+        "operating_cash_flow": 32086929000.0,
+        "earnings_quality": null
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 73515650000.0,
+        "gross_profit_margin": 0.26932496686079765,
+        "operating_income_margin": -4.10287877479149,
+        "net_profit_margin": -3.9313819574471562,
+        "eps": -0.16,
+        "debt_ratio": 52.04901911083294,
+        "roe": -0.8930253332917932,
+        "operating_cash_flow": 41200784000.0,
+        "earnings_quality": null
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 75372686000.0,
+        "gross_profit_margin": 4.834878778235394,
+        "operating_income_margin": 0.4718658958233225,
+        "net_profit_margin": 1.1765787410044004,
+        "eps": -0.02,
+        "debt_ratio": 51.039476584544964,
+        "roe": 0.26879900416770475,
+        "operating_cash_flow": 49299218000.0,
+        "earnings_quality": 55.59107100772536
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 79161889000.0,
+        "gross_profit_margin": 3.33127219841861,
+        "operating_income_margin": -0.7838910968888071,
+        "net_profit_margin": -2.34980875709017,
+        "eps": -0.16,
+        "debt_ratio": 50.930703201010864,
+        "roe": -0.5609516001191339,
+        "operating_cash_flow": 6587557000.0,
+        "earnings_quality": null
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 25540284000.0,
+        "yoy": -14.742170036672475
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 24391344000.0,
+        "yoy": -16.67645439486304
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 24739527000.0,
+        "yoy": -16.406585597525424
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 24384779000.0,
+        "yoy": -8.833833022670168
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 24461547000.0,
+        "yoy": -12.449244979759555
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 25367720000.0,
+        "yoy": -12.590741772979651
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 25543419000.0,
+        "yoy": -13.798505768534476
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 26018929000.0,
+        "yoy": 1.1941400036162175
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 24520577000.0,
+        "yoy": -12.930082690684042
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 28622383000.0,
+        "yoy": -2.300651981331081
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 30891428000.0,
+        "yoy": 2.1484641602111276
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 29955286000.0,
+        "yoy": 2.1851168653296282
+      }
+    ],
+    "chips": {
+      "days_30_net": -58126.4,
+      "days_60_net": -198762.08
+    },
+    "valuation": {
+      "pe": 0.0,
+      "pb": 0.97,
+      "yield": 0.8,
+      "date": "2026-05-28"
+    }
+  },
+  "1101": {
+    "symbol": "1101",
+    "name": "台泥",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 25544599000.0,
+        "gross_profit_margin": 15.218328539821666,
+        "operating_income_margin": 4.6982260320469305,
+        "net_profit_margin": 8.766416728639975,
+        "eps": 0.26,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 4465855000.0,
+        "earnings_quality": 1.9942675227499458
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 38968848000.0,
+        "gross_profit_margin": 19.132128309258718,
+        "operating_income_margin": 11.09880384454783,
+        "net_profit_margin": 9.005814080005651,
+        "eps": 0.25,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 10233977000.0,
+        "earnings_quality": 2.9161099336593472
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 41075042000.0,
+        "gross_profit_margin": 24.270010484712344,
+        "operating_income_margin": 15.264524866462706,
+        "net_profit_margin": 11.24555393029178,
+        "eps": 0.42,
+        "debt_ratio": 48.27107110966257,
+        "roe": 1.5225325767478057,
+        "operating_cash_flow": 14834084000.0,
+        "earnings_quality": 3.211455178869723
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 49018022000.0,
+        "gross_profit_margin": 23.28955052490694,
+        "operating_income_margin": 10.876587390653993,
+        "net_profit_margin": 10.733956176363053,
+        "eps": 0.52,
+        "debt_ratio": 48.11237227916331,
+        "roe": 1.7088118817103266,
+        "operating_cash_flow": 31793945000.0,
+        "earnings_quality": 6.042669178969863
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 34956255000.0,
+        "gross_profit_margin": 16.86023860393512,
+        "operating_income_margin": 6.583857452693373,
+        "net_profit_margin": 2.1981530916283796,
+        "eps": 0.07,
+        "debt_ratio": 49.08884823407857,
+        "roe": 0.24236909105834367,
+        "operating_cash_flow": 6829705000.0,
+        "earnings_quality": 8.888308311382731
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 35354423000.0,
+        "gross_profit_margin": 15.12355611064562,
+        "operating_income_margin": 3.1521600564659193,
+        "net_profit_margin": 2.0650089523452273,
+        "eps": 0.0,
+        "debt_ratio": 51.15584939486701,
+        "roe": 0.26367433848529026,
+        "operating_cash_flow": 11637296000.0,
+        "earnings_quality": 15.939929212461237
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 39066903000.0,
+        "gross_profit_margin": 22.638039672609832,
+        "operating_income_margin": 13.157132010182634,
+        "net_profit_margin": -30.166437815662018,
+        "eps": -1.36,
+        "debt_ratio": 51.71584063095479,
+        "roe": -4.200442837592202,
+        "operating_cash_flow": 18912998000.0,
+        "earnings_quality": null
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 40426554000.0,
+        "gross_profit_margin": 18.485508312185107,
+        "operating_income_margin": 3.7638874686177806,
+        "net_profit_margin": -3.898321385493307,
+        "eps": -0.32,
+        "debt_ratio": 50.29073010638621,
+        "roe": -0.5384098706751008,
+        "operating_cash_flow": 33191582000.0,
+        "earnings_quality": null
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 33168148000.0,
+        "gross_profit_margin": 18.71792781435973,
+        "operating_income_margin": 8.41829034289162,
+        "net_profit_margin": 3.6322166676294376,
+        "eps": 0.1,
+        "debt_ratio": 49.00638870204535,
+        "roe": 0.39532611356745495,
+        "operating_cash_flow": 3358179000.0,
+        "earnings_quality": 2.78747429941257
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 10107877000.0,
+        "yoy": -26.00135304673077
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 13535929000.0,
+        "yoy": -6.193883484790764
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 12214776000.0,
+        "yoy": -6.0722284359143615
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 13306676000.0,
+        "yoy": -0.13938201079769508
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 13882248000.0,
+        "yoy": -14.686634463833027
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 13121753000.0,
+        "yoy": -20.486368142562473
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 14219975000.0,
+        "yoy": -14.044313438022549
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 12252892000.0,
+        "yoy": 0.3237604752176937
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 8593689000.0,
+        "yoy": -5.806999295225845
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 12412837000.0,
+        "yoy": -8.966002135913131
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 12213195000.0,
+        "yoy": -3.6914380666110524
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 12612013000.0,
+        "yoy": -0.059289218784108755
+      }
+    ],
+    "chips": {
+      "days_30_net": -187016.71,
+      "days_60_net": -341368.33
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "1216": {
+    "symbol": "1216",
+    "name": "統一",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 158756079000.0,
+        "gross_profit_margin": 32.576705298951104,
+        "operating_income_margin": 5.470020458240216,
+        "net_profit_margin": 5.242635779635248,
+        "eps": 0.97,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 8867792000.0,
+        "earnings_quality": 1.065455821654756
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 162120139000.0,
+        "gross_profit_margin": 33.60640530908995,
+        "operating_income_margin": 5.6417062410734795,
+        "net_profit_margin": 5.711478572073022,
+        "eps": 1.04,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 31409349000.0,
+        "earnings_quality": 3.392137249516899
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 178921762000.0,
+        "gross_profit_margin": 32.99489583609175,
+        "operating_income_margin": 6.126089346247328,
+        "net_profit_margin": 5.245117695632798,
+        "eps": 1.07,
+        "debt_ratio": 71.42102679987677,
+        "roe": 4.658488077979537,
+        "operating_cash_flow": 57349856000.0,
+        "earnings_quality": 6.111023130626937
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 157838554000.0,
+        "gross_profit_margin": 31.610886399782906,
+        "operating_income_margin": 3.190306723159666,
+        "net_profit_margin": 3.3991428988889494,
+        "eps": 0.55,
+        "debt_ratio": 70.48830821945036,
+        "roe": 2.560707332734392,
+        "operating_cash_flow": 78441039000.0,
+        "earnings_quality": 14.6204527434234
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 169265026000.0,
+        "gross_profit_margin": 33.164561118491186,
+        "operating_income_margin": 5.912105552153461,
+        "net_profit_margin": 4.86951982626346,
+        "eps": 0.91,
+        "debt_ratio": 69.46455130538253,
+        "roe": 3.740254475439365,
+        "operating_cash_flow": 6504088000.0,
+        "earnings_quality": 0.7891018070720716
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 169572497000.0,
+        "gross_profit_margin": 33.8029833929968,
+        "operating_income_margin": 6.075677472626944,
+        "net_profit_margin": 5.186910115500629,
+        "eps": 0.97,
+        "debt_ratio": 74.11488122817532,
+        "roe": 4.805584377622052,
+        "operating_cash_flow": 28807410000.0,
+        "earnings_quality": 3.275216975630809
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 176326132000.0,
+        "gross_profit_margin": 33.50727389630483,
+        "operating_income_margin": 5.941713165919162,
+        "net_profit_margin": 5.22679814697007,
+        "eps": 1.06,
+        "debt_ratio": 72.25313974912568,
+        "roe": 4.631798399398491,
+        "operating_cash_flow": 58404212000.0,
+        "earnings_quality": 6.3371174987204615
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 157699923000.0,
+        "gross_profit_margin": 31.73215816979188,
+        "operating_income_margin": 2.590211156919842,
+        "net_profit_margin": 3.1473401543766135,
+        "eps": 0.52,
+        "debt_ratio": 71.43160281767251,
+        "roe": 2.355927111688649,
+        "operating_cash_flow": 75383767000.0,
+        "earnings_quality": 15.188072861229093
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 175017371000.0,
+        "gross_profit_margin": 33.78249693854675,
+        "operating_income_margin": 5.858305345016296,
+        "net_profit_margin": 5.578783376879773,
+        "eps": 1.15,
+        "debt_ratio": 70.13461617783815,
+        "roe": 4.364502627005174,
+        "operating_cash_flow": 12205671000.0,
+        "earnings_quality": 1.2500892067055585
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 55738019000.0,
+        "yoy": 1.3724192763868936
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 57114520000.0,
+        "yoy": -3.9275177955520713
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 60796560000.0,
+        "yoy": -1.3442573056195783
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 58415036000.0,
+        "yoy": 0.9727499408061391
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 54226663000.0,
+        "yoy": -0.7736326856653264
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 51161260000.0,
+        "yoy": -1.1221107798963792
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 52311321000.0,
+        "yoy": 1.6948868845485965
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 66104462000.0,
+        "yoy": 0.5306718298735635
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 51532816000.0,
+        "yoy": 8.319234000165432
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 57379159000.0,
+        "yoy": 2.5808599938275334
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 57480106000.0,
+        "yoy": 2.2618525903094655
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 59180335000.0,
+        "yoy": 2.698137955165314
+      }
+    ],
+    "chips": {
+      "days_30_net": 19311.71,
+      "days_60_net": 22183.22
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "2912": {
+    "symbol": "2912",
+    "name": "統一超",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 81070782000.0,
+        "gross_profit_margin": 33.89678047018222,
+        "operating_income_margin": 4.504294777864607,
+        "net_profit_margin": 4.240141657940342,
+        "eps": 2.83,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 9281963000.0,
+        "earnings_quality": 2.700194850002153
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 82841047000.0,
+        "gross_profit_margin": 34.268800344833885,
+        "operating_income_margin": 4.429354930774837,
+        "net_profit_margin": 4.768603419510137,
+        "eps": 3.23,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 20017726000.0,
+        "earnings_quality": 5.067315620015488
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 87881001000.0,
+        "gross_profit_margin": 34.06184119363866,
+        "operating_income_margin": 4.205283232948155,
+        "net_profit_margin": 3.976596716280007,
+        "eps": 2.87,
+        "debt_ratio": 82.1381882172126,
+        "roe": 7.283536943044644,
+        "operating_cash_flow": 28665734000.0,
+        "earnings_quality": 8.202694214880763
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 86139567000.0,
+        "gross_profit_margin": 34.391680886902996,
+        "operating_income_margin": 3.431755118991949,
+        "net_profit_margin": 3.31890337921016,
+        "eps": 2.17,
+        "debt_ratio": 80.71754061146129,
+        "roe": 5.495680196894088,
+        "operating_cash_flow": 36760898000.0,
+        "earnings_quality": 12.858455854704397
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 84641319000.0,
+        "gross_profit_margin": 33.94952292744871,
+        "operating_income_margin": 4.2770682720575275,
+        "net_profit_margin": 4.019829842207445,
+        "eps": 2.79,
+        "debt_ratio": 80.22474301262965,
+        "roe": 6.085138213082755,
+        "operating_cash_flow": 6851928000.0,
+        "earnings_quality": 2.0138294992677306
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 87379698000.0,
+        "gross_profit_margin": 34.425351298421745,
+        "operating_income_margin": 4.434373302594842,
+        "net_profit_margin": 4.195912876695912,
+        "eps": 2.92,
+        "debt_ratio": 84.18934068644396,
+        "roe": 8.160663014139157,
+        "operating_cash_flow": 19821849000.0,
+        "earnings_quality": 5.406387397255491
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 88929011000.0,
+        "gross_profit_margin": 35.008762213716736,
+        "operating_income_margin": 4.257956945006394,
+        "net_profit_margin": 3.8020123714183667,
+        "eps": 2.85,
+        "debt_ratio": 82.7643143697126,
+        "roe": 6.880308857838148,
+        "operating_cash_flow": 28043808000.0,
+        "earnings_quality": 8.29430491687301
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 89784563000.0,
+        "gross_profit_margin": 34.07298201139543,
+        "operating_income_margin": 2.949901309872166,
+        "net_profit_margin": 3.212553365103531,
+        "eps": 2.22,
+        "debt_ratio": 81.91352581179575,
+        "roe": 5.449771979336727,
+        "operating_cash_flow": 36509726000.0,
+        "earnings_quality": 12.657751049880096
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 88527614000.0,
+        "gross_profit_margin": 34.57710268798163,
+        "operating_income_margin": 4.262239576455771,
+        "net_profit_margin": 4.033565165327961,
+        "eps": 2.97,
+        "debt_ratio": 80.61519546749658,
+        "roe": 6.23363718225038,
+        "operating_cash_flow": 8830177000.0,
+        "earnings_quality": 2.472871629729762
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 28800511000.0,
+        "yoy": 3.4918909972312395
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 29683217000.0,
+        "yoy": 0.2918792316609631
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 30077681000.0,
+        "yoy": 1.7412077132140658
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 29168113000.0,
+        "yoy": 1.5558902362230675
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 29905931000.0,
+        "yoy": 4.490239594722567
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 29361772000.0,
+        "yoy": 3.4786243896944624
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 30516860000.0,
+        "yoy": 4.710817774754017
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 30727739000.0,
+        "yoy": 0.5046272654086748
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 28039116000.0,
+        "yoy": 9.081665645517534
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 29760759000.0,
+        "yoy": 4.927511429350195
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 29913625000.0,
+        "yoy": 4.8825151390661015
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 31643252000.0,
+        "yoy": 5.273595221841809
+      }
+    ],
+    "chips": {
+      "days_30_net": -6559.13,
+      "days_60_net": -6594.19
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "2603": {
+    "symbol": "2603",
+    "name": "長榮",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 88638659000.0,
+        "gross_profit_margin": 21.378152844121885,
+        "operating_income_margin": 17.660734240124278,
+        "net_profit_margin": 20.559063286370343,
+        "eps": 8.14,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 24840603000.0,
+        "earnings_quality": 1.3631248450470876
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 106328606000.0,
+        "gross_profit_margin": 33.74650091810665,
+        "operating_income_margin": 30.732645925970285,
+        "net_profit_margin": 28.746465461984894,
+        "eps": 13.7,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 56911429000.0,
+        "earnings_quality": 1.861936720212934
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 152788923000.0,
+        "gross_profit_margin": 52.60147687538841,
+        "operating_income_margin": 50.499328410083756,
+        "net_profit_margin": 41.42559863452929,
+        "eps": 28.75,
+        "debt_ratio": 34.53000125445943,
+        "roe": 11.222922635899927,
+        "operating_cash_flow": 139196065000.0,
+        "earnings_quality": 2.1992079436119782
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 115811709000.0,
+        "gross_profit_margin": 35.3194416637095,
+        "operating_income_margin": 29.751908764251116,
+        "net_profit_margin": 27.545852034702296,
+        "eps": 14.19,
+        "debt_ratio": 34.10120637125948,
+        "roe": 5.295214331990241,
+        "operating_cash_flow": 192258540000.0,
+        "earnings_quality": 6.026663722588048
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 109970561000.0,
+        "gross_profit_margin": 30.27352383880264,
+        "operating_income_margin": 26.67509443731946,
+        "net_profit_margin": 25.313761925793944,
+        "eps": 12.64,
+        "debt_ratio": 33.30914944045788,
+        "roe": 4.3639953890995145,
+        "operating_cash_flow": 41348115000.0,
+        "earnings_quality": 1.4853287374532496
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 86483997000.0,
+        "gross_profit_margin": 21.61451210447639,
+        "operating_income_margin": 16.684174530000043,
+        "net_profit_margin": 13.127680719937123,
+        "eps": 5.06,
+        "debt_ratio": 40.29201905633666,
+        "roe": 2.182959735827129,
+        "operating_cash_flow": 56291760000.0,
+        "earnings_quality": 4.958166066153379
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 96920534000.0,
+        "gross_profit_margin": 26.146557343565608,
+        "operating_income_margin": 22.73147194999978,
+        "net_profit_margin": 22.77727545331106,
+        "eps": 10.04,
+        "debt_ratio": 33.63133398998555,
+        "roe": 3.926407875700974,
+        "operating_cash_flow": 81188399000.0,
+        "earnings_quality": 3.6777008928803987
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 85693535000.0,
+        "gross_profit_margin": 17.915680570302065,
+        "operating_income_margin": 9.718497433907936,
+        "net_profit_margin": 10.480281855568217,
+        "eps": 3.94,
+        "debt_ratio": 34.45123112734792,
+        "roe": 1.5319959812408208,
+        "operating_cash_flow": 101202073000.0,
+        "earnings_quality": 11.26855911485277
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 86511471000.0,
+        "gross_profit_margin": 15.473893629666751,
+        "operating_income_margin": 10.343543921476032,
+        "net_profit_margin": 10.045668972615204,
+        "eps": 3.84,
+        "debt_ratio": 35.30065290415523,
+        "roe": 1.4364582974848477,
+        "operating_cash_flow": 18770637000.0,
+        "earnings_quality": 2.1598642265900296
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 30109881000.0,
+        "yoy": -28.789663084614105
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 33605171000.0,
+        "yoy": -38.22207284232243
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 32956841000.0,
+        "yoy": -38.694810554015426
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 30120944000.0,
+        "yoy": -32.52056014155183
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 27330016000.0,
+        "yoy": -34.18536544909022
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 27633182000.0,
+        "yoy": -23.438986263826077
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 30705794000.0,
+        "yoy": -19.485246475758068
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 31898627000.0,
+        "yoy": -24.49664015706132
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 27138742000.0,
+        "yoy": -20.724295706124842
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 27522156000.0,
+        "yoy": -17.886614773600673
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 31359253000.0,
+        "yoy": 4.5140548923158
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 34656227000.0,
+        "yoy": 31.4120575991778
+      }
+    ],
+    "chips": {
+      "days_30_net": 34697.29,
+      "days_60_net": 40964.8
+    },
+    "valuation": {
+      "pe": 9.22,
+      "pb": 0.79,
+      "yield": 7.58,
+      "date": "2026-05-28"
+    }
+  },
+  "1476": {
+    "symbol": "1476",
+    "name": "儒鴻",
+    "is_etf": false,
+    "quarterly": [
+      {
+        "period": "2024-03-31",
+        "revenue": 7632681000.0,
+        "gross_profit_margin": 29.434467390946907,
+        "operating_income_margin": 19.344238282721367,
+        "net_profit_margin": 18.673359989759824,
+        "eps": 5.19,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 1591156000.0,
+        "earnings_quality": 1.1163829091587747
+      },
+      {
+        "period": "2024-06-30",
+        "revenue": 9593234000.0,
+        "gross_profit_margin": 31.517015012872612,
+        "operating_income_margin": 21.88662342646911,
+        "net_profit_margin": 18.07042338381405,
+        "eps": 6.32,
+        "debt_ratio": null,
+        "roe": null,
+        "operating_cash_flow": 1313136000.0,
+        "earnings_quality": 0.7574890195657666
+      },
+      {
+        "period": "2024-09-30",
+        "revenue": 10031710000.0,
+        "gross_profit_margin": 32.31956466046167,
+        "operating_income_margin": 23.020312588780975,
+        "net_profit_margin": 17.695916249572605,
+        "eps": 6.47,
+        "debt_ratio": 19.509503794560132,
+        "roe": 6.560522528918987,
+        "operating_cash_flow": 3983265000.0,
+        "earnings_quality": 2.2438363387173186
+      },
+      {
+        "period": "2024-12-31",
+        "revenue": 9570874000.0,
+        "gross_profit_margin": 29.847232342626178,
+        "operating_income_margin": 19.538184287035854,
+        "net_profit_margin": 17.833616867174303,
+        "eps": 6.22,
+        "debt_ratio": 19.35992128285086,
+        "roe": 5.901573218771909,
+        "operating_cash_flow": 4720354000.0,
+        "earnings_quality": 2.765562887523267
+      },
+      {
+        "period": "2025-03-31",
+        "revenue": 9374606000.0,
+        "gross_profit_margin": 30.202837324576628,
+        "operating_income_margin": 21.071370892814056,
+        "net_profit_margin": 17.91423554227239,
+        "eps": 6.12,
+        "debt_ratio": 30.345353503461947,
+        "roe": 6.455975868623528,
+        "operating_cash_flow": 1328857000.0,
+        "earnings_quality": 0.7912740883738074
+      },
+      {
+        "period": "2025-06-30",
+        "revenue": 9717593000.0,
+        "gross_profit_margin": 25.65103313135259,
+        "operating_income_margin": 15.445759047533686,
+        "net_profit_margin": 6.186562865927807,
+        "eps": 2.19,
+        "debt_ratio": 28.854684066333053,
+        "roe": 2.3286962380507537,
+        "operating_cash_flow": 3741731000.0,
+        "earnings_quality": 6.223926079326663
+      },
+      {
+        "period": "2025-09-30",
+        "revenue": 9633426000.0,
+        "gross_profit_margin": 28.66183847781672,
+        "operating_income_margin": 19.103920038416238,
+        "net_profit_margin": 17.152599708556437,
+        "eps": 6.02,
+        "debt_ratio": 16.794761349043196,
+        "roe": 5.952122670029245,
+        "operating_cash_flow": 5751445000.0,
+        "earnings_quality": 3.480697271758424
+      },
+      {
+        "period": "2025-12-31",
+        "revenue": 9264126000.0,
+        "gross_profit_margin": 30.185502658318768,
+        "operating_income_margin": 19.162563203479746,
+        "net_profit_margin": 17.076408503079513,
+        "eps": 5.77,
+        "debt_ratio": 15.411677392925569,
+        "roe": 5.337830033987426,
+        "operating_cash_flow": 7570085000.0,
+        "earnings_quality": 4.785196399448792
+      },
+      {
+        "period": "2026-03-31",
+        "revenue": 9621070000.0,
+        "gross_profit_margin": 32.166235148481405,
+        "operating_income_margin": 22.81360597106143,
+        "net_profit_margin": 19.067692055041697,
+        "eps": 6.69,
+        "debt_ratio": 25.39285536124323,
+        "roe": 6.670079060744712,
+        "operating_cash_flow": 2323083000.0,
+        "earnings_quality": 1.2663192907557088
+      }
+    ],
+    "monthly_revenue": [
+      {
+        "date": "2025-06-10",
+        "year": 2025,
+        "month": 6,
+        "revenue": 3288358000.0,
+        "yoy": -3.2528283257117874
+      },
+      {
+        "date": "2025-07-10",
+        "year": 2025,
+        "month": 7,
+        "revenue": 3044362000.0,
+        "yoy": -2.884256200680302
+      },
+      {
+        "date": "2025-08-10",
+        "year": 2025,
+        "month": 8,
+        "revenue": 3348874000.0,
+        "yoy": -9.674570776237235
+      },
+      {
+        "date": "2025-09-10",
+        "year": 2025,
+        "month": 9,
+        "revenue": 3240190000.0,
+        "yoy": 1.5934818434247822
+      },
+      {
+        "date": "2025-10-10",
+        "year": 2025,
+        "month": 10,
+        "revenue": 3072169000.0,
+        "yoy": -6.923402962230007
+      },
+      {
+        "date": "2025-11-10",
+        "year": 2025,
+        "month": 11,
+        "revenue": 2891719000.0,
+        "yoy": 1.5442048161632416
+      },
+      {
+        "date": "2025-12-10",
+        "year": 2025,
+        "month": 12,
+        "revenue": 3300238000.0,
+        "yoy": -3.5706386172909887
+      },
+      {
+        "date": "2026-01-10",
+        "year": 2026,
+        "month": 1,
+        "revenue": 3581621000.0,
+        "yoy": 7.549855924396032
+      },
+      {
+        "date": "2026-02-10",
+        "year": 2026,
+        "month": 2,
+        "revenue": 2439916000.0,
+        "yoy": -7.360077577215563
+      },
+      {
+        "date": "2026-03-10",
+        "year": 2026,
+        "month": 3,
+        "revenue": 3599533000.0,
+        "yoy": 5.538128102966966
+      },
+      {
+        "date": "2026-04-10",
+        "year": 2026,
+        "month": 4,
+        "revenue": 3264019000.0,
+        "yoy": -3.742603794595467
+      },
+      {
+        "date": "2026-05-10",
+        "year": 2026,
+        "month": 5,
+        "revenue": 3059191000.0,
+        "yoy": 0.6873564784598774
+      }
+    ],
+    "chips": {
+      "days_30_net": -2712.24,
+      "days_60_net": -6770.35
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "0050": {
+    "symbol": "0050",
+    "name": "元大台灣50",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "006208": {
+    "symbol": "006208",
+    "name": "富邦台50",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "0056": {
+    "symbol": "0056",
+    "name": "元大高股息",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "00878": {
+    "symbol": "00878",
+    "name": "國泰永續高股息",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "00919": {
+    "symbol": "00919",
+    "name": "群益台灣精選高息",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "00713": {
+    "symbol": "00713",
+    "name": "元大台灣高息低波",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  }
+}

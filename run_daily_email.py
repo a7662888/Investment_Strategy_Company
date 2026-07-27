@@ -35,10 +35,14 @@ def build_html(positions):
     led = api("/api/decision-ledger?limit=120&agents=claude-value,claude-etf-subtrack")
     sigs = [s for s in led.get("signals", []) if s.get("event_type") == "signal"]
     # 同一標的可能有多版凍結（如 ETF 卡修正參考價後重凍）→ 只取最新，避免舊錯卡的失真報酬混入
+    def _rank(e):
+        # 同日重凍多版時，只比 data_cutoff 會取到舊版 → 需併比 recorded_at
+        return (e.get("data_cutoff") or "", e.get("recorded_at") or "")
+
     newest = {}
     for s in sigs:
         key = (s.get("agent_id"), s.get("symbol"))
-        if key not in newest or (s.get("data_cutoff") or "") > (newest[key].get("data_cutoff") or ""):
+        if key not in newest or _rank(s) > _rank(newest[key]):
             newest[key] = s
     sigs = list(newest.values())
     by_symbol = {s.get("symbol"): s for s in sigs}

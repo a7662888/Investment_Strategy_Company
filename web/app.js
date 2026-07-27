@@ -1805,11 +1805,13 @@ async function loadDecisionLedger() {
     ];
     // 同一 agent+標的可能有多版凍結（如 ETF 卡因原參考價錯誤而重凍）：只保留最新 cutoff，
     // 否則舊的錯誤卡與其失真報酬會同時顯示。
+    // 排序鍵需含 recorded_at：同一天重凍多版時，只比 data_cutoff 會取到舊版
+    const rank = s => `${s.data_cutoff || ""}|${s.recorded_at || ""}`;
     const newest = new Map();
     signals.forEach(s => {
       const key = `${s.agent_id}|${s.symbol}`;
       const prev = newest.get(key);
-      if (!prev || (s.data_cutoff || "") > (prev.data_cutoff || "")) newest.set(key, s);
+      if (!prev || rank(s) > rank(prev)) newest.set(key, s);
     });
     signals = [...newest.values()];
     ledgerSignals = signals;

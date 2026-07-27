@@ -1,0 +1,48 @@
+name: Weekly Value Rescreen
+
+# 每週重跑價值引擎規則層（估值位階＋品質硬篩＋sector schema），
+# 只在「判定改變」時凍新卡。解決先前價值卡永遠停在單一快照、
+# 導致清單每天相同、且漲出買進區間仍顯示可買的問題。
+
+on:
+  schedule:
+    - cron: "0 1 * * 6"      # 每週六 09:00 台北（週五收盤後、週一開盤前）
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只報告不寫帳本"
+        type: boolean
+        default: false
+
+jobs:
+  rescreen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Guard - durable secret must exist
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+        run: |
+          if [ -z "$GITHUB_DATA_TOKEN" ]; then
+            echo "::error::DATA_REPO_TOKEN 未設定 — 新卡只會寫進 ephemeral runner 後消失。"
+            exit 1
+          fi
+
+      - name: Rescreen value universe
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}   # 有才啟用 4-agent 質性層
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python run_value_rescreen.py --dry-run
+          else
+            python run_value_rescreen.py
+          fi
