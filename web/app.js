@@ -1824,6 +1824,11 @@ async function loadDecisionLedger() {
     // Setup filter click handlers
     setupLedgerFilters();
 
+    // 先取現價，卡片才能標示「凍結建議現在是否仍成立」
+    const valueSyms = signals.filter(s => s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack")
+                             .map(s => s.symbol);
+    livePrices = await fetchLivePrices(valueSyms);
+
     // 預設視圖 = 價值引擎（分層整合：首頁主打價值論點卡；挑戰者請點 ML-Quant/全部）
     const defBtn = document.querySelector('.ledger-filter[data-filter="value-engine"]');
     if (defBtn) defBtn.click(); else renderLedger("value-engine");
@@ -2063,6 +2068,7 @@ function renderLedger(filterType) {
           <span>Entry: [${entryRange}]</span>
         </div>
         
+        ${freshnessBadge(s)}
         <div style="margin:8px 0; padding:8px 10px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:12.5px; line-height:1.6; color:#14532d;">
           ${plainAdvice(s, _heldSet && _heldSet.has((s.symbol || "").toUpperCase()))}
         </div>
@@ -2090,6 +2096,49 @@ function renderLedger(filterType) {
       </div>
     `;
   }).join("");
+}
+
+// ---- 凍結卡的「現在還算數嗎」即時檢核 ----
+// 卡片是凍結快照（為了 shadow 驗證不可竄改），但價格每天在動：若不比對現價，
+// 使用者會把兩週前的 accumulate 當成今天的買點。以下用現價 vs entry_range 判定時效。
+let livePrices = {};
+
+async function fetchLivePrices(symbols) {
+  const uniq = [...new Set(symbols.filter(Boolean))];
+  if (!uniq.length) return {};
+  try {
+    const res = await fetch(`/api/quote?symbols=${encodeURIComponent(uniq.join(","))}`);
+    const d = await readJson(res);
+    const out = {};
+    asArray((d.quoteResponse || {}).result).forEach(q => {
+      if (q && q.symbol && q.regularMarketPrice != null) out[q.symbol] = Number(q.regularMarketPrice);
+    });
+    return out;
+  } catch (err) { console.warn("live price fetch failed:", err); return {}; }
+}
+
+function freshnessBadge(signal) {
+  const cur = livePrices[signal.symbol];
+  const er = signal.entry_range;
+  const ref = Number(signal.reference_price);
+  if (cur == null) return "";
+  const drift = ref ? ((cur / ref - 1) * 100).toFixed(1) : null;
+  const driftTxt = drift == null ? "" : `（凍結價 ${ref} → ${drift >= 0 ? "+" : ""}${drift}%）`;
+  if (Array.isArray(er) && er.length === 2 && Number(er[1])) {
+    const hi = Number(er[1]), lo = Number(er[0]);
+    if (cur > hi) {
+      return `<div style="margin:6px 0;padding:7px 9px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#b91c1c;">
+        ⚠️ <b>此建議已過時</b>：現價 <b>${cur}</b> 已高於買進區間上緣 ${hi}${driftTxt}。
+        <b>目前不是進場點</b>；本卡為 ${signal.data_cutoff} 的凍結紀錄，保留供成績驗證用。</div>`;
+    }
+    if (cur < lo) {
+      return `<div style="margin:6px 0;padding:7px 9px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:12px;color:#1e3a8a;">
+        📉 現價 <b>${cur}</b> 已跌破區間下緣 ${lo}${driftTxt}。比凍結時更便宜，但請先確認「失效條件」未被觸發。</div>`;
+    }
+    return `<div style="margin:6px 0;padding:7px 9px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;color:#14532d;">
+      ✅ 現價 <b>${cur}</b> <b>仍在買進區間</b> ${lo}–${hi} 內${driftTxt}。</div>`;
+  }
+  return `<div style="margin:6px 0;font-size:12px;color:var(--muted);">現價 ${cur}${driftTxt}</div>`;
 }
 
 // ---- 我的持股（首頁）----
