@@ -139,7 +139,7 @@ def generate_rule_based_analysis(symbol: str, name: str, quant_data: dict, news_
 # 規則層（估值位階／品質硬篩）算得出數字，但「商業模式、護城河、風險」需要敘事判斷。
 # 每週重篩時呼叫；無 key 或呼叫失敗時由呼叫端沿用前次論述，排程不因此中斷。
 # ---------------------------------------------------------------------------
-VALUE_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+VALUE_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 
 
 def analyze_value_thesis(result: dict, timeout: int = 45) -> list[dict]:
@@ -183,7 +183,10 @@ def analyze_value_thesis(result: dict, timeout: int = 45) -> list[dict]:
     }
     # 模型備援：不同 API key 綁定的專案可用模型不同（新帳號已無 2.5-flash 權限），
     # 且免費層配額用盡會回 429。逐一嘗試，全部失敗則回空由呼叫端沿用前次論述。
-    candidates = [VALUE_MODEL, "gemini-2.0-flash", "gemini-flash-latest"]
+    # 依實測排序：新申請的 key 對 2.5-flash 已無權限(404)、2.0-flash 系列配額易用盡(429)，
+    # gemini-flash-lite-latest 目前可用且成本最低。全數失敗才降級沿用前次論述。
+    candidates = [VALUE_MODEL, "gemini-flash-lite-latest", "gemini-2.5-flash-lite",
+                  "gemini-2.0-flash", "gemini-flash-latest"]
     data = None
     last_err = None
     for model in dict.fromkeys(candidates):
