@@ -1099,6 +1099,16 @@ function safeBind(id, handler) {
 }
 
 function bindActions() {
+  safeBind("homePositionSave", () => {
+    const input = $("homePositionInput");
+    if (!input) return;
+    const v = input.value.trim();
+    if (v) localStorage.setItem(POSITION_STORAGE_KEY, v);
+    else localStorage.removeItem(POSITION_STORAGE_KEY);
+    _heldSet = null;                    // 讓卡片的 💼 標記重算
+    renderMyHoldings();
+    if (ledgerSignals) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "value-engine");
+  });
   safeBind("refreshQuotes", refreshQuotes);
   safeBind("runTraining", runTraining);
   safeBind("recommendToday", recommendToday);
@@ -1789,10 +1799,19 @@ async function loadDecisionLedger() {
     
     $("ledgerTotalEvents").textContent = count;
     
-    const signals = [
+    let signals = [
       ...asArray(data.signals || data.events).filter(s => s.event_type === "signal"),
       ...challengerSignals,
     ];
+    // 同一 agent+標的可能有多版凍結（如 ETF 卡因原參考價錯誤而重凍）：只保留最新 cutoff，
+    // 否則舊的錯誤卡與其失真報酬會同時顯示。
+    const newest = new Map();
+    signals.forEach(s => {
+      const key = `${s.agent_id}|${s.symbol}`;
+      const prev = newest.get(key);
+      if (!prev || (s.data_cutoff || "") > (prev.data_cutoff || "")) newest.set(key, s);
+    });
+    signals = [...newest.values()];
     ledgerSignals = signals;
     
     const valueSignals = signals.filter(s => s.agent_id === "claude-value");
@@ -1808,6 +1827,10 @@ async function loadDecisionLedger() {
     // 預設視圖 = 價值引擎（分層整合：首頁主打價值論點卡；挑戰者請點 ML-Quant/全部）
     const defBtn = document.querySelector('.ledger-filter[data-filter="value-engine"]');
     if (defBtn) defBtn.click(); else renderLedger("value-engine");
+
+    // 帳本就緒後才能對照持股建議與復盤成績
+    renderReview();
+    renderMyHoldings();
     
   } catch (err) {
     console.error("Error loading decision ledger:", err);
@@ -1941,8 +1964,8 @@ function renderLedger(filterType) {
         const claim = e.claim || (typeof e === "string" ? e : "");
         if (claim.includes("指數") || claim.includes("追蹤") || claim.includes("成分") || claim.includes("編製") || claim.includes("選股")) {
           business = claim;
-        } else if (claim.includes("費用") || claim.includes("費率") || claim.includes("內扣") || claim.includes("成本")) {
-          valuation = claim;
+        } else if (claim.includes("百分位") || claim.includes("位階") || claim.includes("費用") || claim.includes("費率") || claim.includes("內扣") || claim.includes("成本")) {
+          valuation = (valuation === "—" || claim.includes("百分位")) ? claim : valuation;
         } else if (claim.includes("規模") || claim.includes("配息") || claim.includes("殖利率") || claim.includes("平準金") || claim.includes("流動性")) {
           chips = claim;
         }
@@ -1965,15 +1988,9 @@ function renderLedger(filterType) {
       business = typeof evidence[0] === "string" ? evidence[0] : (evidence[0].claim || "—");
     }
     
-    // Outcome
-    const oc = s.outcome || {};
-    const formatOutcome = (val) => {
-      if (val === undefined || val === null) return `<span class="outcome-val flat">Pending</span>`;
-      const num = Number(val);
-      const cls = num > 0 ? "up" : num < 0 ? "down" : "flat";
-      const sign = num > 0 ? "+" : "";
-      return `<span class="outcome-val ${cls}">${sign}${(num * 100).toFixed(1)}%</span>`;
-    };
+    // Outcome：ledger materialize() 產出的是 outcomes["1D"|"5D"|"20D"…].gross_return，
+    // 舊版誤讀 s.outcome.return_20d（不存在）→ 永遠 Pending。改為顯示「已成熟」期數。
+    const outcomeCells = renderOutcomeCells(s);
     
     const isMedium = s.data_quality?.valuation === "medium";
     const dqBadge = isMedium ? `<span style="font-size:10px; color:#d97706; background:#fffbeb; border:1px solid #fde68a; padding:1px 4px; border-radius:3px;">DQ: Med</span>` : `<span style="font-size:10px; color:#0f766e; background:#e6f4ea; border:1px solid #ceead6; padding:1px 4px; border-radius:3px;">DQ: High</span>`;
@@ -2018,11 +2035,7 @@ function renderLedger(filterType) {
           ${calWarn}
         </div>
         ${factors.length ? `<div class="pillar-box" style="margin-bottom:8px;"><span class="pillar-title">📈 技術/動能因子（模型輸入，非價值品質）</span><span class="pillar-desc" style="font-size:11px;">${factors.join("；")}</span></div>` : ""}
-        <div class="ledger-outcome">
-          <div class="outcome-item"><span style="font-size:10px; color:var(--muted);">20D Return</span>${formatOutcome(oc.return_20d)}</div>
-          <div class="outcome-item"><span style="font-size:10px; color:var(--muted);">60D Return</span>${formatOutcome(oc.return_60d)}</div>
-          <div class="outcome-item"><span style="font-size:10px; color:var(--muted);">120D Return</span>${formatOutcome(oc.return_120d)}</div>
-        </div>
+        <div class="ledger-outcome">${outcomeCells}</div>
       </div>
       `;
     }
@@ -2050,6 +2063,10 @@ function renderLedger(filterType) {
           <span>Entry: [${entryRange}]</span>
         </div>
         
+        <div style="margin:8px 0; padding:8px 10px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:12.5px; line-height:1.6; color:#14532d;">
+          ${plainAdvice(s, _heldSet && _heldSet.has((s.symbol || "").toUpperCase()))}
+        </div>
+
         <div class="ledger-pillars">
           <div class="pillar-box" style="grid-column: span 2;">
             <span class="pillar-title">${pillar1Title}</span>
@@ -2069,21 +2086,182 @@ function renderLedger(filterType) {
           </div>
         </div>
         
-        <div class="ledger-outcome">
-          <div class="outcome-item">
-            <span style="font-size:10px; color:var(--muted);">20D Return</span>
-            ${formatOutcome(oc.return_20d)}
-          </div>
-          <div class="outcome-item">
-            <span style="font-size:10px; color:var(--muted);">60D Return</span>
-            ${formatOutcome(oc.return_60d)}
-          </div>
-          <div class="outcome-item">
-            <span style="font-size:10px; color:var(--muted);">120D Return</span>
-            ${formatOutcome(oc.return_120d)}
-          </div>
-        </div>
+        <div class="ledger-outcome">${outcomeCells}</div>
       </div>
     `;
+  }).join("");
+}
+
+// ---- 我的持股（首頁）----
+function parsePositionsRaw(raw) {
+  return (raw || "").split(/[,\n]/).map(x => x.trim()).filter(Boolean).map(item => {
+    const [symPart, costPart] = item.split("@");
+    const [symbol, shares] = symPart.split(":");
+    return { symbol: (symbol || "").trim().toUpperCase(), shares: Number(shares || 0), cost: Number(costPart || 0) };
+  }).filter(p => p.symbol);
+}
+
+async function renderMyHoldings() {
+  const panel = $("myHoldingsPanel");
+  const status = $("myHoldingsStatus");
+  if (!panel) return;
+  const raw = localStorage.getItem(POSITION_STORAGE_KEY) || "";
+  const input = $("homePositionInput");
+  if (input && !input.value) input.value = raw;
+  const pos = parsePositionsRaw(raw);
+  if (!pos.length) {
+    if (status) status.textContent = "尚未輸入";
+    panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔的損益、系統建議與白話說明。</p>`;
+    return;
+  }
+  if (status) status.textContent = `${pos.length} 檔`;
+  panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">分析中…</p>`;
+  let plans = {};
+  try {
+    const res = await fetch("/api/next-day-plan", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbols: pos.map(p => p.symbol), positions: pos,
+                             end: taipeiDateString(), lookback_days: 320 })
+    });
+    const data = await readJson(res);
+    asArray(data.plans).forEach(p => { plans[p.symbol] = p; });
+  } catch (err) { console.warn("holdings plan failed:", err); }
+
+  const bySym = {};
+  asArray(ledgerSignals).forEach(s => {
+    if (s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack") bySym[s.symbol] = s;
+  });
+
+  panel.innerHTML = pos.map(p => {
+    const pl = plans[p.symbol];
+    const sig = bySym[p.symbol];
+    const price = pl ? Number(pl.last_close) : null;
+    const gain = (price && p.cost) ? price / p.cost - 1 : null;
+    const gcls = gain === null ? "var(--muted)" : gain >= 0 ? "#137333" : "#c5221f";
+    const gtxt = gain === null ? "—" : `${gain >= 0 ? "+" : ""}${(gain * 100).toFixed(2)}%`;
+    const value = (price && p.shares) ? Math.round(price * p.shares).toLocaleString() : "—";
+    const advice = sig ? plainAdvice(sig, true)
+      : `👉 此標的不在價值引擎追蹤清單中，僅提供價格與短線計畫參考。`;
+    const sigLine = sig
+      ? `<span class="pill" style="font-size:11px;">價值引擎：${(sig.action || "").toUpperCase()}</span>`
+      : `<span class="pill" style="font-size:11px; color:var(--muted);">未納入價值分析</span>`;
+    return `<article class="candidate" style="margin-bottom:10px;">
+      <strong style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <span>${p.symbol} ${sig && sig.name ? sig.name : ""} ${sigLine}</span>
+        <span style="color:${gcls}">${gtxt}</span>
+      </strong>
+      <p style="font-size:13px; margin:6px 0;">
+        成本 ${p.cost || "—"}｜現價 ${price ?? "—"}｜${p.shares || 0} 股｜市值約 ${value} 元
+        ${pl ? `｜短線計畫：<b>${pl.action}</b>` : ""}
+      </p>
+      <div style="font-size:12.5px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:7px 9px; color:#1e3a8a;">${advice}</div>
+    </article>`;
+  }).join("");
+}
+
+// ---- 成績回顧（復盤）----
+function renderReview() {
+  const panel = $("reviewPanel"), status = $("reviewStatus");
+  if (!panel) return;
+  const vs = asArray(ledgerSignals).filter(s => s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack");
+  const rows = [];
+  vs.forEach(s => {
+    const oc = s.outcomes || {};
+    OUTCOME_HORIZONS.forEach(h => {
+      const o = oc[h];
+      if (o && o.gross_return !== null && o.gross_return !== undefined) {
+        rows.push({ symbol: s.symbol, name: s.name || "", action: s.action, horizon: h,
+                    g: Number(o.gross_return), e: o.excess_return === null || o.excess_return === undefined ? null : Number(o.excess_return) });
+      }
+    });
+  });
+  if (!rows.length) {
+    if (status) status.textContent = "尚無成熟成績";
+    panel.innerHTML = `<p style="font-size:13px;color:var(--muted);">建議凍結後第 1 個交易日起會陸續產生成績，屆時自動出現於此。</p>`;
+    return;
+  }
+  const byH = {};
+  rows.forEach(r => { (byH[r.horizon] = byH[r.horizon] || []).push(r); });
+  const order = OUTCOME_HORIZONS.filter(h => byH[h]);
+  if (status) status.textContent = `${rows.length} 筆已成熟`;
+  const summary = order.map(h => {
+    const arr = byH[h];
+    const avg = arr.reduce((a, r) => a + r.g, 0) / arr.length;
+    const exArr = arr.filter(r => r.e !== null);
+    const avgEx = exArr.length ? exArr.reduce((a, r) => a + r.e, 0) / exArr.length : null;
+    const win = exArr.length ? exArr.filter(r => r.e > 0).length / exArr.length : null;
+    const exCls = avgEx === null ? "var(--muted)" : avgEx >= 0 ? "#137333" : "#c5221f";
+    return `<td style="padding:8px; border:1px solid var(--line); text-align:center;">
+      <div style="font-size:11px;color:var(--muted);">${h}（${arr.length} 筆）</div>
+      <div style="font-size:15px;font-weight:600;">${avg >= 0 ? "+" : ""}${(avg * 100).toFixed(2)}%</div>
+      <div style="font-size:11px;color:${exCls};">對0050 ${avgEx === null ? "—" : (avgEx >= 0 ? "+" : "") + (avgEx * 100).toFixed(2) + "%"}</div>
+      <div style="font-size:11px;color:var(--muted);">勝率 ${win === null ? "—" : (win * 100).toFixed(0) + "%"}</div>
+    </td>`;
+  }).join("");
+  const best = [...rows].sort((a, b) => b.g - a.g).slice(0, 3);
+  const worst = [...rows].sort((a, b) => a.g - b.g).slice(0, 3);
+  const li = r => `<li>${r.symbol} ${r.name}（${(r.action || "").toUpperCase()}／${r.horizon}）：<b style="color:${r.g >= 0 ? "#137333" : "#c5221f"}">${r.g >= 0 ? "+" : ""}${(r.g * 100).toFixed(2)}%</b>${r.e === null ? "" : `，對0050 ${r.e >= 0 ? "+" : ""}${(r.e * 100).toFixed(2)}%`}</li>`;
+  const maxDays = Math.max(...order.map(h => parseInt(h)));
+  panel.innerHTML = `
+    <table style="border-collapse:collapse; width:100%; margin-bottom:10px;"><tr>${summary}</tr></table>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:12.5px;">
+      <div><b>表現最佳</b><ul style="margin:6px 0 0; padding-left:18px;">${best.map(li).join("")}</ul></div>
+      <div><b>表現最差</b><ul style="margin:6px 0 0; padding-left:18px;">${worst.map(li).join("")}</ul></div>
+    </div>
+    <p style="font-size:12px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:7px 9px; margin-top:10px;">
+      ⚠️ 目前最長只有 ${maxDays} 個交易日的成績，<b>屬於雜訊區間、不能當作方法有效的證據</b>。
+      本系統的判定標準是 60／120 個交易日；在那之前所有數字僅供觀察。
+    </p>`;
+}
+
+// 白話一句話：把 action + 是否持有翻成「我現在該做什麼」，給非專業使用者看。
+function plainAdvice(signal, isHeld) {
+  const act = (signal.action || "").toLowerCase();
+  const er = Array.isArray(signal.entry_range) ? `${signal.entry_range[0]}–${signal.entry_range[1]}` : null;
+  const ref = signal.reference_price;
+  if (act.includes("accumulate")) {
+    return isHeld
+      ? `👉 <b>已持有＋目前在便宜區</b>：可考慮分批加碼${er ? `（參考區間 ${er}）` : ""}，但別一次全押。`
+      : `👉 <b>相對便宜</b>：想買的話可分批進場${er ? `（參考區間 ${er}）` : ""}，不必急著一次買滿。`;
+  }
+  if (act.includes("avoid")) {
+    return isHeld
+      ? `👉 <b>你持有這檔，但系統判定體質轉弱且價格偏貴</b>：宜檢視是否減碼；至少不要再加碼。`
+      : `👉 <b>不建議進場</b>：基本面轉弱又貴，先觀望。`;
+  }
+  if (act.includes("watch")) {
+    return isHeld
+      ? `👉 <b>已持有、目前價格偏貴</b>：續抱可以（尤其領息型），但<b>不建議在這個價位加碼</b>${er ? `；回到 ${er} 才算便宜` : ""}。`
+      : `👉 <b>好標的但現在不便宜</b>：先列觀察，${er ? `等回到 ${er} 附近` : "等回檔"}再考慮。`;
+  }
+  if (act.includes("hold")) {
+    return isHeld
+      ? `👉 <b>價格合理</b>：續抱領息即可，不需特別動作。`
+      : `👉 <b>價格合理但沒明顯折扣</b>：想長期持有可小量建立，不急。`;
+  }
+  return ref ? `👉 參考價 ${ref}，詳見下方分析。` : "";
+}
+
+// 凍結後各期成績。ledger 的 outcome 事件掛在 outcomes[horizon]，欄位為 gross_return /
+// excess_return（對 0050 超額）。只顯示「已算出」的期數，避免整排 Pending 讓人以為壞掉。
+const OUTCOME_HORIZONS = ["1D", "5D", "20D", "60D", "120D"];
+function renderOutcomeCells(signal) {
+  const oc = signal.outcomes || {};
+  const done = OUTCOME_HORIZONS.filter(h => oc[h] && oc[h].gross_return !== null && oc[h].gross_return !== undefined);
+  if (!done.length) {
+    return `<div class="outcome-item" style="grid-column:1/-1;text-align:center;">
+      <span style="font-size:11px;color:var(--muted);">📊 成績累積中（凍結後第 1 個交易日起陸續出現）</span></div>`;
+  }
+  return done.slice(-3).map(h => {
+    const o = oc[h];
+    const g = Number(o.gross_return), e = o.excess_return;
+    const cls = g > 0 ? "up" : g < 0 ? "down" : "flat";
+    const exTxt = (e === null || e === undefined) ? ""
+      : `<span style="font-size:10px;color:${Number(e) >= 0 ? "#137333" : "#c5221f"};">對0050 ${Number(e) >= 0 ? "+" : ""}${(Number(e) * 100).toFixed(1)}%</span>`;
+    return `<div class="outcome-item">
+      <span style="font-size:10px; color:var(--muted);">${h} 報酬</span>
+      <span class="outcome-val ${cls}">${g > 0 ? "+" : ""}${(g * 100).toFixed(1)}%</span>
+      ${exTxt}
+    </div>`;
   }).join("");
 }

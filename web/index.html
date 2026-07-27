@@ -40,6 +40,37 @@
       </div>
     </details>
 
+    <!-- 💼 我的持股：使用者最關心的「我現在該怎麼辦」，首頁即可輸入（不必再去策略實驗室） -->
+    <section class="panel" style="border:2px solid #1d4ed8; background:rgba(29,78,216,0.02);">
+      <div class="sectionHead">
+        <h2 style="color:#1d4ed8; margin:0; display:flex; align-items:center; gap:8px;"><span>💼</span> 我的持股</h2>
+        <span id="myHoldingsStatus" class="pill" style="font-size:12px;">尚未輸入</span>
+      </div>
+      <p style="font-size:12.5px; color:var(--muted); margin:6px 0 8px;">
+        格式：<code>代號:股數@成本</code>，多筆用逗號分隔。例：<code>0056.TW:1000@53.95, 00878.TW:1000@34.13</code>
+        （只存在你的瀏覽器，不會上傳）
+      </p>
+      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+        <input id="homePositionInput" type="text" placeholder="0056.TW:1000@53.95, 00878.TW:1000@34.13"
+               style="flex:1; min-width:280px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px;">
+        <button id="homePositionSave" class="primary" style="padding:8px 18px;">儲存並分析</button>
+      </div>
+      <div id="myHoldingsPanel"><p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔的損益、系統建議與白話說明。</p></div>
+    </section>
+
+    <!-- 📊 成績回顧（復盤）：凍結後的建議實際表現，對 0050 超額 -->
+    <section class="panel" style="border:1px solid var(--line);">
+      <div class="sectionHead">
+        <h2 style="margin:0; font-size:17px; display:flex; align-items:center; gap:8px;"><span>📊</span> 成績回顧（復盤）</h2>
+        <span id="reviewStatus" class="pill" style="font-size:12px;">計算中…</span>
+      </div>
+      <p style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">
+        每筆建議在凍結當下就鎖定參考價，事後不可竄改。下表是這些建議「凍結後到現在」的實際報酬，
+        以及對照 0050 的超額（正數＝贏大盤）。<b>樣本不足時不得解讀為績效</b>。
+      </p>
+      <div id="reviewPanel"></div>
+    </section>
+
     <!-- 🧠 價值大腦決策帳本 (Decision Ledger - Shadow Mode) -->
     <section class="panel" style="border: 2px solid #10b981; background: rgba(16, 185, 129, 0.01);">
       <div class="sectionHead">
