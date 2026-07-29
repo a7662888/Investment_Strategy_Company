@@ -12,3 +12,4 @@ reports/
 data/decision_ledger.jsonl
 data/snapshots_archive.json
 data/current_value_state.json
+data/value_fundamentals_full.json

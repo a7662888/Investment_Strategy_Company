@@ -66,6 +66,9 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
         "price": round(float(result["price"]), 2) if result.get("price") is not None else None,
         "action": action, "decision": decision, "eligible_pool": bool(eligible_pool),
         "quality_pass": quality_pass, "risk_tier": risk_tier,
+        "fundamentals_complete": bool(result.get(
+            "fundamentals_complete", not result.get("error") and not result.get("data_incomplete")
+        )),
         "roe_ttm": round(float(roe), 2) if roe is not None else None,
         "valuation_basis": result.get("valuation_basis"), "valuation_pct": pct,
         "valuation_zone": valuation_zone, "entry_range": result.get("entry_range"),
@@ -84,11 +87,12 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
     waiting = sorted((i for i in eligible if i["decision"] in ("等待止跌", "高風險反轉觀察")),
                      key=lambda x: x["rank_score"], reverse=True)[:5]
     as_of = max((i.get("as_of") or "" for i in items), default="")
+    covered = sum(1 for i in eligible if i.get("fundamentals_complete"))
     return {
         "schema_version": 1, "generated_at": datetime.now(timezone.utc).isoformat(), "as_of": as_of,
         "mode": "daily-current-state", "shadow": True,
-        "coverage": {"mother_pool": pool_total, "quality_covered": len(eligible),
-                     "not_yet_covered": max(0, pool_total - len(eligible))},
+        "coverage": {"mother_pool": pool_total, "quality_covered": covered,
+                     "not_yet_covered": max(0, pool_total - covered)},
         "top_picks": picks, "waiting_list": waiting, "evaluations": items,
         "method": "母池→季度品質硬篩→近3年估值百分位→20/60日趨勢時機；不自動下單",
     }

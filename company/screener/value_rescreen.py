@@ -103,6 +103,23 @@ def _pct_rank(series: list[float], value: float):
     return round(sum(1 for v in series if v <= value) / len(series) * 100, 1)
 
 
+def _pct_rank_quantiles(quantiles: list[float], value: float):
+    """Approximate a percentile from compact 0,5,...,100 percentile points."""
+    if not quantiles or value is None:
+        return None
+    if value <= quantiles[0]:
+        return 0.0
+    if value >= quantiles[-1]:
+        return 100.0
+    step = 100.0 / (len(quantiles) - 1)
+    for idx in range(1, len(quantiles)):
+        if value <= quantiles[idx]:
+            low, high = quantiles[idx - 1], quantiles[idx]
+            fraction = 0.0 if high == low else (value - low) / (high - low)
+            return round((idx - 1 + fraction) * step, 1)
+    return 100.0
+
+
 def _at_pct(sorted_vals: list[float], p: float):
     idx = max(0, min(len(sorted_vals) - 1, int(len(sorted_vals) * p / 100)))
     return sorted_vals[idx]
@@ -111,7 +128,7 @@ def _at_pct(sorted_vals: list[float], p: float):
 # ---------- 核心 ----------
 def evaluate(symbol: str, fundamentals: dict) -> dict:
     """回傳最新判定：action／位階／買進區間／依據。純規則、可重現。"""
-    code = symbol.replace(".TW", "")
+    code = symbol.replace(".TWO", "").replace(".TW", "")
     info = fundamentals.get(code) or {}
     is_etf = bool(info.get("is_etf")) or code.startswith("00")
     rows = _yahoo_history(symbol)
@@ -125,6 +142,7 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
     momentum20 = (cur_raw / closes[-21] - 1.0) if len(closes) >= 21 and closes[-21] else None
     out = {"symbol": symbol, "name": info.get("name") or code, "as_of": as_of,
            "price": cur_raw, "is_etf": is_etf, "reasons": [],
+           "fundamentals_complete": bool(info.get("completeness", {}).get("complete", info.get("quarterly"))),
            "ma20": round(ma20, 4) if ma20 is not None else None,
            "ma60": round(ma60, 4) if ma60 is not None else None,
            "momentum20": round(momentum20, 6) if momentum20 is not None else None}
@@ -140,18 +158,35 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         return out
 
     # 個股：估值百分位（FinMind PER/PBR），基本面沿用季度快照
-    per_rows = _finmind_per(symbol)
-    pes = [float(r["PER"]) for r in per_rows if r.get("PER") and float(r["PER"]) > 0]
-    pbs = [float(r["PBR"]) for r in per_rows if r.get("PBR") and float(r["PBR"]) > 0]
+    cached = info.get("valuation") or {}
+    pe_quantiles = cached.get("pe_quantiles_5pct") or []
+    pb_quantiles = cached.get("pb_quantiles_5pct") or []
+    valuation_date = cached.get("date")
+    cached_available = bool(valuation_date and (pe_quantiles or pb_quantiles))
+    if cached_available:
+        reference = next((row for row in reversed(rows) if row["date"] <= valuation_date), None)
+        price_ratio = cur_raw / reference["close"] if reference and reference["close"] else 1.0
+        cached_pe = float(cached["pe"]) if cached.get("pe") not in (None, 0) else None
+        cached_pb = float(cached["pb"]) if cached.get("pb") not in (None, 0) else None
+        cur_pe = cached_pe * price_ratio if cached_pe else None
+        cur_pb = cached_pb * price_ratio if cached_pb else None
+        pes, pbs = pe_quantiles, pb_quantiles
+        pe_pct = _pct_rank_quantiles(pe_quantiles, cur_pe) if cur_pe else None
+        pb_pct = _pct_rank_quantiles(pb_quantiles, cur_pb) if cur_pb else None
+        out["valuation_as_of"] = valuation_date
+    else:
+        per_rows = _finmind_per(symbol)
+        pes = [float(r["PER"]) for r in per_rows if r.get("PER") and float(r["PER"]) > 0]
+        pbs = [float(r["PBR"]) for r in per_rows if r.get("PBR") and float(r["PBR"]) > 0]
+        cur_pe = pes[-1] if pes else None
+        cur_pb = pbs[-1] if pbs else None
+        pe_pct = _pct_rank(sorted(pes), cur_pe) if cur_pe else None
+        pb_pct = _pct_rank(sorted(pbs), cur_pb) if cur_pb else None
     if not pes and not pbs:
         out["data_incomplete"] = "valuation_unavailable"
         out["action"] = None          # 交由呼叫端跳過，不得改判定
         out["reasons"].append("估值資料取得失敗（FinMind 限流或無資料）→ 本次不重新判定")
         return out
-    cur_pe = pes[-1] if pes else None
-    cur_pb = pbs[-1] if pbs else None
-    pe_pct = _pct_rank(sorted(pes), cur_pe) if cur_pe else None
-    pb_pct = _pct_rank(sorted(pbs), cur_pb) if cur_pb else None
     out.update(pe=cur_pe, pb=cur_pb, pe_pct=pe_pct, pb_pct=pb_pct)
 
     qs = info.get("quarterly") or []
@@ -222,12 +257,16 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
     return out
 
 
-def rescreen_all(symbols: list[str]) -> list[dict]:
-    fundamentals = json.load(open(FUNDAMENTALS, encoding="utf-8")) if FUNDAMENTALS.exists() else {}
+def rescreen_all(symbols: list[str], fundamentals: dict | None = None) -> list[dict]:
+    fundamentals = fundamentals if fundamentals is not None else (
+        json.load(open(FUNDAMENTALS, encoding="utf-8")) if FUNDAMENTALS.exists() else {}
+    )
     results = []
     for i, sym in enumerate(symbols):
         if i:
-            time.sleep(1.5)           # FinMind 免費層節流，避免整批被限流
+            code = sym.replace(".TWO", "").replace(".TW", "")
+            cached = (fundamentals.get(code) or {}).get("valuation") or {}
+            time.sleep(0.1 if cached.get("pe_quantiles_5pct") or cached.get("pb_quantiles_5pct") else 1.5)
         try:
             results.append(evaluate(sym, fundamentals))
         except Exception as exc:  # 單檔失敗不得中斷整批

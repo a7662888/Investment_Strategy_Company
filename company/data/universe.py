@@ -76,10 +76,13 @@ RAW_CANDIDATES = [
 
 # 靜態 fallback(active 檔不存在時用):RAW 前 30
 DEFAULT_30 = RAW_CANDIDATES[:30]
+OTC_CODES = {"8299", "3324", "6182", "3529", "4966"}
 
 
 def _as_tw(code: str) -> str:
-    return code if code.endswith(".TW") else f"{code}.TW"
+    if code.endswith((".TW", ".TWO")):
+        return code
+    return f"{code}.TWO" if code in OTC_CODES else f"{code}.TW"
 
 
 def _fetch_metrics(code: str, as_of: str, lookback: int = 70, token: Optional[str] = None) -> Optional[dict]:
@@ -191,7 +194,7 @@ def refresh_weekly_from_pool(as_of: Optional[str] = None, token: Optional[str] =
     pool_stocks = json.loads(POOL_PATH.read_text(encoding="utf-8")).get("stocks", [])
     metrics = []
     for s in pool_stocks:
-        code = s["symbol"].replace(".TW", "")
+        code = s["symbol"].replace(".TWO", "").replace(".TW", "")
         m = _fetch_metrics(code, as_of, token=token)
         if m:
             metrics.append({"symbol": s["symbol"], "name": s["name"], "sector": s["sector"],
