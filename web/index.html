@@ -34,7 +34,7 @@
     <details style="margin-bottom: 16px; font-size: 12px; color: var(--muted); background: #f8fafc; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px;">
       <summary style="cursor: pointer; font-weight: 600; color: #475569;">📐 方法論準則摘要 (tw_value_method v2.2)</summary>
       <div style="margin-top: 8px; line-height: 1.6; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-        <div><strong>選股宇宙</strong><br>24 檔台股（市值/流動性/產業代表篩選）+ 6 檔 ETF</div>
+        <div><strong>選股宇宙</strong><br>母池 100 檔 → 有完整季報者進品質覆蓋池 → 每日估值與時機排序</div>
         <div><strong>Action 光譜</strong><br>accumulate → watch → hold → avoid，附 entry_range 與 invalidation</div>
         <div><strong>三大支柱</strong><br>商業品質 (ROE/GPM/OPM) · 估值百分位 (PE/PB) · 法人籌碼趨勢</div>
         <div><strong>資料來源</strong><br>twstock 盤後日線 + Yahoo Finance · 離線計算 · 無 LLM 在線污染</div>
@@ -59,6 +59,19 @@
         <button id="homePositionSave" class="primary" style="padding:8px 18px;">儲存並分析</button>
       </div>
       <div id="myHoldingsPanel"><p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔的損益、系統建議與白話說明。</p></div>
+    </section>
+
+    <!-- 每日 current-state：與不可變的 Decision Ledger 分離 -->
+    <section class="panel" style="border:2px solid #0f766e; background:rgba(15,118,110,0.02);">
+      <div class="sectionHead">
+        <h2 style="color:#0f766e; margin:0; display:flex; align-items:center; gap:8px;"><span>🌱</span> 今日優質股與進場時機</h2>
+        <span id="dailyValueStatus" class="pill" style="font-size:12px;">載入中…</span>
+      </div>
+      <p style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">
+        每個交易日盤後從母池重評；先過季度品質硬篩，再看自身近三年估值位階與 20／60 日趨勢。
+        這是可覆寫的「今日狀態」，下方 Decision Ledger 仍保留不可改寫的歷史快照供驗證。
+      </p>
+      <div id="dailyValuePanel"><p style="color:var(--muted); font-size:13px;">正在讀取每日選股結果…</p></div>
     </section>
 
     <!-- 📊 成績回顧（復盤）：凍結後的建議實際表現，對 0050 超額 -->
@@ -179,6 +192,6 @@
     }
   </style>
 
-  <script src="/app.js?v=20260701-1" charset="utf-8"></script>
+  <script src="/app.js?v=20260729-1" charset="utf-8"></script>
 </body>
 </html>

@@ -25,13 +25,26 @@ def api(path, payload=None):
 def pct(x, digits=2):
     return "—" if x is None else f"{x*100:+.{digits}f}%"
 
+def price(x):
+    try:
+        return f"{float(x):.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
 def build_html(positions):
     today = date.today().isoformat()
     plan = api("/api/next-day-plan", {
         "symbols": [p["symbol"] for p in positions],
         "positions": positions, "end": today, "lookback_days": 320})
+    try:
+        value_state = api("/api/value-current")
+        value_portfolio = api("/api/value-portfolio", {"positions": positions})
+    except Exception as exc:
+        print(f"daily value state unavailable, ledger fallback: {type(exc).__name__}", file=sys.stderr)
+        value_state, value_portfolio = {}, {"actions": []}
     m = plan.get("market_index") or {}
     plans = {p["symbol"]: p for p in plan.get("plans", [])}
+    portfolio_map = {p["symbol"]: p for p in value_portfolio.get("actions", [])}
     led = api("/api/decision-ledger?limit=120&agents=claude-value,claude-etf-subtrack")
     sigs = [s for s in led.get("signals", []) if s.get("event_type") == "signal"]
     # 同一標的可能有多版凍結（如 ETF 卡修正參考價後重凍）→ 只取最新，避免舊錯卡的失真報酬混入
@@ -61,6 +74,10 @@ def build_html(positions):
     risk_color = {"GREEN": "#137333", "YELLOW": "#b45309", "RED": "#c5221f", "BLACK": "#111"}.get(risk, "#555")
     def holding_advice(sym):
         """持有中該怎麼辦：以價值引擎 action 翻成白話（與網站首頁一致）。"""
+        current = portfolio_map.get(sym)
+        if current:
+            why = "；".join(current.get("reasons") or [])
+            return f"<b>{current.get('action','—')}</b>" + (f"：{why}" if why else "")
         s = by_symbol.get(sym)
         if not s:
             return "未納入價值分析，僅供價格參考"
@@ -80,10 +97,11 @@ def build_html(positions):
     rows = ""
     for p in positions:
         pl = plans.get(p["symbol"])
+        pa = portfolio_map.get(p["symbol"])
         if pl:
             ug = pl.get("unrealized_gain")
             cls = "#137333" if (ug or 0) >= 0 else "#c5221f"
-            rows += (f"<tr><td>{p['symbol']}</td><td>{pl.get('action','—')}</td>"
+            rows += (f"<tr><td>{p['symbol']}</td><td>{(pa or {}).get('action') or pl.get('action','—')}</td>"
                      f"<td align='right'>{pl.get('last_close','—')}</td>"
                      f"<td align='right'>{p.get('cost','—')}</td>"
                      f"<td align='right' style='color:{cls};font-weight:600'>{pct(ug)}</td></tr>"
@@ -91,9 +109,23 @@ def build_html(positions):
                      f"👉 {holding_advice(p['symbol'])}</td></tr>")
         else:
             rows += f"<tr><td>{p['symbol']}</td><td colspan='4' style='color:#c5221f'>今日未取得計畫</td></tr>"
-    acc_html = "".join(
-        f"<li><b>{s.get('name','')} {s.get('symbol','')}</b>：買進區間 {s.get('entry_range','—')}｜參考價 {s.get('reference_price','—')}（{s.get('data_cutoff','')} 凍結）</li>"
-        for s in accum) or "<li>目前無 accumulate 標的（市場不便宜時，沒有買進本來就是紀律）</li>"
+    daily_picks = value_state.get("top_picks") or []
+    daily_waiting = value_state.get("waiting_list") or []
+    if daily_picks:
+        acc_html = "".join(
+            f"<li><b>{s.get('name','')} {s.get('symbol','')}</b>：現價 {price(s.get('price'))}｜"
+            f"{s.get('valuation_zone','—')}｜{s.get('trend','—')}｜<b>{s.get('decision','—')}</b>（{s.get('as_of','')} 重評）</li>"
+            for s in daily_picks)
+    else:
+        acc_html = "".join(
+            f"<li><b>{s.get('name','')} {s.get('symbol','')}</b>：舊卡區間 {s.get('entry_range','—')}｜"
+            f"參考價 {price(s.get('reference_price'))}（{s.get('data_cutoff','')} 凍結；每日狀態暫時不可用）</li>"
+            for s in accum) or "<li>今天沒有同時通過品質、估值與止跌條件的標的；保留現金也是結果。</li>"
+    waiting_html = "".join(
+        f"<li><b>{s.get('name','')} {s.get('symbol','')}</b>：{s.get('decision','—')}｜"
+        f"{s.get('valuation_zone','—')}｜ROE {price(s.get('roe_ttm'))}%</li>" for s in daily_waiting)
+    waiting_block = (f'<p style="font-size:13px"><b>便宜但尚待止跌／高風險：</b></p>'
+                     f'<ul>{waiting_html}</ul>') if waiting_html else ""
     avoid_html = "、".join(f"{s.get('name','')}{s.get('symbol','')}" for s in avoid) or "無"
     if agg:
         cells = ""
@@ -125,11 +157,12 @@ def build_html(positions):
   <p>大盤風險燈：<b style="color:{risk_color}">{risk}</b>（{(m.get('regime_label') or m.get('regime') or '')}）</p>
   <h3>💼 我的持股</h3>
   <table border="0" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:14px">
-    <tr style="background:#f1f5f9"><th align="left">標的</th><th align="left">明日建議</th><th align="right">收盤</th><th align="right">成本</th><th align="right">未實現</th></tr>
+    <tr style="background:#f1f5f9"><th align="left">標的</th><th align="left">持股判斷</th><th align="right">收盤</th><th align="right">成本</th><th align="right">未實現</th></tr>
     {rows}
   </table>
-  <h3>🟢 價值引擎：目前值得留意（accumulate）</h3>
+  <h3>🌱 今日優質股與進場時機</h3>
   <ul>{acc_html}</ul>
+  {waiting_block}
   <p>🔴 avoid：{avoid_html}</p>
   {mat_block}
   <hr style="border:none;border-top:1px solid #ddd">

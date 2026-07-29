@@ -1125,6 +1125,7 @@ if (endDateEl && !endDateEl.value) {
 bindActions();
 refreshQuotes();
 loadDailyPerformance();
+loadDailyValueState();
 loadDecisionLedger();
 discoverToday();
 recommendToday();
@@ -1766,6 +1767,39 @@ function parseMarkdown(text) {
 }
 
 let ledgerSignals = [];
+let dailyValueState = null;
+
+async function loadDailyValueState() {
+  const panel = $("dailyValuePanel"), status = $("dailyValueStatus");
+  if (!panel) return;
+  try {
+    const res = await fetch("/api/value-current");
+    const data = await readJson(res);
+    dailyValueState = data;
+    const c = data.coverage || {};
+    if (status) status.textContent = `${data.as_of || "—"} · 覆蓋 ${c.quality_covered || 0}/${c.mother_pool || 0}`;
+    const card = item => `<article class="candidate" style="margin-bottom:8px;">
+      <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span>${item.symbol} ${item.name || ""}</span><span style="color:#0f766e;">${item.decision}</span>
+      </strong>
+      <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${item.valuation_zone}｜${item.trend}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}</p>
+      <p style="font-size:12px;color:var(--muted);margin:0;">${asArray(item.reasons).slice(0, 2).join("；") || "—"}</p>
+    </article>`;
+    const picks = asArray(data.top_picks);
+    const waiting = asArray(data.waiting_list);
+    panel.innerHTML = `
+      <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:7px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#065f46;">
+        母池 ${c.mother_pool || 0} 檔中，目前 ${c.quality_covered || 0} 檔具完整品質資料；其餘 ${c.not_yet_covered || 0} 檔不會假裝已完成基本面判定。
+      </div>
+      <h3 style="font-size:14px;margin:8px 0;">可分批研究</h3>
+      ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">今天沒有同時通過品質、估值與止跌條件的標的；保留現金也是結果。</p>`}
+      ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">便宜但尚待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}`;
+    renderMyHoldings();
+  } catch (err) {
+    if (status) status.textContent = "尚未產生";
+    panel.innerHTML = `<p style="font-size:13px;color:#92400e;">每日價值狀態尚未可用：${err.message}</p>`;
+  }
+}
 
 async function loadDecisionLedger() {
   const grid = $("ledgerGrid");
@@ -2167,7 +2201,15 @@ async function renderMyHoldings() {
   }
   if (status) status.textContent = `${pos.length} 檔`;
   panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">分析中…</p>`;
-  let plans = {};
+  let plans = {}, valueActions = {};
+  try {
+    const res = await fetch("/api/value-portfolio", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ positions: pos })
+    });
+    const data = await readJson(res);
+    asArray(data.actions).forEach(a => { valueActions[a.symbol] = a; });
+  } catch (err) { console.warn("value portfolio failed:", err); }
   try {
     const res = await fetch("/api/next-day-plan", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -2185,16 +2227,18 @@ async function renderMyHoldings() {
 
   panel.innerHTML = pos.map(p => {
     const pl = plans[p.symbol];
+    const va = valueActions[p.symbol];
     const sig = bySym[p.symbol];
-    const price = pl ? Number(pl.last_close) : null;
+    const price = va && va.price != null ? Number(va.price) : (pl ? Number(pl.last_close) : null);
     const gain = (price && p.cost) ? price / p.cost - 1 : null;
     const gcls = gain === null ? "var(--muted)" : gain >= 0 ? "#137333" : "#c5221f";
     const gtxt = gain === null ? "—" : `${gain >= 0 ? "+" : ""}${(gain * 100).toFixed(2)}%`;
     const value = (price && p.shares) ? Math.round(price * p.shares).toLocaleString() : "—";
-    const advice = sig ? plainAdvice(sig, true)
+    const advice = va ? `👉 <b>${va.action}</b>${asArray(va.reasons).length ? `：${asArray(va.reasons).join("；")}` : ""}` : sig ? plainAdvice(sig, true)
       : `👉 此標的不在價值引擎追蹤清單中，僅提供價格與短線計畫參考。`;
-    const sigLine = sig
-      ? `<span class="pill" style="font-size:11px;">價值引擎：${(sig.action || "").toUpperCase()}</span>`
+    const sigLine = va && va.value_state
+      ? `<span class="pill" style="font-size:11px;">每日價值：${(va.value_state.action || "").toUpperCase()}</span>`
+      : sig ? `<span class="pill" style="font-size:11px;">凍結卡：${(sig.action || "").toUpperCase()}</span>`
       : `<span class="pill" style="font-size:11px; color:var(--muted);">未納入價值分析</span>`;
     return `<article class="candidate" style="margin-bottom:10px;">
       <strong style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -2203,7 +2247,7 @@ async function renderMyHoldings() {
       </strong>
       <p style="font-size:13px; margin:6px 0;">
         成本 ${p.cost || "—"}｜現價 ${price ?? "—"}｜${p.shares || 0} 股｜市值約 ${value} 元
-        ${pl ? `｜短線計畫：<b>${pl.action}</b>` : ""}
+        ${va ? `｜持股判斷：<b>${va.action}</b>` : (pl ? `｜短線計畫：<b>${pl.action}</b>` : "")}
       </p>
       <div style="font-size:12.5px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:7px 9px; color:#1e3a8a;">${advice}</div>
     </article>`;

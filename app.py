@@ -2823,6 +2823,14 @@ class Handler(SimpleHTTPRequestHandler):
                     signals = [s for s in signals if s.get("agent_id") in allowed]
                 self.send_json({"storage": storage, "signals": signals[:limit], "signal_count": len(signals)})
                 return
+            if parsed.path == "/api/value-current":
+                from company.model.current_state import load_current_state
+                state, storage = load_current_state()
+                if state is None:
+                    self.send_json({"error": "每日價值狀態尚未產生", "storage": storage}, HTTPStatus.SERVICE_UNAVAILABLE)
+                else:
+                    self.send_json({**state, "storage": storage})
+                return
             if parsed.path == "/api/version":
                 self.send_json(build_version())
                 return
@@ -2960,6 +2968,24 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            if self.path == "/api/value-portfolio":
+                from company.model.current_state import load_current_state
+                from company.model.value_daily import portfolio_actions
+                body = self.read_body()
+                state, storage = load_current_state()
+                if state is None:
+                    self.send_json({"error": "每日價值狀態尚未產生", "storage": storage}, HTTPStatus.SERVICE_UNAVAILABLE)
+                else:
+                    positions = normalize_positions(body.get("positions", []))
+                    normalized = [
+                        {"symbol": symbol, "shares": value.get("shares", 0), "cost": value.get("cost", 0)}
+                        for symbol, value in positions.items()
+                    ]
+                    self.send_json({
+                        "as_of": state.get("as_of"), "actions": portfolio_actions(state, normalized),
+                        "storage": storage, "personal_data_saved": False,
+                    })
+                return
             if self.path == "/api/agent-signals":
                 body = self.read_body()
                 end = body.get("end") or datetime.now(timezone(timedelta(hours=8))).date().isoformat()

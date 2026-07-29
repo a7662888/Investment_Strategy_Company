@@ -119,8 +119,15 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         return {"symbol": symbol, "error": "no_price"}
     cur_raw, cur_adj = rows[-1]["close"], rows[-1]["adj_close"]
     as_of = rows[-1]["date"]
+    closes = [r["close"] for r in rows]
+    ma20 = statistics.mean(closes[-20:]) if len(closes) >= 20 else None
+    ma60 = statistics.mean(closes[-60:]) if len(closes) >= 60 else None
+    momentum20 = (cur_raw / closes[-21] - 1.0) if len(closes) >= 21 and closes[-21] else None
     out = {"symbol": symbol, "name": info.get("name") or code, "as_of": as_of,
-           "price": cur_raw, "is_etf": is_etf, "reasons": []}
+           "price": cur_raw, "is_etf": is_etf, "reasons": [],
+           "ma20": round(ma20, 4) if ma20 is not None else None,
+           "ma60": round(ma60, 4) if ma60 is not None else None,
+           "momentum20": round(momentum20, 6) if momentum20 is not None else None}
 
     if is_etf:
         adjs = sorted(r["adj_close"] for r in rows)

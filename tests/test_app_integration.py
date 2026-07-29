@@ -107,6 +107,38 @@ def test_agent_signals_endpoint():
         server.shutdown()
 
 
+def test_value_current_and_portfolio_endpoints():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), appmod.Handler)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    state = {
+        "as_of": "2026-07-29", "coverage": {"mother_pool": 100, "quality_covered": 1},
+        "top_picks": [], "waiting_list": [],
+        "evaluations": [{
+            "symbol": "2330.TW", "name": "台積電", "price": 1000.0, "action": "accumulate",
+            "quality_pass": True, "risk_tier": "一般", "valuation_pct": 20.0,
+            "trend": "上升趨勢", "is_etf": False,
+        }],
+    }
+    try:
+        with patch("company.model.current_state.load_current_state", return_value=(state, {"durable": True})):
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/value-current", timeout=5) as response:
+                current = json.loads(response.read().decode("utf-8"))
+            body = json.dumps({"positions": [{"symbol": "2330.TW", "shares": 10, "cost": 900}]}).encode("utf-8")
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{port}/api/value-portfolio", data=body,
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                portfolio = json.loads(response.read().decode("utf-8"))
+        assert current["coverage"]["mother_pool"] == 100
+        assert portfolio["personal_data_saved"] is False
+        assert portfolio["actions"][0]["symbol"] == "2330.TW"
+        print("✅ daily value current-state / portfolio endpoints 正常")
+    finally:
+        server.shutdown()
+
+
 def test_codex_v2_blocks_new_positions_on_red_market():
     rows = _fake_rows()
     analysis = appmod.analyze_candidate("9999.TW", rows, risk_level="RED")
@@ -124,4 +156,5 @@ if __name__ == "__main__":
     test_codex_v2_blocks_new_positions_on_red_market()
     test_health_endpoint()
     test_agent_signals_endpoint()
+    test_value_current_and_portfolio_endpoints()
     print("✅ app 整合測試全數通過")
