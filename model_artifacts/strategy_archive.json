@@ -3055,6 +3055,73 @@
           "picks": []
         }
       ]
+    },
+    {
+      "timestamp": "2026-07-30T10:29:21.825726",
+      "pick_date": "2026-07-29",
+      "eval_date": "2026-07-30",
+      "agents": [
+        {
+          "agent": "🤖 Codex",
+          "n": 5,
+          "avg_return": -0.01018,
+          "picks": [
+            {
+              "symbol": "2357.TW",
+              "return": -0.03154
+            },
+            {
+              "symbol": "2882.TW",
+              "return": 0.01169
+            },
+            {
+              "symbol": "2881.TW",
+              "return": 0.00813
+            },
+            {
+              "symbol": "3231.TW",
+              "return": -0.05605
+            },
+            {
+              "symbol": "2887.TW",
+              "return": 0.01687
+            }
+          ]
+        },
+        {
+          "agent": "🌌 Antigravity",
+          "n": 5,
+          "avg_return": -0.01619,
+          "picks": [
+            {
+              "symbol": "2881.TW",
+              "return": 0.00813
+            },
+            {
+              "symbol": "2887.TW",
+              "return": 0.01687
+            },
+            {
+              "symbol": "3481.TW",
+              "return": -0.00957
+            },
+            {
+              "symbol": "2409.TW",
+              "return": -0.06131
+            },
+            {
+              "symbol": "3008.TW",
+              "return": -0.03506
+            }
+          ]
+        },
+        {
+          "agent": "🧠 Claude",
+          "n": 0,
+          "avg_return": null,
+          "picks": []
+        }
+      ]
     }
   ]
 }
