@@ -83,6 +83,7 @@ def main() -> None:
         ]
         raw_benchmark = [
             {"date": "2026-01-02", "close": 50, "high": 51, "low": 49},
+            {"date": "2026-01-05", "close": 50.5, "high": 51, "low": 50},
             {"date": "2026-01-06", "close": 51, "high": 52, "low": 50},
         ]
         adjusted_event = ledger._outcome_event(
@@ -95,6 +96,9 @@ def main() -> None:
         assert adjusted_event is not None
         assert adjusted_event["return_basis"] == "adjusted"
         assert adjusted_event["gross_return"] == round(102 / 99 - 1, 8)
+        assert adjusted_event["reference_price"] == 100
+        assert adjusted_event["frozen_reference_price"] == 100
+        assert adjusted_event["reference_price_valid"] is True
         assert adjusted_event["benchmark_return_basis"] == "raw"
         assert adjusted_event["benchmark_return"] == 0.02
 
@@ -108,7 +112,65 @@ def main() -> None:
         )
         assert raw_event is not None
         assert raw_event["return_basis"] == "raw"
-        assert raw_event["gross_return"] == round(100 / 101 - 1, 8)
+        assert raw_event["gross_return"] == 0
+        assert raw_event["frozen_reference_price"] == 101
+        assert raw_event["reference_price"] == 100
+
+        bad_reference = ledger._outcome_event(
+            {"signal_id": "SIG-bad-ref", "data_cutoff": "2026-01-02", "reference_price": 5},
+            "2D",
+            raw_rows,
+            raw_benchmark,
+            0,
+        )
+        assert bad_reference is not None
+        assert bad_reference["gross_return"] == 0, "Bad frozen price must not contaminate returns"
+        assert bad_reference["reference_price_valid"] is False
+        assert bad_reference["event_id"] == ledger._event_id(
+            "OUT", {"signal_id": "SIG-bad-ref", "horizon": "2D"}
+        )
+
+        missing_eval = ledger._outcome_event(
+            {"signal_id": "SIG-suspended", "data_cutoff": "2026-01-02", "reference_price": 100},
+            "2D",
+            raw_rows[:-1],
+            raw_benchmark,
+            0,
+        )
+        assert missing_eval is None, "Missing the exact benchmark session must remain pending"
+
+        try:
+            ledger.build_signal_event({**signal, "reference_market_price": 2300})
+            raise AssertionError("Scale-mismatched reference price should be rejected")
+        except ValueError as exc:
+            assert "scale mismatch" in str(exc)
+
+        # A newer signal for the same symbol must not truncate history for the
+        # older signal, and reruns must never append a second outcome version.
+        ledger.LEDGER_PATH.unlink(missing_ok=True)
+        ledger._invalidate_read_cache()
+        old_signal = {**signal, "data_cutoff": "2026-01-02", "model_version": "old"}
+        new_signal = {**signal, "data_cutoff": "2026-01-20", "model_version": "new"}
+        frozen_pair = ledger.freeze_signals([old_signal, new_signal])
+        assert frozen_pair["added"] == 2
+        starts = []
+
+        def tracked_fetch(symbol: str, start: str, end: str) -> list[dict]:
+            starts.append((symbol, start))
+            return [row for row in histories[symbol] if start <= row["date"] < end]
+
+        first_outcomes = ledger.update_outcomes("2026-07-31", tracked_fetch)
+        second_outcomes = ledger.update_outcomes("2026-07-31", tracked_fetch)
+        assert first_outcomes["added"] == 9, first_outcomes
+        assert second_outcomes["added"] == 0
+        pair_events, _ = ledger.load_events(prefer_remote=False)
+        outcome_pairs = [
+            (event.get("signal_id"), event.get("horizon"))
+            for event in pair_events if event.get("event_type") == "outcome"
+        ]
+        assert len(outcome_pairs) == len(set(outcome_pairs))
+        symbol_starts = {start for symbol, start in starts if symbol == "2330.TW"}
+        assert len(symbol_starts) == 1, "One symbol must use one earliest-history request"
 
         local_event = ledger.build_signal_event({**signal, "symbol": "2317.TW"})
         ledger.LEDGER_PATH.write_text(ledger._serialize_jsonl([local_event]), encoding="utf-8")

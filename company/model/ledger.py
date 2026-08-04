@@ -16,7 +16,7 @@ from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[2]
 LEDGER_PATH = Path(os.environ.get("DECISION_LEDGER_PATH", ROOT / "data" / "decision_ledger.jsonl"))
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 HORIZONS = ("1D", "5D", "20D", "60D", "120D")
 REMOTE_PATH = "data/decision_ledger.jsonl"
 
@@ -70,8 +70,15 @@ def _remote_config() -> tuple[str, str, str] | None:
     return token, repo, branch
 
 
-def _remote_request(method: str, token: str, repo: str, branch: str, payload: dict | None = None):
-    encoded_path = "/".join(urllib.parse.quote(part, safe="") for part in REMOTE_PATH.split("/"))
+def _remote_request(
+    method: str,
+    token: str,
+    repo: str,
+    branch: str,
+    payload: dict | None = None,
+    remote_path: str = REMOTE_PATH,
+):
+    encoded_path = "/".join(urllib.parse.quote(part, safe="") for part in remote_path.split("/"))
     url = f"https://api.github.com/repos/{repo}/contents/{encoded_path}"
     if method == "GET":
         url += "?" + urllib.parse.urlencode({"ref": branch})
@@ -87,13 +94,13 @@ def _remote_request(method: str, token: str, repo: str, branch: str, payload: di
         return json.loads(response.read().decode("utf-8"))
 
 
-def _fetch_remote() -> tuple[list[dict] | None, str | None, str | None]:
+def _fetch_remote(remote_path: str = REMOTE_PATH) -> tuple[list[dict] | None, str | None, str | None]:
     config = _remote_config()
     if config is None:
         return None, None, "remote_not_configured"
     token, repo, branch = config
     try:
-        data = _remote_request("GET", token, repo, branch)
+        data = _remote_request("GET", token, repo, branch, remote_path=remote_path)
         content = str(data.get("content") or "")
         # >1MB 檔案 contents API 回傳 content=""/encoding="none"（但 sha 有效）——
         # 若誤當空帳本會導致後續寫入整檔覆蓋（2026-07-09 事故根因）。改走 blob API（上限 100MB）。
@@ -121,20 +128,25 @@ def _fetch_remote() -> tuple[list[dict] | None, str | None, str | None]:
         return None, None, f"github_read:{type(exc).__name__}"
 
 
-def _write_remote(events: list[dict], sha: str | None) -> tuple[bool, str | None]:
+def _write_remote(
+    events: list[dict],
+    sha: str | None,
+    remote_path: str = REMOTE_PATH,
+    message: str | None = None,
+) -> tuple[bool, str | None]:
     config = _remote_config()
     if config is None:
         return False, "remote_not_configured"
     token, repo, branch = config
     payload = {
-        "message": f"chore(ledger): append decision events {_utc_now()}",
+        "message": message or f"chore(ledger): append decision events {_utc_now()}",
         "content": base64.b64encode(_serialize_jsonl(events).encode("utf-8")).decode("ascii"),
         "branch": branch,
     }
     if sha:
         payload["sha"] = sha
     try:
-        _remote_request("PUT", token, repo, branch, payload)
+        _remote_request("PUT", token, repo, branch, payload, remote_path=remote_path)
         return True, None
     except urllib.error.HTTPError as exc:
         return False, f"github_http_{exc.code}"
@@ -260,6 +272,25 @@ def build_signal_event(signal: dict) -> dict:
     }
     if not core["symbol"] or not core["data_cutoff"]:
         raise ValueError("symbol and data_cutoff are required")
+    try:
+        reference_price = float(signal.get("reference_price", signal.get("close")))
+    except (TypeError, ValueError):
+        raise ValueError("reference_price must be numeric")
+    if reference_price <= 0:
+        raise ValueError("reference_price must be positive")
+    market_reference = signal.get("reference_market_price")
+    if market_reference not in (None, ""):
+        try:
+            market_reference = float(market_reference)
+        except (TypeError, ValueError):
+            raise ValueError("reference_market_price must be numeric")
+        if market_reference <= 0:
+            raise ValueError("reference_market_price must be positive")
+        ratio = reference_price / market_reference
+        if ratio < 0.5 or ratio > 2.0:
+            raise ValueError(
+                f"reference_price scale mismatch: frozen={reference_price}, market={market_reference}"
+            )
     signal_id = _event_id("SIG", core)
     return {
         "schema_version": SCHEMA_VERSION,
@@ -269,7 +300,9 @@ def build_signal_event(signal: dict) -> dict:
         "recorded_at": _utc_now(),
         **core,
         "name": signal.get("name"),
-        "reference_price": signal.get("reference_price", signal.get("close")),
+        "reference_price": reference_price,
+        "reference_price_date": str(signal.get("reference_price_date") or core["data_cutoff"]),
+        "reference_price_source": str(signal.get("reference_price_source") or "signal_payload"),
         "entry_range": signal.get("entry_range", signal.get("buy_range")),
         "stop_loss": signal.get("stop_loss"),
         "target": signal.get("target", signal.get("take_profit")),
@@ -301,7 +334,20 @@ def materialize(events: list[dict]) -> list[dict]:
         if event.get("event_type") == "signal":
             signals[event["signal_id"]] = {**event, "outcomes": {}}
         elif event.get("event_type") == "outcome" and event.get("signal_id") in signals:
-            signals[event["signal_id"]]["outcomes"][event["horizon"]] = event
+            outcomes = signals[event["signal_id"]]["outcomes"]
+            current = outcomes.get(event["horizon"])
+            if current is None:
+                outcomes[event["horizon"]] = event
+                continue
+            current_schema = int(current.get("schema_version") or 1)
+            candidate_schema = int(event.get("schema_version") or 1)
+            if candidate_schema > current_schema:
+                outcomes[event["horizon"]] = event
+            elif candidate_schema == current_schema and str(event.get("evaluation_date") or "9999-12-31") < str(current.get("evaluation_date") or "9999-12-31"):
+                # Legacy ledgers may contain several outcomes for one horizon after a
+                # truncated-history cache bug. The earliest evaluation is closest to
+                # the intended horizon and is safer than the last appended version.
+                outcomes[event["horizon"]] = event
     return sorted(signals.values(), key=lambda item: item.get("recorded_at", ""), reverse=True)
 
 
@@ -334,18 +380,33 @@ def _adj_factor(row: dict) -> float:
 def _outcome_event(signal: dict, horizon: str, rows: list[dict], benchmark_rows: list[dict], cost_rate: float) -> dict | None:
     n_days = int(horizon[:-1])
     cutoff = signal["data_cutoff"]
-    after = [row for row in rows if row["date"] > cutoff]
-    if len(after) < n_days:
+    benchmark_after = [row for row in benchmark_rows if row["date"] > cutoff]
+    if len(benchmark_after) < n_days:
         return None
-    raw_reference = float(signal.get("reference_price") or 0)
-    if raw_reference <= 0:
+    evaluation_date = benchmark_after[n_days - 1]["date"]
+    row_by_date = {row["date"]: row for row in rows}
+    end_row = row_by_date.get(evaluation_date)
+    if end_row is None:
+        # A suspended stock or an incomplete provider response is not allowed to
+        # silently slide to a later date. Keep the horizon pending instead.
         return None
-    period = after[:n_days]
-    end_row = period[-1]
+    trading_dates = {row["date"] for row in benchmark_after[:n_days]}
+    period = [row for row in rows if row["date"] in trading_dates]
+    if not period:
+        return None
 
-    # Prefer a total-return basis: same adjusted series for reference and evaluation.
     ref_rows = [row for row in rows if row["date"] <= cutoff]
-    adj_ref = _adj_close(ref_rows[-1]) if ref_rows else None
+    if not ref_rows:
+        return None
+    ref_row = ref_rows[-1]
+    market_reference = float(ref_row["close"])
+    frozen_reference = float(signal.get("reference_price") or 0)
+    reference_ratio = frozen_reference / market_reference if frozen_reference > 0 and market_reference > 0 else None
+    reference_valid = reference_ratio is not None and 0.5 <= reference_ratio <= 2.0
+
+    # Prefer total-return prices on both ends. Raw fallback also uses the actual
+    # cutoff close, never an unverified frozen payload price.
+    adj_ref = _adj_close(ref_row)
     adj_end = _adj_close(end_row)
     if adj_ref and adj_ref > 0 and adj_end:
         return_basis = "adjusted"
@@ -355,7 +416,7 @@ def _outcome_event(signal: dict, horizon: str, rows: list[dict], benchmark_rows:
         lows = [_adj_factor(row) * float(row["low"]) for row in period]
     else:
         return_basis = "raw"
-        reference_basis = raw_reference
+        reference_basis = market_reference
         end_value = float(end_row["close"])
         highs = [float(row["high"]) for row in period]
         lows = [float(row["low"]) for row in period]
@@ -381,15 +442,20 @@ def _outcome_event(signal: dict, horizon: str, rows: list[dict], benchmark_rows:
                     benchmark_return_basis = "raw"
             except (KeyError, TypeError, ValueError):
                 pass
-    payload = {"signal_id": signal["signal_id"], "horizon": horizon, "evaluation_date": end_row["date"]}
+    payload = {"signal_id": signal["signal_id"], "horizon": horizon}
     return {
         "schema_version": SCHEMA_VERSION,
         "event_type": "outcome",
         "event_id": _event_id("OUT", payload),
         "recorded_at": _utc_now(),
         **payload,
+        "evaluation_date": evaluation_date,
         "return_basis": return_basis,
-        "reference_price": raw_reference,
+        "reference_price": market_reference,
+        "reference_price_date": ref_row["date"],
+        "frozen_reference_price": frozen_reference,
+        "reference_price_ratio": None if reference_ratio is None else round(reference_ratio, 8),
+        "reference_price_valid": reference_valid,
         "evaluation_price": float(end_row["close"]),
         "gross_return": round(gross, 8),
         "transaction_cost_rate": cost_rate,
@@ -403,33 +469,65 @@ def _outcome_event(signal: dict, horizon: str, rows: list[dict], benchmark_rows:
     }
 
 
-def update_outcomes(as_of: str, fetch_history: Callable[[str, str, str], list[dict]]) -> dict:
-    events, storage = load_events()
-    signals = materialize(events)
-    existing = {event.get("event_id") for event in events}
-    pending = []
+def compute_outcome_events(
+    signals: list[dict],
+    as_of: str,
+    fetch_history: Callable[[str, str, str], list[dict]],
+    existing_pairs: set[tuple[object, object]] | None = None,
+) -> tuple[list[dict], dict]:
+    existing_pairs = set(existing_pairs or set())
+    pending: list[dict] = []
+    diagnostics: dict = {"fetch_errors": [], "symbols": 0}
     if not signals:
-        return {"added": 0, "storage": storage}
-    start = min(signal["data_cutoff"] for signal in signals)
+        return pending, diagnostics
+    earliest_cutoff = min(signal["data_cutoff"] for signal in signals)
+    start = (datetime.fromisoformat(earliest_cutoff) - timedelta(days=14)).date().isoformat()
     end = (datetime.fromisoformat(as_of) + timedelta(days=1)).date().isoformat()
     try:
         benchmark_rows = sorted(fetch_history("0050.TW", start, end), key=lambda row: row["date"])
-    except Exception:
+    except Exception as exc:
         benchmark_rows = []
+        diagnostics["fetch_errors"].append({"symbol": "0050.TW", "error": type(exc).__name__})
     cost_rate = max(0.0, float(os.environ.get("LEDGER_TRANSACTION_COST_RATE", "0")))
+    earliest_by_symbol: dict[str, str] = {}
+    for signal in signals:
+        symbol = signal["symbol"]
+        cutoff = signal["data_cutoff"]
+        if symbol not in earliest_by_symbol or cutoff < earliest_by_symbol[symbol]:
+            earliest_by_symbol[symbol] = cutoff
     cache = {}
     for signal in signals:
         symbol = signal["symbol"]
         if symbol not in cache:
+            diagnostics["symbols"] += 1
             try:
-                cache[symbol] = sorted(fetch_history(symbol, signal["data_cutoff"], end), key=lambda row: row["date"])
-            except Exception:
+                symbol_start = (datetime.fromisoformat(earliest_by_symbol[symbol]) - timedelta(days=14)).date().isoformat()
+                cache[symbol] = sorted(fetch_history(symbol, symbol_start, end), key=lambda row: row["date"])
+            except Exception as exc:
                 cache[symbol] = []
+                diagnostics["fetch_errors"].append({"symbol": symbol, "error": type(exc).__name__})
         for horizon in HORIZONS:
+            pair = (signal.get("signal_id"), horizon)
+            if pair in existing_pairs:
+                continue
             event = _outcome_event(signal, horizon, cache[symbol], benchmark_rows, cost_rate)
-            if event and event["event_id"] not in existing:
+            if event:
                 pending.append(event)
-                existing.add(event["event_id"])
+                existing_pairs.add(pair)
+    diagnostics["generated"] = len(pending)
+    return pending, diagnostics
+
+
+def update_outcomes(as_of: str, fetch_history: Callable[[str, str, str], list[dict]]) -> dict:
+    events, storage = load_events()
+    signals = materialize(events)
+    existing_pairs = {
+        (event.get("signal_id"), event.get("horizon"))
+        for event in events
+        if event.get("event_type") == "outcome"
+    }
+    pending, diagnostics = compute_outcome_events(signals, as_of, fetch_history, existing_pairs)
     result = append_events(pending)
     result["storage_before"] = storage
+    result["diagnostics"] = diagnostics
     return result
