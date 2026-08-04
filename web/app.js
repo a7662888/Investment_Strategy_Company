@@ -2255,16 +2255,29 @@ async function renderMyHoldings() {
 }
 
 // ---- 成績回顧（復盤）----
+// 離群值防護：凍結時若寫入錯誤參考價（實際發生過：台積電 ref 誤植 100 元 vs 實際 2290，
+// 算出 +2140% 假超額），單筆就能把整體平均帶偏。5D/20D 報酬不可能達 ±100%，一律視為資料異常剔除。
+const OUTCOME_SANITY_LIMIT = 1.0;
+function isSaneOutcome(o) {
+  const g = Number(o.gross_return);
+  if (!isFinite(g) || Math.abs(g) > OUTCOME_SANITY_LIMIT) return false;
+  const e = o.excess_return;
+  if (e !== null && e !== undefined && Math.abs(Number(e)) > OUTCOME_SANITY_LIMIT) return false;
+  return true;
+}
+
 function renderReview() {
   const panel = $("reviewPanel"), status = $("reviewStatus");
   if (!panel) return;
   const vs = asArray(ledgerSignals).filter(s => s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack");
   const rows = [];
+  let dropped = 0;
   vs.forEach(s => {
     const oc = s.outcomes || {};
     OUTCOME_HORIZONS.forEach(h => {
       const o = oc[h];
       if (o && o.gross_return !== null && o.gross_return !== undefined) {
+        if (!isSaneOutcome(o)) { dropped++; return; }
         rows.push({ symbol: s.symbol, name: s.name || "", action: s.action, horizon: h,
                     g: Number(o.gross_return), e: o.excess_return === null || o.excess_return === undefined ? null : Number(o.excess_return) });
       }
@@ -2306,6 +2319,7 @@ function renderReview() {
     <p style="font-size:12px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:7px 9px; margin-top:10px;">
       ⚠️ 目前最長只有 ${maxDays} 個交易日的成績，<b>屬於雜訊區間、不能當作方法有效的證據</b>。
       本系統的判定標準是 60／120 個交易日；在那之前所有數字僅供觀察。
+      ${dropped ? `<br>已剔除 ${dropped} 筆異常值（單期報酬超過 ±100%，判定為凍結時參考價有誤，不列入統計）。` : ""}
     </p>`;
 }
 

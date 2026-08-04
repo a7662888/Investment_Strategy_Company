@@ -64,11 +64,20 @@ def build_html(positions):
     # 成績回顧：涵蓋所有已成熟期數（先前只找 20D/60D/120D，漏掉已算出的 1D/5D）
     HORIZONS = ("1D", "5D", "20D", "60D", "120D")
     agg = {}
+    def _sane(o):
+        # 凍結時若寫入錯誤參考價（實際發生過：台積電 ref 誤植 100 vs 實際 2290 → +2140% 假超額），
+        # 單筆就能把平均帶偏。5D/20D 報酬不可能達 ±100%，一律視為資料異常剔除。
+        g = o.get("gross_return")
+        e = o.get("excess_return")
+        if g is None or abs(float(g)) > 1.0:
+            return False
+        return not (e is not None and abs(float(e)) > 1.0)
+
     for s in sigs:
         oc = s.get("outcomes") or {}
         for h in HORIZONS:
             o = oc.get(h)
-            if isinstance(o, dict) and o.get("gross_return") is not None:
+            if isinstance(o, dict) and o.get("gross_return") is not None and _sane(o):
                 agg.setdefault(h, []).append((s.get("symbol"), o.get("gross_return"), o.get("excess_return")))
     risk = m.get("risk_level") or "?"
     risk_color = {"GREEN": "#137333", "YELLOW": "#b45309", "RED": "#c5221f", "BLACK": "#111"}.get(risk, "#555")
