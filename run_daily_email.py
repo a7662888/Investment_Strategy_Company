@@ -4,7 +4,7 @@
 個資零入庫：收件人、SMTP 應用程式密碼、持股全部來自環境變數（Actions 加密 secrets）：
   EMAIL_ADDRESS      寄件人=收件人 Gmail
   SMTP_APP_PASSWORD  Gmail 應用程式密碼
-  STOCK_POSITIONS    JSON 陣列，如 [{"symbol":"0056.TW","shares":1000,"cost":53.95}]
+  STOCK_POSITIONS    JSON 陣列；或 sync:<私有同步密鑰> 以共用網頁持股
 資料只讀已部署網站的公開 API；shadow 免責聲明內建。
 """
 import json, os, smtplib, ssl, sys, urllib.request
@@ -15,6 +15,7 @@ from email.mime.text import MIMEText
 from company.model.positions import load_positions
 
 BASE = os.environ.get("SITE_BASE", "https://investment-strategy-company.onrender.com")
+POSITION_SYNC_PREFIX = "sync:"
 
 def api(path, payload=None):
     data = None if payload is None else json.dumps(payload).encode()
@@ -23,6 +24,41 @@ def api(path, payload=None):
         method="POST" if payload is not None else "GET")
     with urllib.request.urlopen(req, timeout=180) as r:
         return json.loads(r.read().decode())
+
+def synced_positions(sync_token):
+    """Read the private portfolio through the deployed API without exposing data-repo credentials."""
+    req = urllib.request.Request(
+        BASE + "/api/positions",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {sync_token}",
+            "User-Agent": "daily-email-positions",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=45) as response:
+        doc = json.loads(response.read().decode("utf-8"))
+    if int(doc.get("version") or 0) <= 0:
+        raise RuntimeError("private positions have not been initialized")
+    positions = doc.get("positions")
+    if not isinstance(positions, list):
+        raise RuntimeError("private positions response is invalid")
+    return positions
+
+def resolve_positions():
+    """Prefer the durable private portfolio, with the legacy JSON secret as a fallback."""
+    raw = os.environ.get("STOCK_POSITIONS", "").strip()
+    if raw.lower().startswith(POSITION_SYNC_PREFIX):
+        sync_token = raw[len(POSITION_SYNC_PREFIX):].strip()
+        if not sync_token:
+            raise RuntimeError("STOCK_POSITIONS sync token is empty")
+        return synced_positions(sync_token)
+
+    fallback_positions = json.loads(raw or "[]")
+    position_doc, position_storage = load_positions()
+    if position_storage.get("source") in ("github", "local") and position_doc.get("version", 0) > 0:
+        return position_doc.get("positions", [])
+    return fallback_positions
 
 def pct(x, digits=2):
     return "—" if x is None else f"{x*100:+.{digits}f}%"
@@ -184,13 +220,7 @@ def build_html(positions):
 def main():
     addr = os.environ.get("EMAIL_ADDRESS", "").strip()
     pw = os.environ.get("SMTP_APP_PASSWORD", "").strip()
-    fallback_positions = json.loads(os.environ.get("STOCK_POSITIONS", "[]"))
-    position_doc, position_storage = load_positions()
-    positions = (
-        position_doc.get("positions", [])
-        if position_storage.get("source") in ("github", "local") and position_doc.get("version", 0) > 0
-        else fallback_positions
-    )
+    positions = resolve_positions()
     if not addr or not pw:
         print("EMAIL_ADDRESS / SMTP_APP_PASSWORD 未設定", file=sys.stderr)
         sys.exit(1)
