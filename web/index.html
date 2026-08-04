@@ -51,12 +51,18 @@
       </div>
       <p style="font-size:12.5px; color:var(--muted); margin:6px 0 8px;">
         格式：<code>代號:股數@成本</code>，多筆用逗號分隔。例：<code>0056.TW:1000@53.95, 00878.TW:1000@34.13</code>
-        （只存在你的瀏覽器，不會上傳）
+        （配對後經 HTTPS 傳至私有資料庫；未配對時只留在此瀏覽器）
       </p>
-      <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+      <div class="position-entry-row" style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
         <input id="homePositionInput" type="text" placeholder="0056.TW:1000@53.95, 00878.TW:1000@34.13"
                style="flex:1; min-width:280px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px;">
         <button id="homePositionSave" class="primary" style="padding:8px 18px;">儲存並分析</button>
+      </div>
+      <div class="position-sync-row" style="display:flex; gap:8px; margin:-2px 0 10px; flex-wrap:wrap; align-items:center;">
+        <input id="homePositionSyncKey" type="password" autocomplete="off" placeholder="私有同步密鑰"
+               style="width:220px; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font-size:12px;">
+        <button id="homePositionCloudSync" type="button" title="連接私有持股同步" style="padding:7px 12px;">雲端同步</button>
+        <span id="homePositionCloudStatus" style="font-size:12px; color:var(--muted);">僅此瀏覽器</span>
       </div>
       <div id="myHoldingsPanel"><p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔的損益、系統建議與白話說明。</p></div>
     </section>

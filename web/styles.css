@@ -435,8 +435,32 @@ input[type="range"] {
 @media (max-width: 700px) {
   html, body { max-width: 100%; overflow-x: hidden; }
   .shell { padding: 16px; }
-  .panel { min-width: 0; padding: 14px; }
+  .panel { width: 100%; max-width: 100%; min-width: 0; padding: 14px; overflow: hidden; }
+  .panel p,
+  .panel code { overflow-wrap: anywhere; word-break: break-word; }
   .sectionHead { align-items: flex-start; flex-wrap: wrap; }
+  .topbar { align-items: flex-start; flex-wrap: wrap; }
+  .topbar > * { min-width: 0; max-width: 100%; }
+  .sectionHead > .pill { flex-basis: 100%; width: max-content; max-width: 100%; }
+  .position-entry-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .position-entry-row input,
+  .position-entry-row button {
+    width: 100%;
+    min-width: 0 !important;
+  }
+  .position-sync-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+  }
+  .position-sync-row > * { min-width: 0; }
+  .position-sync-row input { width: 100% !important; min-width: 0; }
+  .position-sync-row button { width: 100%; white-space: nowrap; }
+  .position-sync-row span { grid-column: 1 / -1; }
   .tableWrap { max-width: 100%; }
   #marketRiskPanel > div,
   #portfolioAllocationPanel > div,

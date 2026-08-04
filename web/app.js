@@ -8,6 +8,93 @@ function taipeiDateString(date = new Date()) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 const POSITION_STORAGE_KEY = "investment_strategy_positions";
+const POSITION_SYNC_TOKEN_KEY = "investment_strategy_positions_sync_token";
+let positionCloudVersion = 0;
+
+function positionSyncToken() {
+  try { return localStorage.getItem(POSITION_SYNC_TOKEN_KEY) || ""; }
+  catch (err) { return ""; }
+}
+
+function setPositionCloudStatus(message, ok = null) {
+  const status = $("homePositionCloudStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.style.color = ok === true ? "#137333" : ok === false ? "#c5221f" : "var(--muted)";
+}
+
+function positionsToRaw(items) {
+  return asArray(items).map(item => `${item.symbol}:${Number(item.shares)}@${Number(item.cost)}`).join(", ");
+}
+
+function applyCloudPositions(items) {
+  const raw = positionsToRaw(items);
+  if (raw) localStorage.setItem(POSITION_STORAGE_KEY, raw);
+  else localStorage.removeItem(POSITION_STORAGE_KEY);
+  const home = $("homePositionInput"), lab = $("positionInput");
+  if (home) home.value = raw;
+  if (lab) lab.value = raw;
+  updatePositionSaveStatus();
+  if ($("myHoldingsPanel")) renderMyHoldings();
+}
+
+async function loadCloudPositions() {
+  const token = positionSyncToken();
+  if (!token) { setPositionCloudStatus("僅此瀏覽器"); return false; }
+  setPositionCloudStatus("同步中…");
+  try {
+    const response = await fetch("/api/positions", {headers: {Authorization: `Bearer ${token}`}});
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+    positionCloudVersion = Number(data.version || 0);
+    if (positionCloudVersion > 0) applyCloudPositions(data.positions || []);
+    else {
+      const local = parsePositionsRaw(localStorage.getItem(POSITION_STORAGE_KEY) || "");
+      if (local.length) await saveCloudPositions(local);
+    }
+    setPositionCloudStatus(`私有同步 v${positionCloudVersion}`, true);
+    return true;
+  } catch (err) {
+    console.warn("Private position sync failed:", err);
+    setPositionCloudStatus("同步失敗，保留本機", false);
+    return false;
+  }
+}
+
+async function saveCloudPositions(items) {
+  const token = positionSyncToken();
+  if (!token) { setPositionCloudStatus("僅此瀏覽器"); return false; }
+  setPositionCloudStatus("上傳中…");
+  try {
+    const response = await fetch("/api/positions", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
+      body: JSON.stringify({version: positionCloudVersion, positions: items})
+    });
+    const data = await response.json();
+    if (response.status === 409) {
+      await loadCloudPositions();
+      throw new Error("雲端版本已更新，已重新載入");
+    }
+    if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+    positionCloudVersion = Number(data.version || positionCloudVersion);
+    setPositionCloudStatus(`私有同步 v${positionCloudVersion}`, true);
+    return true;
+  } catch (err) {
+    console.warn("Private position save failed:", err);
+    setPositionCloudStatus("上傳失敗，保留本機", false);
+    return false;
+  }
+}
+
+async function configurePositionCloud() {
+  const input = $("homePositionSyncKey");
+  const key = input?.value.trim() || "";
+  if (!key) { setPositionCloudStatus("請輸入同步密鑰", false); return; }
+  localStorage.setItem(POSITION_SYNC_TOKEN_KEY, key);
+  input.value = "";
+  await loadCloudPositions();
+}
 
 function restorePositionInput() {
   const input = $("positionInput");
@@ -1099,7 +1186,7 @@ function safeBind(id, handler) {
 }
 
 function bindActions() {
-  safeBind("homePositionSave", () => {
+  safeBind("homePositionSave", async () => {
     const input = $("homePositionInput");
     if (!input) return;
     const v = input.value.trim();
@@ -1107,8 +1194,10 @@ function bindActions() {
     else localStorage.removeItem(POSITION_STORAGE_KEY);
     _heldSet = null;                    // 讓卡片的 💼 標記重算
     renderMyHoldings();
+    await saveCloudPositions(parsePositionsRaw(v));
     if (ledgerSignals) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "value-engine");
   });
+  safeBind("homePositionCloudSync", configurePositionCloud);
   safeBind("refreshQuotes", refreshQuotes);
   safeBind("runTraining", runTraining);
   safeBind("recommendToday", recommendToday);
@@ -1677,6 +1766,7 @@ async function syncSnapshotsFromServer() {
 restorePositionInput();
 if ($("positionInput")) {
   $("positionInput").addEventListener("input", persistPositionInput);
+  $("positionInput").addEventListener("change", () => saveCloudPositions(positions()));
 }
 loadUniverse();
 loadMarketNews();
@@ -2374,3 +2464,7 @@ function renderOutcomeCells(signal) {
     </div>`;
   }).join("");
 }
+
+// Private positions are restored after every function/constant in this shared
+// two-page bundle has initialized. Without a pairing key the browser remains local-only.
+loadCloudPositions();

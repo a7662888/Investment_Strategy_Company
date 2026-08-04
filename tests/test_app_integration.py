@@ -9,8 +9,10 @@ app.py 整合最小測試(Codex 要求:啟動 / /api/health / next-day-plan sche
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
+import urllib.error
 import urllib.request
 from datetime import date, timedelta
 from http.server import ThreadingHTTPServer
@@ -139,6 +141,49 @@ def test_value_current_and_portfolio_endpoints():
         server.shutdown()
 
 
+def test_private_positions_endpoints():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), appmod.Handler)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    old_token = os.environ.get("POSITIONS_SYNC_TOKEN")
+    os.environ["POSITIONS_SYNC_TOKEN"] = "integration-sync-key"
+    document = {
+        "schema_version": 1, "version": 2, "updated_at": "2026-08-04T00:00:00+00:00",
+        "positions": [{"symbol": "0056.TW", "shares": 1000.0, "cost": 54.0}],
+    }
+    try:
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/positions", timeout=5)
+            raise AssertionError("unauthenticated positions read should fail")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+
+        auth = {"Authorization": "Bearer integration-sync-key"}
+        with patch("company.model.positions.load_positions", return_value=(document, {"source": "github", "durable": True})):
+            request = urllib.request.Request(f"http://127.0.0.1:{port}/api/positions", headers=auth)
+            with urllib.request.urlopen(request, timeout=5) as response:
+                loaded = json.loads(response.read().decode("utf-8"))
+        assert loaded["version"] == 2 and loaded["storage"]["durable"] is True
+
+        body = json.dumps({"version": 2, "positions": document["positions"]}).encode("utf-8")
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/positions", data=body,
+            headers={**auth, "Content-Type": "application/json"}, method="POST",
+        )
+        saved = {**document, "version": 3}
+        with patch("company.model.positions.save_positions", return_value=(saved, {"durable": True, "remote_saved": True})):
+            with urllib.request.urlopen(request, timeout=5) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        assert result["version"] == 3 and result["storage"]["durable"] is True
+        print("✅ private positions endpoints require auth and preserve versions")
+    finally:
+        if old_token is None:
+            os.environ.pop("POSITIONS_SYNC_TOKEN", None)
+        else:
+            os.environ["POSITIONS_SYNC_TOKEN"] = old_token
+        server.shutdown()
+
+
 def test_codex_v2_blocks_new_positions_on_red_market():
     rows = _fake_rows()
     analysis = appmod.analyze_candidate("9999.TW", rows, risk_level="RED")
@@ -157,4 +202,5 @@ if __name__ == "__main__":
     test_health_endpoint()
     test_agent_signals_endpoint()
     test_value_current_and_portfolio_endpoints()
+    test_private_positions_endpoints()
     print("✅ app 整合測試全數通過")

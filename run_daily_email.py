@@ -12,6 +12,8 @@ from datetime import date
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from company.model.positions import load_positions
+
 BASE = os.environ.get("SITE_BASE", "https://investment-strategy-company.onrender.com")
 
 def api(path, payload=None):
@@ -182,7 +184,13 @@ def build_html(positions):
 def main():
     addr = os.environ.get("EMAIL_ADDRESS", "").strip()
     pw = os.environ.get("SMTP_APP_PASSWORD", "").strip()
-    positions = json.loads(os.environ.get("STOCK_POSITIONS", "[]"))
+    fallback_positions = json.loads(os.environ.get("STOCK_POSITIONS", "[]"))
+    position_doc, position_storage = load_positions()
+    positions = (
+        position_doc.get("positions", [])
+        if position_storage.get("source") in ("github", "local") and position_doc.get("version", 0) > 0
+        else fallback_positions
+    )
     if not addr or not pw:
         print("EMAIL_ADDRESS / SMTP_APP_PASSWORD 未設定", file=sys.stderr)
         sys.exit(1)

@@ -2777,6 +2777,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -2822,6 +2823,16 @@ class Handler(SimpleHTTPRequestHandler):
                     allowed = {a.strip() for a in agents_param.split(",") if a.strip()}
                     signals = [s for s in signals if s.get("agent_id") in allowed]
                 self.send_json({"storage": storage, "signals": signals[:limit], "signal_count": len(signals)})
+                return
+            if parsed.path == "/api/positions":
+                from company.model.positions import expected_sync_token, is_authorized, load_positions
+                if expected_sync_token() is None:
+                    self.send_json({"error": "positions sync is not configured"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                elif not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                else:
+                    document, storage = load_positions()
+                    self.send_json({**document, "storage": storage})
                 return
             if parsed.path == "/api/value-current":
                 from company.model.current_state import load_current_state
@@ -2968,6 +2979,29 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            if self.path == "/api/positions":
+                from company.model.positions import (
+                    PositionConflict,
+                    expected_sync_token,
+                    is_authorized,
+                    save_positions,
+                )
+                if expected_sync_token() is None:
+                    self.send_json({"error": "positions sync is not configured"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
+                if not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                    return
+                body = self.read_body()
+                expected_version = body.get("version")
+                try:
+                    document, storage = save_positions(body.get("positions") or [], expected_version)
+                except PositionConflict as exc:
+                    self.send_json({"error": str(exc), "conflict": True}, HTTPStatus.CONFLICT)
+                    return
+                status = HTTPStatus.OK if storage.get("durable") else HTTPStatus.SERVICE_UNAVAILABLE
+                self.send_json({**document, "storage": storage}, status)
+                return
             if self.path == "/api/value-portfolio":
                 from company.model.current_state import load_current_state
                 from company.model.value_daily import portfolio_actions
