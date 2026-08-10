@@ -1,7 +1,7 @@
 name: Daily Email Digest
 
-# 每交易日 16:35 台北（08:35 UTC）寄每日投資摘要（雲端執行，本機免開機）。
-# 個資（信箱/SMTP 密碼/持股）全在加密 secrets，不入庫（repo 為公開）。
+# 每交易日 16:35 台北（08:35 UTC）先重算母池100＋ETF子池，再依私有持股寄摘要。
+# 全程在 GitHub runner 執行，不需開網站或開啟本機；每日輸入另存私有 audit 快照。
 
 on:
   schedule:
@@ -11,15 +11,39 @@ on:
 jobs:
   email:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
+    concurrency:
+      group: daily-investment-analysis-email
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Send daily digest
+      - name: Guard - required secrets must exist
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
+          SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
+        run: |
+          test -n "$GITHUB_DATA_TOKEN"
+          test -n "$EMAIL_ADDRESS"
+          test -n "$SMTP_APP_PASSWORD"
+
+      - name: Refresh daily value state (mother pool + ETF subpool)
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python run_daily_value_state.py
+
+      - name: Send fresh, auditable daily digest
         env:
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}
           SMTP_APP_PASSWORD: ${{ secrets.SMTP_APP_PASSWORD }}
           STOCK_POSITIONS: ${{ secrets.STOCK_POSITIONS }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
         run: python run_daily_email.py
