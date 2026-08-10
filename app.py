@@ -3090,6 +3090,21 @@ class Handler(SimpleHTTPRequestHandler):
                         {"symbol": symbol, "shares": value.get("shares", 0), "cost": value.get("cost", 0)}
                         for symbol, value in positions.items()
                     ]
+                    # 母池只含個股，使用者實際持有的 ETF（0056/00878/00919…）不在覆蓋池，
+                    # 先前一律回「資料不足，人工檢查」，等於持股區塊形同虛設。
+                    # 這裡對缺漏標的即時套用同一套 value_rescreen 規則（其已內建 ETF 分支），
+                    # 不新增決策來源、不破壞單一決策鏈。
+                    covered = {i.get("symbol") for i in state.get("evaluations", [])}
+                    missing = [p["symbol"] for p in normalized if p["symbol"] not in covered]
+                    if missing:
+                        try:
+                            from company.screener.value_rescreen import rescreen_all
+                            extra = [r for r in rescreen_all(missing) if not r.get("error")]
+                            if extra:
+                                state = dict(state)
+                                state["evaluations"] = list(state.get("evaluations", [])) + extra
+                        except Exception as exc:
+                            print(f"[value-portfolio] holdings fallback failed: {exc}")
                     self.send_json({
                         "as_of": state.get("as_of"), "actions": portfolio_actions(state, normalized),
                         "storage": storage, "personal_data_saved": False,

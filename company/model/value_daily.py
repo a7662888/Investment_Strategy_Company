@@ -120,10 +120,9 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
         if not item:
             action = "資料不足，人工檢查"
             reasons.append("此標的尚未納入每日品質覆蓋池")
-        elif not item.get("quality_pass") or item.get("action") == "avoid":
-            action = "賣出／減碼檢查"
-            reasons.append("品質硬篩未通過或價值引擎判定 avoid；先核對失效條件，不自動賣出")
         elif item.get("is_etf"):
+            # ETF 必須排在個股品質硬篩之前：ETF 沒有 ROE／毛利率／營益率，
+            # 其 quality_pass 恆為空值，若先過硬篩會被一律誤判成「賣出／減碼檢查」。
             if weight is not None and weight > 0.40:
                 action = "配置過高，減碼再平衡檢查"
                 reasons.append(f"此 ETF 約占目前輸入持股 {weight * 100:.1f}%，超過單一標的 40% 風控線")
@@ -136,6 +135,9 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
             else:
                 action = "續抱領息，停止追加"
                 reasons.append("ETF 不因單日或均線訊號單獨賣出；待估值回落或配置失衡時再調整")
+        elif not item.get("quality_pass") or item.get("action") == "avoid":
+            action = "賣出／減碼檢查"
+            reasons.append("品質硬篩未通過或價值引擎判定 avoid；先核對失效條件，不自動賣出")
         elif item.get("risk_tier") == "高":
             action = "暫停追加，檢查反轉假設"
             reasons.append("景氣股仍在虧損谷底，便宜可能是 value trap")
