@@ -86,6 +86,10 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
                    key=lambda x: x["rank_score"], reverse=True)[:5]
     waiting = sorted((i for i in eligible if i["decision"] in ("等待止跌", "高風險反轉觀察")),
                      key=lambda x: x["rank_score"], reverse=True)[:5]
+    etf_candidates = sorted(
+        (i for i in items if i["is_etf"]),
+        key=lambda x: x["rank_score"], reverse=True,
+    )[:5]
     as_of = max((i.get("as_of") or "" for i in items), default="")
     covered = sum(1 for i in eligible if i.get("fundamentals_complete"))
     return {
@@ -93,7 +97,8 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
         "mode": "daily-current-state", "shadow": True,
         "coverage": {"mother_pool": pool_total, "quality_covered": covered,
                      "not_yet_covered": max(0, pool_total - covered)},
-        "top_picks": picks, "waiting_list": waiting, "evaluations": items,
+        "top_picks": picks, "waiting_list": waiting, "etf_candidates": etf_candidates,
+        "evaluations": items,
         "method": "母池→季度品質硬篩→近3年估值百分位→20/60日趨勢時機；不自動下單",
     }
 

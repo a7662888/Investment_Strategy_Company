@@ -1,21 +1,26 @@
 # -*- coding: utf-8 -*-
 """每日投資摘要 Email（雲端排程版，GitHub Actions 每交易日 16:35 台北執行）。
 
-個資零入庫：收件人、SMTP 應用程式密碼、持股全部來自環境變數（Actions 加密 secrets）：
+收件人與SMTP密碼來自 Actions 加密 secrets；持股優先讀私有 data repo SSOT：
   EMAIL_ADDRESS      寄件人=收件人 Gmail
   SMTP_APP_PASSWORD  Gmail 應用程式密碼
   STOCK_POSITIONS    JSON 陣列；或 sync:<私有同步密鑰> 以共用網頁持股
-資料只讀已部署網站的公開 API；shadow 免責聲明內建。
+每日候選由同一個雲端 workflow 先重算，再讀已部署網站 API；寄信輸入另存私有 audit 快照。
 """
 import json, os, smtplib, ssl, sys, urllib.request
-from datetime import date
+from datetime import date, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
+from company.model.durable_document import save_document
 from company.model.positions import load_positions
 
 BASE = os.environ.get("SITE_BASE", "https://investment-strategy-company.onrender.com")
 POSITION_SYNC_PREFIX = "sync:"
+TAIPEI = ZoneInfo("Asia/Taipei")
+ROOT = Path(__file__).resolve().parent
 
 def api(path, payload=None):
     data = None if payload is None else json.dumps(payload).encode()
@@ -43,10 +48,20 @@ def synced_positions(sync_token):
     positions = doc.get("positions")
     if not isinstance(positions, list):
         raise RuntimeError("private positions response is invalid")
-    return positions
+    return positions, {
+        "source": "positions-api", "version": int(doc.get("version") or 0),
+        "updated_at": doc.get("updated_at"),
+    }
 
-def resolve_positions():
-    """Prefer the durable private portfolio, with the legacy JSON secret as a fallback."""
+def resolve_positions_with_meta():
+    """Use the durable private portfolio first; legacy secrets are fallback only."""
+    position_doc, position_storage = load_positions()
+    if position_storage.get("source") in ("github", "local") and position_doc.get("version", 0) > 0:
+        return position_doc.get("positions", []), {
+            "source": position_storage.get("source"), "version": position_doc.get("version"),
+            "updated_at": position_doc.get("updated_at"),
+        }
+
     raw = os.environ.get("STOCK_POSITIONS", "").strip()
     if raw.lower().startswith(POSITION_SYNC_PREFIX):
         sync_token = raw[len(POSITION_SYNC_PREFIX):].strip()
@@ -55,10 +70,11 @@ def resolve_positions():
         return synced_positions(sync_token)
 
     fallback_positions = json.loads(raw or "[]")
-    position_doc, position_storage = load_positions()
-    if position_storage.get("source") in ("github", "local") and position_doc.get("version", 0) > 0:
-        return position_doc.get("positions", [])
-    return fallback_positions
+    return fallback_positions, {"source": "legacy-secret", "version": 0, "updated_at": None}
+
+
+def resolve_positions():
+    return resolve_positions_with_meta()[0]
 
 def pct(x, digits=2):
     return "—" if x is None else f"{x*100:+.{digits}f}%"
@@ -69,22 +85,68 @@ def price(x):
     except (TypeError, ValueError):
         return "—"
 
-def build_html(positions):
-    today = date.today().isoformat()
+
+def fetch_daily_context(positions):
+    """Fetch one coherent input bundle; value-state/portfolio failure must stop the email."""
+    today = datetime.now(TAIPEI).date().isoformat()
     try:
         market = api(f"/api/market-risk?date={today}")
     except Exception as exc:
         print(f"market risk unavailable: {type(exc).__name__}", file=sys.stderr)
         market = {}
-    try:
-        value_state = api("/api/value-current")
-        value_portfolio = api("/api/value-portfolio", {"positions": positions})
-    except Exception as exc:
-        print(f"daily value state unavailable, ledger fallback: {type(exc).__name__}", file=sys.stderr)
-        value_state, value_portfolio = {}, {"actions": []}
+    value_state = api("/api/value-current")
+    value_portfolio = api("/api/value-portfolio", {"positions": positions})
+    ledger = api("/api/decision-ledger?limit=120&agents=claude-value,claude-etf-subtrack")
+    return {"market": market, "value_state": value_state, "value_portfolio": value_portfolio,
+            "ledger": ledger}
+
+
+def require_fresh_analysis(value_state):
+    expected = datetime.now(TAIPEI).date().isoformat()
+    actual = value_state.get("analysis_date_taipei")
+    if not actual and value_state.get("generated_at"):
+        generated = datetime.fromisoformat(str(value_state["generated_at"]).replace("Z", "+00:00"))
+        actual = generated.astimezone(TAIPEI).date().isoformat()
+    if actual != expected:
+        raise RuntimeError(f"refusing to send stale analysis: expected {expected}, got {actual or 'unknown'}")
+
+
+def archive_daily_analysis(context, position_meta):
+    """Append one private, timestamped audit snapshot for every email run."""
+    now = datetime.now(TAIPEI)
+    run_id = os.environ.get("GITHUB_RUN_ID") or now.strftime("local-%H%M%S")
+    attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "1")
+    audit_id = f"{now.date().isoformat()}-{run_id}-{attempt}"
+    state = context["value_state"]
+    portfolio = context["value_portfolio"]
+    doc = {
+        "schema_version": 1, "audit_id": audit_id, "created_at": now.isoformat(),
+        "analysis_date_taipei": state.get("analysis_date_taipei"),
+        "market_as_of": state.get("as_of"), "state_generated_at": state.get("generated_at"),
+        "source_commit": os.environ.get("GITHUB_SHA"), "position_source": position_meta,
+        "market": context.get("market") or {}, "coverage": state.get("coverage") or {},
+        "top_picks": state.get("top_picks") or [], "waiting_list": state.get("waiting_list") or [],
+        "etf_candidates": state.get("etf_candidates") or [],
+        "portfolio_actions": portfolio.get("actions") or [],
+        "method": state.get("method"), "shadow": True,
+    }
+    remote_path = f"value/daily_audit/{now.date().isoformat()}/{run_id}-{attempt}.json"
+    local_path = ROOT / "data" / "daily_audit" / now.date().isoformat() / f"{run_id}-{attempt}.json"
+    saved = save_document(doc, local_path, remote_path, f"audit(value): freeze daily email {audit_id}")
+    if os.environ.get("GITHUB_DATA_TOKEN") and not saved.get("durable"):
+        raise RuntimeError(f"daily audit was not saved durably: {saved}")
+    return audit_id, saved
+
+
+def build_html(positions, context=None, position_meta=None, audit_id=None):
+    today = datetime.now(TAIPEI).date().isoformat()
+    context = context or fetch_daily_context(positions)
+    market = context["market"]
+    value_state = context["value_state"]
+    value_portfolio = context["value_portfolio"]
     m = market
     portfolio_map = {p["symbol"]: p for p in value_portfolio.get("actions", [])}
-    led = api("/api/decision-ledger?limit=120&agents=claude-value,claude-etf-subtrack")
+    led = context["ledger"]
     sigs = [s for s in led.get("signals", []) if s.get("event_type") == "signal"]
     # 同一標的可能有多版凍結（如 ETF 卡修正參考價後重凍）→ 只取最新，避免舊錯卡的失真報酬混入
     def _rank(e):
@@ -171,6 +233,7 @@ def build_html(positions):
             rows += f"<tr><td>{p['symbol']}</td><td colspan='4' style='color:#c5221f'>今日未取得價值判斷，請人工檢查</td></tr>"
     daily_picks = value_state.get("top_picks") or []
     daily_waiting = value_state.get("waiting_list") or []
+    daily_etfs = value_state.get("etf_candidates") or []
     if daily_picks:
         acc_html = "".join(
             f"<li><b>{s.get('name','')} {s.get('symbol','')}</b>：現價 {price(s.get('price'))}｜"
@@ -186,6 +249,12 @@ def build_html(positions):
         f"{s.get('valuation_zone','—')}｜ROE {price(s.get('roe_ttm'))}%</li>" for s in daily_waiting)
     waiting_block = (f'<p style="font-size:13px"><b>便宜但尚待止跌／高風險：</b></p>'
                      f'<ul>{waiting_html}</ul>') if waiting_html else ""
+    etf_html = "".join(
+        f"<li><b>{s.get('name','')} {s.get('symbol','')}</b>：現價 {price(s.get('price'))}｜"
+        f"{s.get('valuation_zone','—')}｜{s.get('trend','—')}｜<b>{s.get('decision','—')}</b></li>"
+        for s in daily_etfs)
+    etf_block = (f'<h3>🧺 ETF 子池狀態</h3><ul>{etf_html}</ul>' if etf_html else
+                 '<h3>🧺 ETF 子池狀態</h3><p style="color:#777">ETF資料暫時無法取得。</p>')
     avoid_html = "、".join(f"{s.get('name','')}{s.get('symbol','')}" for s in avoid) or "無"
     if agg:
         cells = ""
@@ -209,9 +278,15 @@ def build_html(positions):
                      f"屬雜訊區間、<b>不能當作方法有效的證據</b>；買進與避開已依方向計分，watch/hold 不列入；判定標準為 60／120 個交易日。</p>")
     else:
         mat_block = "<p style='color:#777'>📊 成績累積中，凍結後第 1 個交易日起會自動出現在此。</p>"
+    position_meta = position_meta or {}
+    generated_at = value_state.get("generated_at") or "—"
+    market_as_of = value_state.get("as_of") or "—"
+    position_label = (f"持股SSOT v{position_meta.get('version', 0)}｜"
+                      f"更新 {position_meta.get('updated_at') or '未提供'}｜來源 {position_meta.get('source') or 'unknown'}")
     return f"""
 <div style="font-family:'Microsoft JhengHei',sans-serif;max-width:640px;margin:auto;color:#222">
   <h2>📈 每日投資摘要 <span style="font-size:13px;color:#777">{today}</span></h2>
+  <p style="font-size:12px;color:#475569;background:#f8fafc;padding:8px;border-radius:6px">本次分析執行：{generated_at}<br>市場資料截至：<b>{market_as_of}</b><br>{position_label}<br>稽核編號：{audit_id or '預覽模式'}</p>
   <p>大盤風險燈：<b style="color:{risk_color}">{risk}</b>（{(m.get('regime_label') or m.get('regime') or '')}）</p>
   <h3>💼 我的持股</h3>
   <table border="0" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:14px">
@@ -221,6 +296,7 @@ def build_html(positions):
   <h3>🌱 今日優質股與進場時機</h3>
   <ul>{acc_html}</ul>
   {waiting_block}
+  {etf_block}
   <p>🔴 avoid：{avoid_html}</p>
   {mat_block}
   <hr style="border:none;border-top:1px solid #ddd">
@@ -231,20 +307,27 @@ def build_html(positions):
 def main():
     addr = os.environ.get("EMAIL_ADDRESS", "").strip()
     pw = os.environ.get("SMTP_APP_PASSWORD", "").strip()
-    positions = resolve_positions()
     if not addr or not pw:
         print("EMAIL_ADDRESS / SMTP_APP_PASSWORD 未設定", file=sys.stderr)
         sys.exit(1)
-    html = build_html(positions)
+    positions, position_meta = resolve_positions_with_meta()
+    if not positions:
+        raise RuntimeError("refusing to send: no positions found in private SSOT or fallback secret")
+    context = fetch_daily_context(positions)
+    require_fresh_analysis(context["value_state"])
+    audit_id, audit_storage = archive_daily_analysis(context, position_meta)
+    html = build_html(positions, context=context, position_meta=position_meta, audit_id=audit_id)
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"📈 每日投資摘要 {date.today().isoformat()}"
+    market_as_of = context["value_state"].get("as_of") or "資料日期未知"
+    msg["Subject"] = f"📈 每日投資摘要 {datetime.now(TAIPEI).date().isoformat()}（市場截至 {market_as_of}）"
     msg["From"] = addr
     msg["To"] = addr
     msg.attach(MIMEText(html, "html", "utf-8"))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context(), timeout=30) as s:
         s.login(addr, pw)
         s.sendmail(addr, [addr], msg.as_string())
-    print("daily email sent")
+    print(json.dumps({"status": "sent", "position_count": len(positions), "audit_id": audit_id,
+                      "audit_storage": audit_storage, "market_as_of": market_as_of}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()

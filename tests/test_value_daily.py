@@ -43,6 +43,13 @@ class ValueDailyTests(unittest.TestCase):
         # 單一輸入持股權重 100%，會走配置再平衡，而非因跌破均線直接賣出。
         self.assertEqual(advice["action"], "配置過高，減碼再平衡檢查")
 
+    def test_etf_subpool_is_separate_from_stock_picks(self):
+        etf = _result("0056.TW", pct=25, roe=None, price=40, ma20=39, ma60=38)
+        etf.update(action="accumulate", is_etf=True)
+        state = build_daily_state([_result(), etf], {"1111"}, 100)
+        self.assertEqual([p["symbol"] for p in state["top_picks"]], ["1111.TW"])
+        self.assertEqual([p["symbol"] for p in state["etf_candidates"]], ["0056.TW"])
+
 
 if __name__ == "__main__":
     unittest.main()
