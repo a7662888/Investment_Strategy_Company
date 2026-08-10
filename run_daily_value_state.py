@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from company.data.value_fundamentals import load_fundamentals, refresh_pool, save_fundamentals
 from company.model.current_state import save_current_state
@@ -12,6 +14,7 @@ from company.model.value_daily import build_daily_state
 from company.screener.value_rescreen import rescreen_all
 
 ROOT = Path(__file__).resolve().parent
+TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 def main() -> int:
@@ -24,9 +27,16 @@ def main() -> int:
     fundamentals_saved = save_fundamentals(full_doc)
     fundamentals = dict(seed)
     fundamentals.update(full_doc.get("stocks") or {})
-    symbols = [row["symbol"] for row in pool.get("stocks", [])]
+    # 母池100維持個股可投資池；ETF另設正式子池，但仍使用同一套價值規則與同一份 current-state。
+    etf_symbols = [
+        f"{code}.TW" for code, item in seed.items()
+        if isinstance(item, dict) and item.get("is_etf")
+    ]
+    symbols = list(dict.fromkeys([row["symbol"] for row in pool.get("stocks", [])] + etf_symbols))
     results = rescreen_all(symbols, fundamentals=fundamentals)
     state = build_daily_state(results, pool_codes, int(pool.get("n") or len(pool_codes)))
+    state["analysis_date_taipei"] = datetime.now(TAIPEI).date().isoformat()
+    state["etf_subpool"] = {"count": len(etf_symbols), "symbols": etf_symbols}
     state["fundamentals"] = {
         "coverage": full_doc.get("coverage"),
         "load": load_meta,
@@ -37,7 +47,8 @@ def main() -> int:
     print(json.dumps({
         "as_of": state["as_of"], "coverage": state["coverage"],
         "top_picks": [p["symbol"] for p in state["top_picks"]],
-        "waiting": [p["symbol"] for p in state["waiting_list"]], "storage": saved,
+        "waiting": [p["symbol"] for p in state["waiting_list"]],
+        "etf_candidates": [p["symbol"] for p in state["etf_candidates"]], "storage": saved,
         "fundamentals": state["fundamentals"],
     }, ensure_ascii=False, indent=2))
     state_ok = saved.get("local_saved") and (saved.get("durable") or not saved.get("remote_error"))

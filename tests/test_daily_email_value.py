@@ -2,6 +2,7 @@
 import json
 import os
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 import run_daily_email
@@ -20,6 +21,10 @@ class DailyEmailValueTests(unittest.TestCase):
                 }], "waiting_list": [{
                     "symbol": "1101.TW", "name": "台泥", "decision": "高風險反轉觀察",
                     "valuation_zone": "深度低估（≤P20）", "roe_ttm": -4.1,
+                }], "etf_candidates": [{
+                    "symbol": "00878.TW", "name": "國泰永續高股息", "price": 22.5,
+                    "valuation_zone": "分批區（P20–P40）", "trend": "短線轉穩",
+                    "decision": "可分批研究",
                 }]}
             if path == "/api/value-portfolio":
                 return {"actions": [{
@@ -36,7 +41,36 @@ class DailyEmailValueTests(unittest.TestCase):
         self.assertIn("台灣大", html)
         self.assertIn("高風險反轉觀察", html)
         self.assertIn("續抱領息，停止追加", html)
+        self.assertIn("ETF 子池狀態", html)
+        self.assertIn("00878.TW", html)
         self.assertNotIn("舊短線動作", html)
+
+    def test_stale_analysis_is_rejected(self):
+        with self.assertRaisesRegex(RuntimeError, "stale analysis"):
+            run_daily_email.require_fresh_analysis({"analysis_date_taipei": "2026-01-01"})
+
+    def test_audit_snapshot_contains_candidates_and_portfolio(self):
+        context = {
+            "market": {"risk_level": "GREEN"},
+            "value_state": {
+                "analysis_date_taipei": datetime.now(run_daily_email.TAIPEI).date().isoformat(),
+                "as_of": "2026-08-10", "generated_at": "2026-08-10T09:00:00+00:00",
+                "coverage": {"mother_pool": 100}, "top_picks": [{"symbol": "1216.TW"}],
+                "waiting_list": [], "etf_candidates": [{"symbol": "0056.TW"}],
+                "method": "test",
+            },
+            "value_portfolio": {"actions": [{"symbol": "0056.TW", "action": "續抱"}]},
+            "ledger": {"signals": []},
+        }
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2"}, clear=False), \
+             patch.object(run_daily_email, "save_document", return_value={"durable": True}) as save:
+            audit_id, storage = run_daily_email.archive_daily_analysis(
+                context, {"source": "github", "version": 4, "updated_at": "2026-08-10"})
+        self.assertTrue(audit_id.endswith("-123-2"))
+        self.assertTrue(storage["durable"])
+        saved_doc = save.call_args.args[0]
+        self.assertEqual(saved_doc["top_picks"][0]["symbol"], "1216.TW")
+        self.assertEqual(saved_doc["portfolio_actions"][0]["symbol"], "0056.TW")
 
 
 class _JsonResponse:
@@ -67,11 +101,17 @@ class DailyEmailPositionTests(unittest.TestCase):
             return _JsonResponse(payload)
 
         with patch.dict(os.environ, {"STOCK_POSITIONS": "sync:test-sync-key"}, clear=False), \
+             patch.object(run_daily_email, "load_positions", return_value=(
+                 {"version": 0, "positions": []}, {"source": "none"}
+             )), \
              patch.object(run_daily_email.urllib.request, "urlopen", side_effect=fake_urlopen):
             self.assertEqual(run_daily_email.resolve_positions(), payload["positions"])
 
     def test_sync_secret_rejects_uninitialized_private_positions(self):
         with patch.dict(os.environ, {"STOCK_POSITIONS": "sync:test-sync-key"}, clear=False), \
+             patch.object(run_daily_email, "load_positions", return_value=(
+                 {"version": 0, "positions": []}, {"source": "none"}
+             )), \
              patch.object(
                  run_daily_email.urllib.request,
                  "urlopen",
@@ -87,6 +127,18 @@ class DailyEmailPositionTests(unittest.TestCase):
                  {"version": 0, "positions": []}, {"source": "none"}
              )):
             self.assertEqual(run_daily_email.resolve_positions(), positions)
+
+    def test_private_ssot_overrides_stale_legacy_secret(self):
+        current = [{"symbol": "1216.TW", "shares": 200, "cost": 70.0}]
+        stale = [{"symbol": "0056.TW", "shares": 1000, "cost": 52.0}]
+        with patch.dict(os.environ, {"STOCK_POSITIONS": json.dumps(stale)}, clear=False), \
+             patch.object(run_daily_email, "load_positions", return_value=(
+                 {"version": 4, "updated_at": "2026-08-10", "positions": current},
+                 {"source": "github", "durable": True},
+             )):
+            positions, meta = run_daily_email.resolve_positions_with_meta()
+        self.assertEqual(positions, current)
+        self.assertEqual(meta["version"], 4)
 
 
 if __name__ == "__main__":
