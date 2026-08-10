@@ -1,6 +1,6 @@
 name: Universe Monthly Refresh
 
-# 每月自動重算「母池100 + 週選30」並 commit(觸發 Render 部署)。
+# 每月自動重算唯一正式決策來源的「母池100」並 commit、觸發 Render 部署。
 # 時區:cron 為 UTC。每月 1 日 16:00 UTC ≈ 台灣隔日 00:00。
 on:
   schedule:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: universe-refresh    # 與週更共用,避免同時 push 衝突
+  group: universe-refresh
   cancel-in-progress: false
 
 jobs:
@@ -26,19 +26,19 @@ jobs:
           python-version: "3.11"
       - name: Install deps
         run: pip install --quiet pandas requests
-      - name: Refresh universe (月更:母池100 + 週選30)
+      - name: Refresh investable mother pool (月更:母池100)
         env:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}   # 選填;沒有也能跑(匿名,較易被限流)
-        run: python run_universe_refresh.py both
+        run: python run_universe_refresh.py pool
       - name: Commit if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add model_artifacts/active_pool.json model_artifacts/active_universe.json
+          git add model_artifacts/active_pool.json
           if git diff --cached --quiet; then
             echo "名單無變化,略過。"
           else
-            git commit -m "chore(universe): 自動月更 母池100+週選30 [skip ci]"
+            git commit -m "chore(universe): 自動月更母池100"
             git pull --rebase origin main
             git push origin main
           fi
