@@ -777,18 +777,43 @@ def load_model_artifact() -> dict | None:
 
 def build_version() -> dict:
     return {
-        "app_version": "training-diagnostics-v2",
-        "expected_min_commit": "6bb9f83",
+        "app_version": "single-value-engine-v1",
+        "expected_min_commit": "65ad098",
         "render_git_commit": os.environ.get("RENDER_GIT_COMMIT"),
         "render_service_id": os.environ.get("RENDER_SERVICE_ID"),
         "render_service_name": os.environ.get("RENDER_SERVICE_NAME"),
         "features": {
             "quote_yahoo_1m_fallback": True,
             "quote_twse_tpex_official_close": True,
-            "train_model_training": True,
-            "train_optimizer_audit": True,
-            "train_threshold_reviews": True,
+            "single_value_engine": True,
+            "value_portfolio_actions": True,
+            "legacy_agent_competition": False,
         },
+    }
+
+
+def load_mother_pool_status() -> dict:
+    """Expose the production investable universe without reviving the retired weekly race pool."""
+    path = PROJECT / "model_artifacts" / "active_pool.json"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "error": f"{type(exc).__name__}: {exc}",
+            "stocks": [],
+            "n": 0,
+        }
+    stocks = document.get("stocks") if isinstance(document.get("stocks"), list) else []
+    return {
+        "status": "ok",
+        "generated_at": document.get("generated_at"),
+        "as_of": document.get("as_of"),
+        "basis": document.get("basis"),
+        "per_sector_cap": document.get("per_sector_cap"),
+        "candidates_evaluated": document.get("candidates_evaluated"),
+        "n": len(stocks),
+        "stocks": stocks,
     }
 
 
@@ -834,9 +859,12 @@ def get_data_status() -> dict:
         "gemini",
     ):
         providers.setdefault(name, {"status": "unknown", "last_checked_at": None})
+    mother_pool = load_mother_pool_status()
     return {
         "status": "ok" if not stale_alerts and ledger.get("durable") else "degraded",
         "active_universe_count": len(DISCOVERY_UNIVERSE),
+        "mother_pool_count": mother_pool.get("n", 0),
+        "production_universe": "mother_pool",
         "cache_files_count": len(cache_files),
         "latest_cache_date": latest_date,
         "providers": providers,
@@ -850,8 +878,9 @@ def readiness_status() -> tuple[dict, HTTPStatus]:
     checks = {
         "web_index": (WEB_ROOT / "index.html").exists(),
         "web_script": (WEB_ROOT / "app.js").exists(),
-        "universe": bool(DISCOVERY_UNIVERSE),
-        "model_artifact": MODEL_ARTIFACT_PATH.exists(),
+        "lab_status": (WEB_ROOT / "lab-status.js").exists(),
+        "mother_pool": (PROJECT / "model_artifacts" / "active_pool.json").exists(),
+        "value_engine": (PROJECT / "company" / "model" / "value_daily.py").exists(),
     }
     warnings = []
     if not (os.environ.get("GITHUB_DATA_TOKEN") or os.environ.get("GITHUB_PAT")) or not os.environ.get("GITHUB_DATA_REPO"):
@@ -2764,6 +2793,23 @@ def freeze_candidate_groups(end: str, groups: list[tuple[str, list[dict], str]])
 
 
 class Handler(SimpleHTTPRequestHandler):
+    RETIRED_GET_ENDPOINTS = {
+        "/api/discover",
+        "/api/antigravity/discover",
+        "/api/claude/discover",
+        "/api/daily-performance",
+        "/api/strategy-archive",
+        "/api/universe",
+    }
+    RETIRED_POST_ENDPOINTS = {
+        "/api/agent-signals",
+        "/api/train",
+        "/api/recommend",
+        "/api/codex-long-term",
+        "/api/next-day-plan",
+        "/api/ai-analyze",
+    }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
 
@@ -2791,6 +2837,16 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
         try:
+            if parsed.path in self.RETIRED_GET_ENDPOINTS:
+                self.send_json(
+                    {
+                        "status": "retired",
+                        "error": "舊多代理競賽與短線選股端點已退役",
+                        "replacement": "/api/value-current",
+                    },
+                    HTTPStatus.GONE,
+                )
+                return
             if parsed.path == "/api/symbols":
                 self.send_json({"symbols": DEFAULT_SYMBOLS, "universe": DISCOVERY_UNIVERSE})
                 return
@@ -2841,6 +2897,15 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json({"error": "每日價值狀態尚未產生", "storage": storage}, HTTPStatus.SERVICE_UNAVAILABLE)
                 else:
                     self.send_json({**state, "storage": storage})
+                return
+            if parsed.path == "/api/mother-pool":
+                payload = load_mother_pool_status()
+                status = HTTPStatus.OK if payload.get("status") == "ok" else HTTPStatus.SERVICE_UNAVAILABLE
+                self.send_json(payload, status)
+                return
+            if parsed.path == "/api/market-risk":
+                end = query.get("date", [datetime.now(timezone(timedelta(hours=8))).date().isoformat()])[0]
+                self.send_json(analyze_market_index(end) or {"date": end, "risk_level": "UNKNOWN"})
                 return
             if parsed.path == "/api/version":
                 self.send_json(build_version())
@@ -2979,6 +3044,16 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            if self.path in self.RETIRED_POST_ENDPOINTS:
+                self.send_json(
+                    {
+                        "status": "retired",
+                        "error": "舊多代理競賽、短線選股與重複長投端點已退役",
+                        "replacement": "/api/value-current",
+                    },
+                    HTTPStatus.GONE,
+                )
+                return
             if self.path == "/api/positions":
                 from company.model.positions import (
                     PositionConflict,

@@ -1198,11 +1198,6 @@ function bindActions() {
     if (ledgerSignals) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "value-engine");
   });
   safeBind("homePositionCloudSync", configurePositionCloud);
-  safeBind("refreshQuotes", refreshQuotes);
-  safeBind("runTraining", runTraining);
-  safeBind("recommendToday", recommendToday);
-  safeBind("discoverToday", discoverToday);
-  safeBind("nextDayPlan", nextDayPlan);
 }
 
 // Set endDate to today if not already set
@@ -1212,13 +1207,8 @@ if (endDateEl && !endDateEl.value) {
 }
 
 bindActions();
-refreshQuotes();
-loadDailyPerformance();
 loadDailyValueState();
 loadDecisionLedger();
-discoverToday();
-recommendToday();
-nextDayPlan();
 
 async function loadUniverse() {
   try {
@@ -1768,15 +1758,10 @@ if ($("positionInput")) {
   $("positionInput").addEventListener("input", persistPositionInput);
   $("positionInput").addEventListener("change", () => saveCloudPositions(positions()));
 }
-loadUniverse();
-loadMarketNews();
 // [DEPRECATED 2026-07-01] renderSnapshots() removed — snapshot/replay panel deleted.
 //     Reason: Render ephemeral FS + in-sample overfit (AUC 0.466).
 //     Model evaluation replaced by walk-forward + ledger scoreboard.
 // syncSnapshotsFromServer() removed for the same reason.
-if ($("endDate")) {
-  $("endDate").addEventListener("change", loadMarketNews);
-}
 
 
 // --- 5. AI Analysis Modal Interactions ---
@@ -1897,15 +1882,9 @@ async function loadDecisionLedger() {
   if (!grid) return;
   try {
     statusEl.textContent = "Durable: 讀取中...";
-    // 分開取數：帳本膨脹後價值卡會被每日挑戰者訊號擠出 newest-N 視窗，必須用 agents 過濾。
+    // 單一決策鏈：首頁只讀價值個股與 ETF 子軌，不再載入挑戰者或三方競賽訊號。
     const res = await fetch("/api/decision-ledger?limit=120&agents=claude-value,claude-etf-subtrack");
     const data = await readJson(res);
-    let challengerSignals = [];
-    try {
-      const resC = await fetch("/api/decision-ledger?limit=80&agents=ml-quant,next-day-plan,decision-center,codex-long-term,codex,antigravity,claude");
-      const dataC = await readJson(resC);
-      challengerSignals = asArray(dataC.signals).filter(s => s.event_type === "signal");
-    } catch (err) { console.warn("challenger signals unavailable:", err); }
     
     // Update status
     const storage = data.storage || {};
@@ -1923,10 +1902,7 @@ async function loadDecisionLedger() {
     
     $("ledgerTotalEvents").textContent = count;
     
-    let signals = [
-      ...asArray(data.signals || data.events).filter(s => s.event_type === "signal"),
-      ...challengerSignals,
-    ];
+    let signals = asArray(data.signals || data.events).filter(s => s.event_type === "signal");
     // 同一 agent+標的可能有多版凍結（如 ETF 卡因原參考價錯誤而重凍）：只保留最新 cutoff，
     // 否則舊的錯誤卡與其失真報酬會同時顯示。
     // 排序鍵需含 recorded_at：同一天重凍多版時，只比 data_cutoff 會取到舊版
@@ -1955,7 +1931,7 @@ async function loadDecisionLedger() {
                              .map(s => s.symbol);
     livePrices = await fetchLivePrices(valueSyms);
 
-    // 預設視圖 = 價值引擎（分層整合：首頁主打價值論點卡；挑戰者請點 ML-Quant/全部）
+    // 預設視圖 = 唯一正式決策來源：價值引擎。
     const defBtn = document.querySelector('.ledger-filter[data-filter="value-engine"]');
     if (defBtn) defBtn.click(); else renderLedger("value-engine");
 
@@ -2025,13 +2001,10 @@ function renderLedger(filterType) {
 
   let filtered = [];
   if (filterType === "all") {
-    filtered = ledgerSignals;
+    filtered = valueSignals;
   } else if (filterType === "value-engine") {
     filtered = valueSignals;
-  } else if (filterType === "ml-quant") {
-    filtered = ledgerSignals.filter(s => !isValueAgent(s));
   } else if (filterType === "accumulate") {
-    // 動作光譜只對價值引擎有意義；挑戰者訊號請走 ML-Quant/全部分頁。
     filtered = valueSignals.filter(s => {
       const act = (s.action || "").toLowerCase();
       return act.includes("accumulate") || act.includes("buy_zone") || act.includes("buy");
@@ -2127,49 +2100,6 @@ function renderLedger(filterType) {
     const dqBadge = isMedium ? `<span style="font-size:10px; color:#d97706; background:#fffbeb; border:1px solid #fde68a; padding:1px 4px; border-radius:3px;">DQ: Med</span>` : `<span style="font-size:10px; color:#0f766e; background:#e6f4ea; border:1px solid #ceead6; padding:1px 4px; border-radius:3px;">DQ: High</span>`;
     
     const agentLabel = s.agent_id || "unknown";
-
-    // ML challenger cards get a distinct, honest presentation (NOT the value 4-pane).
-    const isMl = s.agent_id && s.agent_id !== "claude-value" && s.agent_id !== "claude-etf-subtrack";
-    if (isMl) {
-      const mr = s.market_risk || "";
-      const pm = mr.match(/probability_up=([\d.]+)%/);
-      const em = mr.match(/empirical_up_rate['":\s]+([\d.]+)/);
-      const nm = mr.match(/sample_count['":\s]+(\d+)/);
-      const emp = em ? (parseFloat(em[1]) * 100).toFixed(1) : null;
-      const isMlQuant = s.agent_id === "ml-quant";
-      const warnLines = [];
-      if (pm && emp) {
-        warnLines.push(`⚠️ 校準失準：模型稱 ${pm[1]}% 漲，歷史同信心區間實際僅 ${emp}% 漲${nm ? `（樣本 ${nm[1]}）` : ""}。`);
-      } else if (mr) {
-        warnLines.push(mr);
-      }
-      // AUC 0.466 是 ml-quant 專屬事實，不可誤掛到其他挑戰者 agent。
-      warnLines.push(isMlQuant
-        ? "本模型 OOS AUC 0.466（比擲銅板差）已暫停採用，僅作 shadow 對照基準，<b>不構成投資建議</b>。"
-        : "挑戰者引擎訊號（策略實驗室）— 僅 shadow 對照，<b>不構成投資建議</b>。");
-      const calWarn = warnLines.join("<br>");
-      const factors = asArray(s.evidence)
-        .map(e => (typeof e === "string" ? e : (e.claim || "")))
-        .filter(Boolean);
-      return `
-      <div class="ledger-card" style="opacity:0.92;">
-        <div style="font-weight:bold; font-size:15px; display:flex; align-items:center; gap:8px;">
-          <span>${name}</span>
-          <span style="font-family:monospace; color:var(--muted); font-size:12px;">${s.symbol}</span>
-          <span style="font-size:10px; color:#6b7280; background:#f3f4f6; border:1px solid #d1d5db; padding:1px 5px; border-radius:3px;">${isMlQuant ? "🤖 ML 挑戰者" : "🔬 挑戰者"}</span>
-          ${heldBadge(s.symbol)}
-        </div>
-        <span class="ledger-badge ${badgeCls}">${action.toUpperCase()}</span>
-        <div class="ledger-meta"><span>Agent: ${agentLabel}</span><span>Cutoff: ${s.data_cutoff}</span></div>
-        <div class="ledger-meta" style="border-top:none; padding-top:0; margin-top:-4px;"><span>Ref: $${refPrice}</span><span>${isMlQuant ? "機率模型訊號（非價值論述）" : "挑戰者訊號（非價值論述）"}</span></div>
-        <div style="margin:8px 0; padding:8px 10px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; color:#b91c1c; font-size:11px; line-height:1.5;">
-          ${calWarn}
-        </div>
-        ${factors.length ? `<div class="pillar-box" style="margin-bottom:8px;"><span class="pillar-title">📈 技術/動能因子（模型輸入，非價值品質）</span><span class="pillar-desc" style="font-size:11px;">${factors.join("；")}</span></div>` : ""}
-        <div class="ledger-outcome">${outcomeCells}</div>
-      </div>
-      `;
-    }
 
     const pillar1Title = isEtf ? "📈 追蹤指數與邏輯" : "💼 商業與品質";
     const pillar2Title = isEtf ? "💰 內扣費用與成本" : "📊 估值與百分位";
@@ -2291,7 +2221,7 @@ async function renderMyHoldings() {
   }
   if (status) status.textContent = `${pos.length} 檔`;
   panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">分析中…</p>`;
-  let plans = {}, valueActions = {};
+  let valueActions = {};
   try {
     const res = await fetch("/api/value-portfolio", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -2300,15 +2230,6 @@ async function renderMyHoldings() {
     const data = await readJson(res);
     asArray(data.actions).forEach(a => { valueActions[a.symbol] = a; });
   } catch (err) { console.warn("value portfolio failed:", err); }
-  try {
-    const res = await fetch("/api/next-day-plan", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ symbols: pos.map(p => p.symbol), positions: pos,
-                             end: taipeiDateString(), lookback_days: 320 })
-    });
-    const data = await readJson(res);
-    asArray(data.plans).forEach(p => { plans[p.symbol] = p; });
-  } catch (err) { console.warn("holdings plan failed:", err); }
 
   const bySym = {};
   asArray(ledgerSignals).forEach(s => {
@@ -2316,16 +2237,15 @@ async function renderMyHoldings() {
   });
 
   panel.innerHTML = pos.map(p => {
-    const pl = plans[p.symbol];
     const va = valueActions[p.symbol];
     const sig = bySym[p.symbol];
-    const price = va && va.price != null ? Number(va.price) : (pl ? Number(pl.last_close) : null);
+    const price = va && va.price != null ? Number(va.price) : null;
     const gain = (price && p.cost) ? price / p.cost - 1 : null;
     const gcls = gain === null ? "var(--muted)" : gain >= 0 ? "#137333" : "#c5221f";
     const gtxt = gain === null ? "—" : `${gain >= 0 ? "+" : ""}${(gain * 100).toFixed(2)}%`;
     const value = (price && p.shares) ? Math.round(price * p.shares).toLocaleString() : "—";
     const advice = va ? `👉 <b>${va.action}</b>${asArray(va.reasons).length ? `：${asArray(va.reasons).join("；")}` : ""}` : sig ? plainAdvice(sig, true)
-      : `👉 此標的不在價值引擎追蹤清單中，僅提供價格與短線計畫參考。`;
+      : `👉 此標的不在價值引擎追蹤清單中，資料不足，請人工檢查。`;
     const sigLine = va && va.value_state
       ? `<span class="pill" style="font-size:11px;">每日價值：${(va.value_state.action || "").toUpperCase()}</span>`
       : sig ? `<span class="pill" style="font-size:11px;">凍結卡：${(sig.action || "").toUpperCase()}</span>`
@@ -2337,7 +2257,7 @@ async function renderMyHoldings() {
       </strong>
       <p style="font-size:13px; margin:6px 0;">
         成本 ${p.cost || "—"}｜現價 ${price ?? "—"}｜${p.shares || 0} 股｜市值約 ${value} 元
-        ${va ? `｜持股判斷：<b>${va.action}</b>` : (pl ? `｜短線計畫：<b>${pl.action}</b>` : "")}
+        ${va ? `｜持股判斷：<b>${va.action}</b>` : ""}
       </p>
       <div style="font-size:12.5px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:7px 9px; color:#1e3a8a;">${advice}</div>
     </article>`;
@@ -2360,55 +2280,49 @@ function renderReview() {
   const panel = $("reviewPanel"), status = $("reviewStatus");
   if (!panel) return;
   const vs = asArray(ledgerSignals).filter(s => s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack");
-  const rows = [];
   let dropped = 0;
-  vs.forEach(s => {
-    const oc = s.outcomes || {};
-    OUTCOME_HORIZONS.forEach(h => {
-      const o = oc[h];
-      if (o && o.gross_return !== null && o.gross_return !== undefined) {
-        if (!isSaneOutcome(o)) { dropped++; return; }
-        rows.push({ symbol: s.symbol, name: s.name || "", action: s.action, horizon: h,
-                    g: Number(o.gross_return), e: o.excess_return === null || o.excess_return === undefined ? null : Number(o.excess_return) });
-      }
+  const actionKind = action => {
+    const value = (action || "").toLowerCase();
+    if (value.includes("accumulate") || value.includes("buy_zone") || value === "buy") return "buy";
+    if (value.includes("avoid")) return "avoid";
+    return null;
+  };
+  const groups = { buy: {}, avoid: {} };
+  vs.forEach(signal => {
+    const kind = actionKind(signal.action);
+    if (!kind) return; // watch / hold 沒有交易方向，不冒充績效樣本。
+    OUTCOME_HORIZONS.forEach(horizon => {
+      const outcome = (signal.outcomes || {})[horizon];
+      if (!outcome || outcome.excess_return === null || outcome.excess_return === undefined) return;
+      if (!isSaneOutcome(outcome)) { dropped++; return; }
+      const rawExcess = Number(outcome.excess_return);
+      const adjustedExcess = kind === "avoid" ? -rawExcess : rawExcess;
+      (groups[kind][horizon] = groups[kind][horizon] || []).push(adjustedExcess);
     });
   });
-  if (!rows.length) {
+  const maturedCount = Object.values(groups).flatMap(byH => Object.values(byH)).reduce((sum, rows) => sum + rows.length, 0);
+  if (!maturedCount) {
     if (status) status.textContent = "尚無成熟成績";
-    panel.innerHTML = `<p style="font-size:13px;color:var(--muted);">建議凍結後第 1 個交易日起會陸續產生成績，屆時自動出現於此。</p>`;
+    panel.innerHTML = `<p style="font-size:13px;color:var(--muted);">買進或避開建議凍結後，成果會依期限陸續出現。</p>`;
     return;
   }
-  const byH = {};
-  rows.forEach(r => { (byH[r.horizon] = byH[r.horizon] || []).push(r); });
-  const order = OUTCOME_HORIZONS.filter(h => byH[h]);
-  if (status) status.textContent = `${rows.length} 筆已成熟`;
-  const summary = order.map(h => {
-    const arr = byH[h];
-    const avg = arr.reduce((a, r) => a + r.g, 0) / arr.length;
-    const exArr = arr.filter(r => r.e !== null);
-    const avgEx = exArr.length ? exArr.reduce((a, r) => a + r.e, 0) / exArr.length : null;
-    const win = exArr.length ? exArr.filter(r => r.e > 0).length / exArr.length : null;
-    const exCls = avgEx === null ? "var(--muted)" : avgEx >= 0 ? "#137333" : "#c5221f";
-    return `<td style="padding:8px; border:1px solid var(--line); text-align:center;">
-      <div style="font-size:11px;color:var(--muted);">${h}（${arr.length} 筆）</div>
-      <div style="font-size:15px;font-weight:600;">${avg >= 0 ? "+" : ""}${(avg * 100).toFixed(2)}%</div>
-      <div style="font-size:11px;color:${exCls};">對0050 ${avgEx === null ? "—" : (avgEx >= 0 ? "+" : "") + (avgEx * 100).toFixed(2) + "%"}</div>
-      <div style="font-size:11px;color:var(--muted);">勝率 ${win === null ? "—" : (win * 100).toFixed(0) + "%"}</div>
-    </td>`;
-  }).join("");
-  const best = [...rows].sort((a, b) => b.g - a.g).slice(0, 3);
-  const worst = [...rows].sort((a, b) => a.g - b.g).slice(0, 3);
-  const li = r => `<li>${r.symbol} ${r.name}（${(r.action || "").toUpperCase()}／${r.horizon}）：<b style="color:${r.g >= 0 ? "#137333" : "#c5221f"}">${r.g >= 0 ? "+" : ""}${(r.g * 100).toFixed(2)}%</b>${r.e === null ? "" : `，對0050 ${r.e >= 0 ? "+" : ""}${(r.e * 100).toFixed(2)}%`}</li>`;
-  const maxDays = Math.max(...order.map(h => parseInt(h)));
+  if (status) status.textContent = `${maturedCount} 筆方向化成績`;
+  const table = (kind, title, note) => {
+    const rows = OUTCOME_HORIZONS.filter(h => groups[kind][h]).map(h => {
+      const values = groups[kind][h];
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const win = values.filter(value => value > 0).length / values.length;
+      return `<tr><td>${h}</td><td>${values.length}</td><td style="color:${mean >= 0 ? "#137333" : "#c5221f"};font-weight:600;">${mean >= 0 ? "+" : ""}${(mean * 100).toFixed(2)}%</td><td>${(win * 100).toFixed(0)}%</td></tr>`;
+    }).join("");
+    return `<div><b>${title}</b><p style="font-size:11px;margin:3px 0 7px;">${note}</p><div class="tableWrap"><table><thead><tr><th>期限</th><th>樣本</th><th>方向化對0050超額</th><th>正確率</th></tr></thead><tbody>${rows || '<tr><td colspan="4">尚無成熟樣本</td></tr>'}</tbody></table></div></div>`;
+  };
   panel.innerHTML = `
-    <table style="border-collapse:collapse; width:100%; margin-bottom:10px;"><tr>${summary}</tr></table>
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:12.5px;">
-      <div><b>表現最佳</b><ul style="margin:6px 0 0; padding-left:18px;">${best.map(li).join("")}</ul></div>
-      <div><b>表現最差</b><ul style="margin:6px 0 0; padding-left:18px;">${worst.map(li).join("")}</ul></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;">
+      ${table("buy", "買進／累積訊號", "正值＝買進後勝過0050。")}
+      ${table("avoid", "避開訊號", "反向計分；標的落後0050才算避開正確。")}
     </div>
     <p style="font-size:12px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:7px 9px; margin-top:10px;">
-      ⚠️ 目前最長只有 ${maxDays} 個交易日的成績，<b>屬於雜訊區間、不能當作方法有效的證據</b>。
-      本系統的判定標準是 60／120 個交易日；在那之前所有數字僅供觀察。
+      ⚠️ watch／hold 不具交易方向，已排除；60／120個交易日與足夠獨立樣本完成前，所有數字仍是 shadow。
       ${dropped ? `<br>已剔除 ${dropped} 筆異常值（單期報酬超過 ±100%，判定為凍結時參考價有誤，不列入統計）。` : ""}
     </p>`;
 }

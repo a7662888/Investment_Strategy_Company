@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-app.py 整合最小測試(Codex 要求:啟動 / /api/health / next-day-plan schema + 模擬持股)。
-不依賴外部網路:用合成 rows 直接測 plan schema 與校準模型 additive 欄位;
-另在執行緒啟動伺服器測 /api/health。
+單一價值決策鏈整合測試：health、母池、每日價值狀態、持股判斷與舊端點退役。
 
 跑法:python tests/test_app_integration.py
 """
@@ -14,7 +12,6 @@ import sys
 import threading
 import urllib.error
 import urllib.request
-from datetime import date, timedelta
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -24,55 +21,12 @@ sys.path.insert(0, str(ROOT))
 
 import app as appmod
 
-REQUIRED_PLAN_KEYS = {
-    "symbol", "as_of", "last_close", "held", "cost", "unrealized_gain",
-    "score", "action", "reasons", "rule", "future_knowledge_used",
-}
-
-
-def _fake_rows(n: int = 200) -> list[dict]:
-    rows = []
-    px = 100.0
-    d = date(2024, 1, 1)
-    for i in range(n):
-        px *= 1.0 + (0.004 if i % 5 else -0.003)  # 緩升帶回檔
-        d += timedelta(days=1)
-        rows.append({
-            "date": d.isoformat(), "symbol": "9999.TW",
-            "open": f"{px*0.997:.4f}", "high": f"{px*1.01:.4f}",
-            "low": f"{px*0.99:.4f}", "close": f"{px:.4f}", "volume": "1000000",
-        })
-    return rows
-
-
-def test_plan_schema_and_calibrated():
-    rows = _fake_rows()
-    plan = appmod.plan_next_session("9999.TW", rows, None)
-    missing = REQUIRED_PLAN_KEYS - set(plan)
-    assert not missing, f"next-day-plan 缺欄位:{missing}"
-    # additive 校準模型欄位應存在(artifact 在 → enrich;不在 → 略過但 schema 仍完整)
-    model = plan["model"]
-    assert model["name"] == "interpretable_technical_ensemble_v1"
-    if "calibrated_probability_up" in model:
-        assert isinstance(model["calibrated_probability_up"], (int, float))
-        assert model["calibrated_evidence"]  # 樣本外指標
-    print("✅ next-day-plan schema 完整;校準欄位 additive 正常")
-
-
-def test_held_position():
-    rows = _fake_rows()
-    plan = appmod.plan_next_session("9999.TW", rows, {"shares": 1000, "cost": 90.0})
-    assert plan["held"] is True
-    assert plan["unrealized_gain"] is not None
-    print("✅ 模擬持股:held/unrealized_gain 正確")
-
-
 def test_health_endpoint():
     server = ThreadingHTTPServer(("127.0.0.1", 0), appmod.Handler)
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
-        for path in ("/api/health/live", "/api/health/ready", "/api/data-status", "/api/decision-ledger?limit=1"):
+        for path in ("/api/health/live", "/api/health/ready", "/api/data-status", "/api/decision-ledger?limit=1", "/api/mother-pool"):
             with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
                 payload = json.loads(r.read().decode("utf-8"))
             assert isinstance(payload, dict)
@@ -81,30 +35,24 @@ def test_health_endpoint():
         server.shutdown()
 
 
-def test_agent_signals_endpoint():
+def test_legacy_decision_endpoints_are_retired():
     server = ThreadingHTTPServer(("127.0.0.1", 0), appmod.Handler)
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    candidate = {"symbol": "2330.TW", "last_date": date.today().isoformat(), "last_close": 1000, "score": 8, "grade": "A", "reasons": ["test"]}
-    body = json.dumps({"end": date.today().isoformat(), "limit": 5}).encode("utf-8")
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{port}/api/agent-signals",
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with patch.object(appmod, "discover_candidates", return_value={"candidates": [candidate]}), \
-             patch.object(appmod, "discover_antigravity_candidates", return_value=[candidate]), \
-             patch.object(appmod, "discover_claude_candidates", return_value=[candidate]), \
-             patch.object(appmod, "freeze_candidate_groups", return_value={"status": "degraded", "added": 3}):
-            with urllib.request.urlopen(request, timeout=5) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-        assert len(payload["codex"]["candidates"]) == 1
-        assert len(payload["antigravity"]) == 1
-        assert len(payload["claude"]) == 1
-        assert payload["ledger"]["added"] == 3
-        print("✅ /api/agent-signals 合併三家並接入ledger")
+        for path in ("/api/agent-signals", "/api/recommend", "/api/train", "/api/next-day-plan", "/api/codex-long-term"):
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{port}{path}", data=b"{}",
+                headers={"Content-Type": "application/json"}, method="POST",
+            )
+            try:
+                urllib.request.urlopen(request, timeout=5)
+                raise AssertionError(f"{path} should be retired")
+            except urllib.error.HTTPError as exc:
+                assert exc.code == 410
+                payload = json.loads(exc.read().decode("utf-8"))
+                assert payload["replacement"] == "/api/value-current"
+        print("✅ legacy multi-agent and short-term endpoints return 410")
     finally:
         server.shutdown()
 
@@ -184,23 +132,9 @@ def test_private_positions_endpoints():
         server.shutdown()
 
 
-def test_codex_v2_blocks_new_positions_on_red_market():
-    rows = _fake_rows()
-    analysis = appmod.analyze_candidate("9999.TW", rows, risk_level="RED")
-    overlaid = appmod.apply_codex_v2_overlay("9999.TW", rows, analysis, {"risk_level": "RED"})
-    assert overlaid["grade"] == "C"
-    assert overlaid["action"] == "Codex v2: 禁買"
-    assert overlaid["codex_decision_model"]["new_position_permission"] == "blocked"
-    assert overlaid["codex_decision_model"]["vetoes"]
-    print("✅ Codex v2 RED market blocks new positions")
-
-
 if __name__ == "__main__":
-    test_plan_schema_and_calibrated()
-    test_held_position()
-    test_codex_v2_blocks_new_positions_on_red_market()
     test_health_endpoint()
-    test_agent_signals_endpoint()
+    test_legacy_decision_endpoints_are_retired()
     test_value_current_and_portfolio_endpoints()
     test_private_positions_endpoints()
     print("✅ app 整合測試全數通過")

@@ -10,11 +10,8 @@ import run_daily_email
 class DailyEmailValueTests(unittest.TestCase):
     def test_email_uses_daily_value_and_portfolio_actions(self):
         def fake_api(path, payload=None):
-            if path == "/api/next-day-plan":
-                return {"market_index": {"risk_level": "GREEN"}, "plans": [{
-                    "symbol": "0056.TW", "action": "舊短線動作", "last_close": 46.7,
-                    "unrealized_gain": -0.1,
-                }]}
+            if path.startswith("/api/market-risk"):
+                return {"risk_level": "GREEN", "regime": "區間整理"}
             if path == "/api/value-current":
                 return {"top_picks": [{
                     "symbol": "3045.TW", "name": "台灣大", "price": 113.5,
@@ -27,6 +24,7 @@ class DailyEmailValueTests(unittest.TestCase):
             if path == "/api/value-portfolio":
                 return {"actions": [{
                     "symbol": "0056.TW", "action": "續抱領息，停止追加",
+                    "price": 46.7, "unrealized_gain": -0.1,
                     "reasons": ["ETF 不因均線訊號單獨賣出"],
                 }]}
             if path.startswith("/api/decision-ledger"):
@@ -38,7 +36,7 @@ class DailyEmailValueTests(unittest.TestCase):
         self.assertIn("台灣大", html)
         self.assertIn("高風險反轉觀察", html)
         self.assertIn("續抱領息，停止追加", html)
-        self.assertNotIn("舊短線動作</td>", html)
+        self.assertNotIn("舊短線動作", html)
 
 
 class _JsonResponse:

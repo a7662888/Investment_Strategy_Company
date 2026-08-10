@@ -71,17 +71,18 @@ def price(x):
 
 def build_html(positions):
     today = date.today().isoformat()
-    plan = api("/api/next-day-plan", {
-        "symbols": [p["symbol"] for p in positions],
-        "positions": positions, "end": today, "lookback_days": 320})
+    try:
+        market = api(f"/api/market-risk?date={today}")
+    except Exception as exc:
+        print(f"market risk unavailable: {type(exc).__name__}", file=sys.stderr)
+        market = {}
     try:
         value_state = api("/api/value-current")
         value_portfolio = api("/api/value-portfolio", {"positions": positions})
     except Exception as exc:
         print(f"daily value state unavailable, ledger fallback: {type(exc).__name__}", file=sys.stderr)
         value_state, value_portfolio = {}, {"actions": []}
-    m = plan.get("market_index") or {}
-    plans = {p["symbol"]: p for p in plan.get("plans", [])}
+    m = market
     portfolio_map = {p["symbol"]: p for p in value_portfolio.get("actions", [])}
     led = api("/api/decision-ledger?limit=120&agents=claude-value,claude-etf-subtrack")
     sigs = [s for s in led.get("signals", []) if s.get("event_type") == "signal"]
@@ -111,12 +112,25 @@ def build_html(positions):
             return False
         return not (e is not None and abs(float(e)) > 1.0)
 
+    def _direction(action):
+        value = (action or "").lower()
+        if "accumulate" in value or "buy_zone" in value or value == "buy":
+            return 1
+        if "avoid" in value:
+            return -1
+        return 0
+
     for s in sigs:
+        direction = _direction(s.get("action"))
+        if direction == 0:  # watch / hold 沒有交易方向，不納入績效。
+            continue
         oc = s.get("outcomes") or {}
         for h in HORIZONS:
             o = oc.get(h)
             if isinstance(o, dict) and o.get("gross_return") is not None and _sane(o):
-                agg.setdefault(h, []).append((s.get("symbol"), o.get("gross_return"), o.get("excess_return")))
+                excess = o.get("excess_return")
+                adjusted = None if excess is None else float(excess) * direction
+                agg.setdefault(h, []).append((s.get("symbol"), adjusted, direction))
     risk = m.get("risk_level") or "?"
     risk_color = {"GREEN": "#137333", "YELLOW": "#b45309", "RED": "#c5221f", "BLACK": "#111"}.get(risk, "#555")
     def holding_advice(sym):
@@ -143,19 +157,18 @@ def build_html(positions):
 
     rows = ""
     for p in positions:
-        pl = plans.get(p["symbol"])
         pa = portfolio_map.get(p["symbol"])
-        if pl:
-            ug = pl.get("unrealized_gain")
+        if pa:
+            ug = pa.get("unrealized_gain")
             cls = "#137333" if (ug or 0) >= 0 else "#c5221f"
-            rows += (f"<tr><td>{p['symbol']}</td><td>{(pa or {}).get('action') or pl.get('action','—')}</td>"
-                     f"<td align='right'>{pl.get('last_close','—')}</td>"
+            rows += (f"<tr><td>{p['symbol']}</td><td>{pa.get('action','—')}</td>"
+                     f"<td align='right'>{pa.get('price','—')}</td>"
                      f"<td align='right'>{p.get('cost','—')}</td>"
                      f"<td align='right' style='color:{cls};font-weight:600'>{pct(ug)}</td></tr>"
                      f"<tr><td colspan='5' style='font-size:12px;color:#1e3a8a;background:#eff6ff;padding:4px 8px;'>"
                      f"👉 {holding_advice(p['symbol'])}</td></tr>")
         else:
-            rows += f"<tr><td>{p['symbol']}</td><td colspan='4' style='color:#c5221f'>今日未取得計畫</td></tr>"
+            rows += f"<tr><td>{p['symbol']}</td><td colspan='4' style='color:#c5221f'>今日未取得價值判斷，請人工檢查</td></tr>"
     daily_picks = value_state.get("top_picks") or []
     daily_waiting = value_state.get("waiting_list") or []
     if daily_picks:
@@ -180,22 +193,20 @@ def build_html(positions):
             arr = agg.get(h)
             if not arr:
                 continue
-            avg = sum(g for _, g, _ in arr) / len(arr)
-            ex = [e for _, _, e in arr if e is not None]
+            ex = [e for _, e, _ in arr if e is not None]
             avg_ex = sum(ex) / len(ex) if ex else None
             win = (sum(1 for e in ex if e > 0) / len(ex)) if ex else None
             ex_color = "#137333" if (avg_ex or 0) >= 0 else "#c5221f"
             cells += (f"<td align='center' style='border:1px solid #ddd;padding:6px'>"
                       f"<div style='font-size:11px;color:#777'>{h}（{len(arr)} 筆）</div>"
-                      f"<div style='font-size:15px;font-weight:600'>{pct(avg)}</div>"
-                      f"<div style='font-size:11px;color:{ex_color}'>對0050 {pct(avg_ex) if avg_ex is not None else '—'}</div>"
-                      f"<div style='font-size:11px;color:#777'>勝率 {f'{win*100:.0f}%' if win is not None else '—'}</div></td>")
+                      f"<div style='font-size:15px;font-weight:600;color:{ex_color}'>對0050 {pct(avg_ex) if avg_ex is not None else '—'}</div>"
+                      f"<div style='font-size:11px;color:#777'>方向正確率 {f'{win*100:.0f}%' if win is not None else '—'}</div></td>")
         max_days = max(int(h[:-1]) for h in agg)
         mat_block = (f"<h3>📊 成績回顧（復盤）</h3>"
                      f"<table style='border-collapse:collapse;width:100%'><tr>{cells}</tr></table>"
                      f"<p style='font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;"
                      f"border-radius:6px;padding:6px 8px;margin-top:8px'>⚠️ 目前最長僅 {max_days} 個交易日，"
-                     f"屬雜訊區間、<b>不能當作方法有效的證據</b>；判定標準為 60／120 個交易日。</p>")
+                     f"屬雜訊區間、<b>不能當作方法有效的證據</b>；買進與避開已依方向計分，watch/hold 不列入；判定標準為 60／120 個交易日。</p>")
     else:
         mat_block = "<p style='color:#777'>📊 成績累積中，凍結後第 1 個交易日起會自動出現在此。</p>"
     return f"""
