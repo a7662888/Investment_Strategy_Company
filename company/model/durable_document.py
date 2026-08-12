@@ -20,17 +20,32 @@ def _config() -> tuple[str, str, str] | None:
 
 def _remote_get(remote_path: str, config: tuple[str, str, str]) -> tuple[dict | None, str | None, str | None]:
     token, repo, branch = config
-    encoded = "/".join(urllib.parse.quote(part, safe="") for part in remote_path.split("/"))
-    url = f"https://api.github.com/repos/{repo}/contents/{encoded}?ref={urllib.parse.quote(branch)}"
-    req = urllib.request.Request(url, headers={
+    headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {token}",
         "User-Agent": "investment-durable-document",
-    })
+    }
+    encoded = "/".join(urllib.parse.quote(part, safe="") for part in remote_path.split("/"))
+    url = f"https://api.github.com/repos/{repo}/contents/{encoded}?ref={urllib.parse.quote(branch)}"
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        raw = base64.b64decode((payload.get("content") or "").replace("\n", ""))
+        content = payload.get("content") or ""
+        # GitHub Contents API stops embedding file content once it exceeds 1 MiB
+        # (`encoding: none`). Fetch the same immutable blob by SHA instead.
+        if payload.get("encoding") != "base64" or not content:
+            sha = payload.get("sha")
+            if not sha:
+                return None, None, "remote_read_missing_sha"
+            blob_url = payload.get("git_url") or f"https://api.github.com/repos/{repo}/git/blobs/{sha}"
+            blob_req = urllib.request.Request(blob_url, headers=headers)
+            with urllib.request.urlopen(blob_req, timeout=60) as response:
+                blob = json.loads(response.read().decode("utf-8"))
+            if blob.get("encoding") != "base64" or not blob.get("content"):
+                return None, sha, "remote_blob_content_unavailable"
+            content = blob["content"]
+        raw = base64.b64decode(content.replace("\n", ""))
         return json.loads(raw.decode("utf-8")), payload.get("sha"), None
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
