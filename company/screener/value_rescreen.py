@@ -248,8 +248,17 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
     cur_v = cur_pb if basis.startswith("PBR") else cur_pe
     if src and cur_v:
         s = sorted(src)
-        out["entry_range"] = [round(cur_raw * _at_pct(s, 20) / cur_v, 2),
-                              round(cur_raw * _at_pct(s, 40) / cur_v, 2)]
+        # 由估值百分位反推價位。注意：當現價估值已「低於」歷史 P20（即現在比過去都便宜），
+        # P20/現值 > 1 會算出高於現價的數字——那是「估值回升到 P20 時的價格」，
+        # 不是「便宜到可以買的價位」。若直接輸出，等於建議「等漲上去再買」，與價值投資相反
+        # （實際發生過：南亞科現價 481 卻標買進區間 747–930）。
+        # 故買進區間上緣不得高於現價：現價已在便宜區時，現價本身就是可買價。
+        lo, hi = sorted([cur_raw * _at_pct(s, 20) / cur_v,
+                         cur_raw * _at_pct(s, 40) / cur_v])
+        if cur_raw <= hi:
+            hi = cur_raw
+            lo = min(lo, cur_raw * 0.92)
+        out["entry_range"] = [round(lo, 2), round(hi, 2)]
     if valuation_pct is not None:
         out["reasons"].append(f"{basis} 位階：現值 {cur_v} 位於近 3 年第 {valuation_pct} 百分位")
     if roe is not None:
