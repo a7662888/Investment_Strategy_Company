@@ -1853,13 +1853,18 @@ async function loadDailyValueState() {
     dailyValueState = data;
     const c = data.coverage || {};
     if (status) status.textContent = `${data.as_of || "—"} · 覆蓋 ${c.quality_covered || 0}/${c.mother_pool || 0}`;
-    const card = item => `<article class="candidate" style="margin-bottom:8px;">
+    const card = item => {
+      const highDistance = item.distance_from_high_252 == null
+        ? ""
+        : `｜距近一年高點 ${Math.abs(Number(item.distance_from_high_252) * 100).toFixed(1)}%`;
+      return `<article class="candidate" style="margin-bottom:8px;">
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span>${item.symbol} ${item.name || ""}</span><span style="color:#0f766e;">${item.decision}</span>
       </strong>
-      <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${item.valuation_zone}｜${item.trend}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}</p>
+      <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${item.valuation_zone}｜${item.trend}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
       <p style="font-size:12px;color:var(--muted);margin:0;">${asArray(item.reasons).slice(0, 2).join("；") || "—"}</p>
     </article>`;
+    };
     const picks = asArray(data.top_picks);
     const waiting = asArray(data.waiting_list);
     panel.innerHTML = `
@@ -1868,7 +1873,7 @@ async function loadDailyValueState() {
       </div>
       <h3 style="font-size:14px;margin:8px 0;">可分批研究</h3>
       ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">今天沒有同時通過品質、估值與止跌條件的標的；保留現金也是結果。</p>`}
-      ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">便宜但尚待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}`;
+      ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}`;
     renderMyHoldings();
   } catch (err) {
     if (status) status.textContent = "尚未產生";

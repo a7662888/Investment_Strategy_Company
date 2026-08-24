@@ -23,12 +23,13 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from company.model.value_policy import CYCLICAL
+
 ROOT = Path(__file__).resolve().parents[2]
 FUNDAMENTALS = ROOT / "data" / "value_fundamentals.json"
 
 # v2.2 sector schema
 FINHOLD = {"2881", "2882", "2891", "2886", "2884"}
-CYCLICAL = {"1301", "2002", "1101", "2603"}
 RETAIL = {"1216", "2912"}
 TH = dict(roe_ttm=12.0, gpm=20.0, opm=8.0, eq=0.6, debt=60.0,
           cyc_pb=25.0, cyc_roe_floor=5.0, ret_roe=12.0, ret_ocfni=0.8, ret_pb=50.0)
@@ -140,12 +141,20 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
     ma20 = statistics.mean(closes[-20:]) if len(closes) >= 20 else None
     ma60 = statistics.mean(closes[-60:]) if len(closes) >= 60 else None
     momentum20 = (cur_raw / closes[-21] - 1.0) if len(closes) >= 21 and closes[-21] else None
+    trailing_252 = closes[-252:] if len(closes) >= 252 else closes
+    high_252 = max(trailing_252)
+    distance_from_high_252 = cur_raw / high_252 - 1.0 if high_252 else None
+    price_pct_252 = _pct_rank(trailing_252, cur_raw)
     out = {"symbol": symbol, "name": info.get("name") or code, "as_of": as_of,
            "price": cur_raw, "is_etf": is_etf, "reasons": [],
            "fundamentals_complete": bool(info.get("completeness", {}).get("complete", info.get("quarterly"))),
            "ma20": round(ma20, 4) if ma20 is not None else None,
            "ma60": round(ma60, 4) if ma60 is not None else None,
-           "momentum20": round(momentum20, 6) if momentum20 is not None else None}
+           "momentum20": round(momentum20, 6) if momentum20 is not None else None,
+           "high_252": round(high_252, 4) if high_252 is not None else None,
+           "distance_from_high_252": round(distance_from_high_252, 6)
+           if distance_from_high_252 is not None else None,
+           "price_pct_252": price_pct_252}
 
     if is_etf:
         adjs = sorted(r["adj_close"] for r in rows)
@@ -263,6 +272,10 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         out["reasons"].append(f"{basis} 位階：現值 {cur_v} 位於近 3 年第 {valuation_pct} 百分位")
     if roe is not None:
         out["reasons"].append(f"ROE_ttm {roe:.1f}%")
+    if distance_from_high_252 is not None and distance_from_high_252 >= -0.02:
+        out["reasons"].append(
+            f"價格距近一年高點僅 {abs(distance_from_high_252) * 100:.1f}%（價格位階 P{price_pct_252}）"
+        )
     return out
 
 

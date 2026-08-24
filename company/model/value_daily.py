@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-CYCLICAL = {"1301", "2002", "1101", "2603"}
+from company.model.value_policy import CYCLICAL
 
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
@@ -31,7 +31,13 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     roe = result.get("roe_ttm")
     quality_pass = bool(result.get("quality_pass", result.get("is_etf", False)))
     trend, trend_score = _trend(result)
-    risk_tier = "高" if code in CYCLICAL and roe is not None and roe < 0 else "一般"
+    risk_tier = "高" if code in CYCLICAL else "一般"
+    momentum20 = result.get("momentum20")
+    distance_from_high_252 = result.get("distance_from_high_252")
+    chase_risk = bool(
+        momentum20 is not None and float(momentum20) >= 0.10
+        and distance_from_high_252 is not None and float(distance_from_high_252) >= -0.02
+    )
     if pct is None:
         valuation_zone, valuation_score = "估值資料不足", 0.0
     elif pct <= 20:
@@ -46,6 +52,8 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     score = 0.45 * valuation_score + 0.35 * quality_score + 0.20 * trend_score
     if risk_tier == "高":
         score -= 30.0
+    if chase_risk:
+        score -= 20.0
     action = result.get("action")
     if result.get("error") or result.get("data_incomplete") or pct is None:
         decision = "資料不足"
@@ -55,6 +63,8 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
         decision = "高風險反轉觀察"
     elif action == "accumulate" and trend == "下跌趨勢":
         decision = "等待止跌"
+    elif action == "accumulate" and chase_risk:
+        decision = "高檔，等待拉回"
     elif action == "accumulate":
         decision = "可分批研究"
     elif action == "hold":
@@ -73,7 +83,10 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
         "valuation_basis": result.get("valuation_basis"), "valuation_pct": pct,
         "valuation_zone": valuation_zone, "entry_range": result.get("entry_range"),
         "ma20": result.get("ma20"), "ma60": result.get("ma60"),
-        "momentum20": result.get("momentum20"), "trend": trend,
+        "momentum20": momentum20, "trend": trend,
+        "high_252": result.get("high_252"),
+        "distance_from_high_252": distance_from_high_252,
+        "price_pct_252": result.get("price_pct_252"), "chase_risk": chase_risk,
         "rank_score": round(score, 2), "reasons": list(result.get("reasons") or []),
         "failed": list(result.get("failed") or []), "is_etf": bool(result.get("is_etf")),
     }
@@ -84,7 +97,9 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
     eligible = [i for i in items if i["eligible_pool"] and not i["is_etf"]]
     picks = sorted((i for i in eligible if i["decision"] == "可分批研究"),
                    key=lambda x: x["rank_score"], reverse=True)[:5]
-    waiting = sorted((i for i in eligible if i["decision"] in ("等待止跌", "高風險反轉觀察")),
+    waiting = sorted((i for i in eligible if i["decision"] in (
+        "等待止跌", "高風險反轉觀察", "高檔，等待拉回"
+    )),
                      key=lambda x: x["rank_score"], reverse=True)[:5]
     etf_candidates = sorted(
         (i for i in items if i["is_etf"]),
@@ -99,7 +114,10 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
                      "not_yet_covered": max(0, pool_total - covered)},
         "top_picks": picks, "waiting_list": waiting, "etf_candidates": etf_candidates,
         "evaluations": items,
-        "method": "母池→季度品質硬篩→近3年估值百分位→20/60日趨勢時機；不自動下單",
+        "method": (
+            "母池→季度品質硬篩→近3年估值百分位（景氣股改用PBR＋ROE週期）"
+            "→20/60日趨勢＋近一年高檔追價閘門；不自動下單"
+        ),
     }
 
 
@@ -145,7 +163,10 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
             reasons.append("品質硬篩未通過或價值引擎判定 avoid；先核對失效條件，不自動賣出")
         elif item.get("risk_tier") == "高":
             action = "暫停追加，檢查反轉假設"
-            reasons.append("景氣股仍在虧損谷底，便宜可能是 value trap")
+            reasons.append("景氣循環股須用 PBR 與獲利週期判斷；低 PER 可能只是高峰盈餘造成的假便宜")
+        elif item.get("chase_risk"):
+            action = "續抱，不追價追加"
+            reasons.append("股價貼近近一年高點且 20 日漲幅偏大，等待拉回或整理後再評估")
         elif "減碼" in str(item.get("decision")):
             action = "分批減碼檢查"
         elif item.get("valuation_pct") is not None and item["valuation_pct"] <= 40:

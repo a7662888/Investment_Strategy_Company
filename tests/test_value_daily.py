@@ -4,12 +4,16 @@ import unittest
 from company.model.value_daily import build_daily_state, portfolio_actions
 
 
-def _result(symbol="1111.TW", pct=15.0, roe=20.0, price=100.0, ma20=98.0, ma60=95.0):
+def _result(symbol="1111.TW", pct=15.0, roe=20.0, price=100.0, ma20=98.0, ma60=95.0,
+            momentum20=0.03, distance_from_high_252=-0.10):
     return {
         "symbol": symbol, "name": "測試股", "as_of": "2026-07-29", "price": price,
         "action": "accumulate", "quality_pass": True, "roe_ttm": roe,
         "valuation_basis": "PER", "valuation_pct": pct, "entry_range": [95, 110],
-        "ma20": ma20, "ma60": ma60, "momentum20": 0.03, "reasons": ["test"],
+        "ma20": ma20, "ma60": ma60, "momentum20": momentum20,
+        "distance_from_high_252": distance_from_high_252,
+        "high_252": price / (1 + distance_from_high_252), "price_pct_252": 80.0,
+        "reasons": ["test"],
     }
 
 
@@ -49,6 +53,20 @@ class ValueDailyTests(unittest.TestCase):
         state = build_daily_state([_result(), etf], {"1111"}, 100)
         self.assertEqual([p["symbol"] for p in state["top_picks"]], ["1111.TW"])
         self.assertEqual([p["symbol"] for p in state["etf_candidates"]], ["0056.TW"])
+
+    def test_near_high_fast_riser_waits_instead_of_becoming_top_pick(self):
+        hot = _result(momentum20=0.14, distance_from_high_252=-0.01)
+        state = build_daily_state([hot], {"1111"}, 100)
+        self.assertFalse(state["top_picks"])
+        self.assertEqual(state["waiting_list"][0]["decision"], "高檔，等待拉回")
+        self.assertTrue(state["waiting_list"][0]["chase_risk"])
+
+    def test_cyclical_stock_is_always_marked_high_risk(self):
+        cyclical = _result(symbol="2027.TW", roe=18.0)
+        state = build_daily_state([cyclical], {"2027"}, 100)
+        self.assertFalse(state["top_picks"])
+        self.assertEqual(state["waiting_list"][0]["risk_tier"], "高")
+        self.assertEqual(state["waiting_list"][0]["decision"], "高風險反轉觀察")
 
 
 if __name__ == "__main__":

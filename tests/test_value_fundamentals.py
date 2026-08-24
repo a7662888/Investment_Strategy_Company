@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from company.data.value_fundamentals import completeness, parse_quarterly, refresh_pool
-from company.screener.value_rescreen import _pct_rank_quantiles
+from company.screener.value_rescreen import _pct_rank_quantiles, evaluate
 
 
 def row(period, kind, value):
@@ -62,6 +62,33 @@ class ValueFundamentalsTests(unittest.TestCase):
         self.assertEqual(_pct_rank_quantiles([10, 20, 30], 15), 25.0)
         self.assertEqual(_pct_rank_quantiles([10, 20, 30], 5), 0.0)
         self.assertEqual(_pct_rank_quantiles([10, 20, 30], 35), 100.0)
+
+    def test_ta_chen_uses_cyclical_pbr_and_is_not_a_low_pe_buy(self):
+        rows = [
+            {"date": f"2026-{1 + i // 28:02d}-{1 + i % 28:02d}", "close": 40 + i / 10,
+             "adj_close": 40 + i / 10}
+            for i in range(84)
+        ]
+        fundamentals = {"2027": {
+            "name": "大成鋼",
+            "quarterly": [
+                {"roe": 4.5, "gross_profit_margin": 25, "operating_income_margin": 15,
+                 "earnings_quality": 1.0, "debt_ratio": 44}
+                for _ in range(4)
+            ],
+            "valuation": {
+                "date": rows[-1]["date"], "pe": 10.0, "pb": 1.5,
+                "pe_quantiles_5pct": [9, 10, 15, 20, 30],
+                "pb_quantiles_5pct": [0.8, 0.9, 1.0, 1.2, 1.5],
+            },
+            "completeness": {"complete": True},
+        }}
+        with patch("company.screener.value_rescreen._yahoo_history", return_value=rows):
+            result = evaluate("2027.TW", fundamentals)
+        self.assertEqual(result["valuation_basis"], "PBR(景氣)")
+        self.assertEqual(result["action"], "avoid")
+        self.assertFalse(result["quality_pass"])
+        self.assertGreaterEqual(result["valuation_pct"], 80)
 
 
 if __name__ == "__main__":

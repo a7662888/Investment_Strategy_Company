@@ -34,7 +34,7 @@
       <div style="margin-top: 8px; line-height: 1.6; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
         <div><strong>選股宇宙</strong><br>母池 100 檔 → 有完整季報者進品質覆蓋池 → 每日估值與時機排序</div>
         <div><strong>Action 光譜</strong><br>accumulate → watch → hold → avoid，附 entry_range 與 invalidation</div>
-        <div><strong>三大支柱</strong><br>商業品質 (ROE/GPM/OPM) · 估值百分位 (PE/PB) · 法人籌碼趨勢</div>
+        <div><strong>三大支柱</strong><br>商業品質 · 估值百分位 · 價格時機；景氣股改用 PBR＋ROE 週期，避免低 PE 陷阱</div>
         <div><strong>資料來源</strong><br>twstock 盤後日線 + Yahoo Finance · 離線計算 · 無 LLM 在線污染</div>
         <div><strong>持久化</strong><br>每筆決策寫入 <code>decision_ledger.jsonl</code>，GitHub 遠端同步</div>
         <div><strong>單一決策責任</strong><br>只輸出 value-engine 最終動作；其他模型僅能提供可追溯的補充證據或反方風險</div>
@@ -72,7 +72,8 @@
         <span id="dailyValueStatus" class="pill" style="font-size:12px;">載入中…</span>
       </div>
       <p style="font-size:12.5px; color:var(--muted); margin:6px 0 10px;">
-        每個交易日盤後從母池重評；先過季度品質硬篩，再看自身近三年估值位階與 20／60 日趨勢。
+        每個交易日盤後從母池重評；先過季度品質硬篩，再看自身近三年估值位階、20／60 日趨勢與近一年價格位置。
+        景氣循環股不以低 PER 直接判便宜；貼近一年高點且短線急漲者不列為立即進場候選。
         這是可覆寫的「今日狀態」，下方 Decision Ledger 仍保留不可改寫的歷史快照供驗證。
       </p>
       <p style="font-size:12.5px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:8px 10px; margin:0 0 10px; color:#1e3a8a; line-height:1.6;">
