@@ -567,7 +567,10 @@ def merge_live_quote_into_history(symbol: str, rows: list[dict]) -> list[dict]:
 
 
 def fetch_quote(symbols: list[str]) -> dict:
-    symbols = [symbol.strip() for symbol in symbols if symbol.strip()]
+    symbols = list(dict.fromkeys(
+        symbol.strip().upper() for symbol in symbols
+        if re.fullmatch(r"[A-Z0-9^.-]{1,20}", symbol.strip().upper())
+    ))[:30]
     by_symbol: dict[str, dict] = {}
     started = time.perf_counter()
     try:
@@ -627,6 +630,8 @@ def fetch_quote(symbols: list[str]) -> dict:
 
     return {
         "quoteResponse": {"result": [by_symbol[symbol] for symbol in symbols if symbol in by_symbol]},
+        "marketSession": market_open,
+        "fetchedAt": datetime.now(timezone.utc).isoformat(),
         "quotePolicy": (
             "During market: TWSE/TPEx MIS, Yahoo 1m, official daily close, Yahoo fallbacks. "
             "Outside market: TWSE/TPEx MIS, official daily close, Yahoo fallbacks."

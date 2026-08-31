@@ -142,6 +142,27 @@ def test_private_positions_endpoints():
             os.environ.pop("POSITIONS_SYNC_ENABLED", None)
         else:
             os.environ["POSITIONS_SYNC_ENABLED"] = old_enabled
+
+
+def test_quote_endpoint_filters_symbols_and_marks_market_session():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), appmod.Handler)
+    port = server.server_address[1]
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        quote = {
+            "symbol": "2330.TW", "shortName": "台積電", "regularMarketPrice": 1000.0,
+            "regularMarketChangePercent": 1.0, "regularMarketTime": 1,
+            "source": "TWSE MIS", "realtimeStatus": "盤中撮合",
+        }
+        with patch("app.fetch_twse_mis_quotes", return_value=[quote]), patch("app.is_tw_market_session", return_value=True):
+            url = f"http://127.0.0.1:{port}/api/quote?symbols=2330.TW,%3Cscript%3E,2330.TW"
+            with urllib.request.urlopen(url, timeout=5) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        assert payload["marketSession"] is True
+        assert [row["symbol"] for row in payload["quoteResponse"]["result"]] == ["2330.TW"]
+        assert payload["fetchedAt"]
+    finally:
+        server.shutdown()
         server.shutdown()
 
 

@@ -831,7 +831,7 @@ async function recommendToday() {
           
           return `
             <tr>
-              <td style="font-weight: bold; cursor: pointer; color: var(--blue);" onclick="toggleSymbol('${item.symbol}')" title="點擊即可加入/移除 ${item.symbol}">
+              <td class="js-toggle-symbol" data-symbol="${escapeHtml(item.symbol)}" style="font-weight: bold; cursor: pointer; color: var(--blue);" title="點擊即可加入/移除 ${escapeHtml(item.symbol)}">
                 ${item.symbol}<br><span style="font-size: 11px; color: var(--muted); font-weight: normal;">${item.name}</span>
               </td>
               <td style="text-align: center;">
@@ -862,7 +862,7 @@ async function recommendToday() {
                 <strong>重檢：</strong>${item.take_profit}
               </td>
               <td style="text-align: center;">
-                <button onclick="askAiAnalysis('${item.symbol}')" style="font-size: 11px; padding: 4px 8px; margin: 0; background-color: var(--blue); color: white; border-color: var(--blue); border-radius: 4px; cursor: pointer;">🤖 AI 診斷</button>
+                <button class="js-ai-analysis" data-symbol="${escapeHtml(item.symbol)}" type="button" style="font-size: 11px; padding: 4px 8px; margin: 0; background-color: var(--blue); color: white; border-color: var(--blue); border-radius: 4px; cursor: pointer;">🤖 AI 診斷</button>
               </td>
             </tr>
           `;
@@ -903,7 +903,7 @@ async function recommendToday() {
           const marginColor = margin >= 15 ? "#10b981" : margin >= 0 ? "var(--ink)" : "#ef4444";
           return `
             <tr>
-              <td style="font-weight: bold; cursor: pointer; color: var(--blue);" onclick="toggleSymbol('${item.symbol}')" title="點擊即可加入/移除 ${item.symbol}">
+              <td class="js-toggle-symbol" data-symbol="${escapeHtml(item.symbol)}" style="font-weight: bold; cursor: pointer; color: var(--blue);" title="點擊即可加入/移除 ${escapeHtml(item.symbol)}">
                 ${item.symbol}<br><span style="font-size: 11px; color: var(--muted); font-weight: normal;">${item.name || item.symbol}</span>
               </td>
               <td style="text-align: center;">
@@ -925,7 +925,7 @@ async function recommendToday() {
               <td style="max-width: 210px; word-wrap: break-word; white-space: normal; text-align: left;">${warningsHtml}</td>
               <td style="font-size: 12px; font-family: monospace; text-align: center;">${item.buy_range || "-"}</td>
               <td style="text-align: center;">
-                <button onclick="askAiAnalysis('${item.symbol}')" style="font-size: 11px; padding: 4px 8px; margin: 0; background-color: var(--blue); color: white; border-color: var(--blue); border-radius: 4px; cursor: pointer;">🤖 AI 診斷</button>
+                <button class="js-ai-analysis" data-symbol="${escapeHtml(item.symbol)}" type="button" style="font-size: 11px; padding: 4px 8px; margin: 0; background-color: var(--blue); color: white; border-color: var(--blue); border-radius: 4px; cursor: pointer;">🤖 AI 診斷</button>
               </td>
             </tr>
           `;
@@ -1052,8 +1052,8 @@ function renderAgentCard(item, agentType) {
   // Check if this symbol is currently selected to show active state
   const currentSyms = $("symbolInput").value.split(",").map(s => s.trim()).filter(Boolean);
   const isSelected = currentSyms.includes(symbol);
-  return `<article class="agent-card${isSelected ? " agent-card--selected" : ""}" onclick="toggleSymbol('${symbol}', this)"
-    title="點擊即可加入/移除 ${symbol}。可多選">
+  return `<article class="agent-card js-toggle-symbol${isSelected ? " agent-card--selected" : ""}" data-symbol="${escapeHtml(symbol)}"
+    title="點擊即可加入/移除 ${escapeHtml(symbol)}。可多選">
     <strong>
       <span>${symbol} ${name} ${sector} ${regimePill}</span>
       <span class="${cls}" title="${scoreTitle}">${scoreLabel}分</span>
@@ -1208,6 +1208,25 @@ function bindActions() {
     if (ledgerSignals) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "value-engine");
   });
   safeBind("homePositionCloudSync", configurePositionCloud);
+  document.addEventListener("click", event => {
+    const closeModal = event.target.closest(".js-ai-modal-close");
+    if (closeModal) { closeAiModal(); return; }
+    const closeReplay = event.target.closest(".js-replay-close");
+    if (closeReplay) {
+      const replayPanel = $("replayResultsPanel");
+      if (replayPanel) replayPanel.style.display = "none";
+      return;
+    }
+    const aiButton = event.target.closest(".js-ai-analysis");
+    if (aiButton && isValidSymbol(aiButton.dataset.symbol)) {
+      askAiAnalysis(aiButton.dataset.symbol);
+      return;
+    }
+    const symbolTarget = event.target.closest(".js-toggle-symbol, .universe-card[data-symbol]");
+    if (symbolTarget && isValidSymbol(symbolTarget.dataset.symbol)) {
+      toggleSymbol(symbolTarget.dataset.symbol, symbolTarget);
+    }
+  });
 }
 
 // Set endDate to today if not already set
@@ -1242,8 +1261,8 @@ async function loadUniverse() {
                font-size: 13px;
                transition: all 0.2s ease;
              "
-             onclick="toggleSymbol('${stock.symbol}', this)"
-             title="點擊以選取/取消選取 ${stock.symbol}"
+             data-symbol="${escapeHtml(stock.symbol)}"
+             title="點擊以選取/取消選取 ${escapeHtml(stock.symbol)}"
         >
           <div style="display: flex; justify-content: space-between; font-weight: bold;">
             <span>${stock.name}</span>
@@ -1453,7 +1472,7 @@ function renderReplayResults(data) {
       <span style="display: flex; align-items: center; gap: 6px;">🎯 歷史快照一鍵覆盤與優化報告</span>
       <div style="display: flex; gap: 8px;">
         ${data.report_markdown ? `<button id="downloadReportBtn" style="height: 24px; padding: 0 8px; font-size: 11px; background: var(--blue); border: none; color: white; border-radius: 4px; cursor: pointer;">📥 下載 Markdown 報告</button>` : ''}
-        <button onclick="document.getElementById('replayResultsPanel').style.display='none'" style="height: 24px; padding: 0 8px; font-size: 11px; background: #e2e8f0; border: none; color: #475569; border-radius: 4px; cursor: pointer;">關閉報告</button>
+        <button class="js-replay-close" type="button" style="height: 24px; padding: 0 8px; font-size: 11px; background: #e2e8f0; border: none; color: #475569; border-radius: 4px; cursor: pointer;">關閉報告</button>
       </div>
     </h3>
     
@@ -1854,6 +1873,9 @@ function parseMarkdown(text) {
 
 let ledgerSignals = [];
 let dailyValueState = null;
+let dailyLiveQuotes = {};
+let dailyLiveMarketSession = false;
+let dailyLiveTimer = null;
 
 // ---- 資料新鮮度（footerDataTimestamp / dataFreshness）----
 // 這兩個欄位原本是死的：HTML 有 id 與初始值「—」「載入中…」，但 app.js 從未寫入，
@@ -1898,7 +1920,7 @@ async function loadDataFreshness() {
     if (badge) {
       badge.textContent = label;
       badge.style.color = color; badge.style.background = bg; badge.style.border = `1px solid ${border}`;
-      badge.title = `價格與估值皆以 ${asOf} 收盤計算；本頁為盤後系統，不提供盤中即時報價。`;
+      badge.title = `估值與決策以 ${asOf} 正式收盤計算；交易時段另於標的卡顯示盤中參考價。`;
     }
     if (footer) {
       footer.textContent = `${asOf} 收盤${gen ? `（${gen} 台北產生）` : ""}`;
@@ -1933,19 +1955,41 @@ async function loadDailyValueState() {
     const res = await fetch("/api/value-current");
     const data = await readJson(res);
     dailyValueState = data;
+    renderDailyValuePanel();
+    await refreshDailyLivePrices();
+  } catch (err) {
+    if (status) status.textContent = "尚未產生";
+    panel.innerHTML = `<p style="font-size:13px;color:#92400e;">每日價值狀態尚未可用：${escapeHtml(err.message)}</p>`;
+  }
+}
+
+function renderDailyValuePanel() {
+    const panel = $("dailyValuePanel"), status = $("dailyValueStatus");
+    const data = dailyValueState;
+    if (!panel || !data) return;
     const c = data.coverage || {};
     if (status) status.textContent = `${data.as_of || "—"} · 品質 ${c.quality_covered || 0}/${c.mother_pool || 0}`
-      + (c.price_total ? ` · 同日價格 ${c.price_current || 0}/${c.price_total}` : "");
+      + (c.price_total ? ` · 同日價格 ${c.price_current || 0}/${c.price_total}` : "")
+      + (dailyLiveMarketSession ? " · 盤中價同步中" : "");
     const card = item => {
       const highDistance = item.distance_from_high_252 == null
         ? ""
         : `｜距近一年高點 ${Math.abs(Number(item.distance_from_high_252) * 100).toFixed(1)}%`;
+      const live = dailyLiveQuotes[item.symbol];
+      const liveTime = live && live.regularMarketTime
+        ? new Intl.DateTimeFormat("zh-TW", {timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false})
+          .format(new Date(Number(live.regularMarketTime) * 1000))
+        : "";
+      const liveLine = dailyLiveMarketSession && live
+        ? `<p style="font-size:12px;color:#1d4ed8;margin:4px 0 0;">🔄 盤中參考 ${Number(live.regularMarketPrice).toFixed(2)}${liveTime ? `（${liveTime}）` : ""} · ${escapeHtml(live.source || "盤中報價")}；決策仍採正式收盤</p>`
+        : "";
       return `<article class="candidate" style="margin-bottom:8px;">
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}</span><span style="color:#0f766e;">${escapeHtml(item.decision)}</span>
       </strong>
       <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
       <p style="font-size:12px;color:var(--muted);margin:0;">${escapeHtml(asArray(item.reasons).slice(0, 2).join("；") || "—")}</p>
+      ${liveLine}
       ${provenanceLine(item)}
     </article>`;
     };
@@ -1959,9 +2003,25 @@ async function loadDailyValueState() {
       ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">今天沒有同時通過品質、估值與止跌條件的標的；保留現金也是結果。</p>`}
       ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}`;
     renderMyHoldings();
+}
+
+async function refreshDailyLivePrices() {
+  if (!dailyValueState) return;
+  const items = [...asArray(dailyValueState.top_picks), ...asArray(dailyValueState.waiting_list)];
+  const symbols = [...new Set(items.map(item => item.symbol).filter(isValidSymbol))];
+  if (!symbols.length) return;
+  try {
+    const res = await fetch(`/api/quote?symbols=${encodeURIComponent(symbols.join(","))}`, {cache: "no-store"});
+    const data = await readJson(res);
+    dailyLiveMarketSession = data.marketSession === true;
+    dailyLiveQuotes = {};
+    asArray(data.quoteResponse?.result).forEach(row => { if (isValidSymbol(row.symbol)) dailyLiveQuotes[row.symbol] = row; });
+    renderDailyValuePanel();
   } catch (err) {
-    if (status) status.textContent = "尚未產生";
-    panel.innerHTML = `<p style="font-size:13px;color:#92400e;">每日價值狀態尚未可用：${escapeHtml(err.message)}</p>`;
+    console.warn("daily live prices unavailable:", err);
+  } finally {
+    if (dailyLiveTimer) clearTimeout(dailyLiveTimer);
+    if (dailyLiveMarketSession) dailyLiveTimer = setTimeout(refreshDailyLivePrices, 60000);
   }
 }
 
