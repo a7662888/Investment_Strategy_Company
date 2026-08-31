@@ -25,6 +25,12 @@ def main() -> None:
     except ValueError:
         pass
 
+    try:
+        positions.normalize_positions([{"symbol": "<img src=x onerror=alert(1)>", "shares": 1, "cost": 1}])
+        raise AssertionError("HTML-like symbols should fail")
+    except ValueError:
+        pass
+
     old_explicit = os.environ.get("POSITIONS_SYNC_TOKEN")
     old_data = os.environ.get("GITHUB_DATA_TOKEN")
     try:

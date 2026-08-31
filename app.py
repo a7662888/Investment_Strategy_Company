@@ -5,6 +5,7 @@ import json
 import math
 import os
 import random
+import re
 import ssl
 import sys
 # load .env if available
@@ -36,6 +37,11 @@ CACHE_DIR = PROJECT / "data" / "web_cache"
 MODEL_ARTIFACT_PATH = PROJECT / "model_artifacts" / "logit_v1.json"
 
 PROVIDER_RUNTIME: dict[str, dict] = {}
+
+
+def positions_sync_enabled() -> bool:
+    """Emergency privacy gate: opt-in only after the durable repo is verified private."""
+    return os.environ.get("POSITIONS_SYNC_ENABLED", "").strip() == "1"
 
 
 def record_provider_status(name: str, status: str, started: float, *, error: str | None = None, rows: int | None = None) -> None:
@@ -2736,8 +2742,8 @@ def asarray_dicts(value) -> list:
 def normalize_positions(raw_positions: list[dict]) -> dict[str, dict]:
     positions = {}
     for item in raw_positions:
-        symbol = str(item.get("symbol", "")).strip()
-        if not symbol:
+        symbol = str(item.get("symbol", "")).strip().upper()
+        if not re.fullmatch(r"[A-Z0-9^.-]{1,20}", symbol):
             continue
         positions[symbol] = {
             "symbol": symbol,
@@ -2814,6 +2820,18 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
 
     def end_headers(self) -> None:
+        # The site handles private portfolio data.  These headers constrain the
+        # impact of any HTML injection and prevent framing/content-type confusion.
+        self.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        self.send_header("Content-Security-Policy", (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
+            "base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+        ))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         if not self.path.startswith("/api/"):
             self.send_header("Cache-Control", "no-store, max-age=0")
         super().end_headers()
@@ -2882,7 +2900,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/positions":
                 from company.model.positions import expected_sync_token, is_authorized, load_positions
-                if expected_sync_token() is None:
+                if not positions_sync_enabled():
+                    self.send_json({"error": "positions sync is temporarily disabled"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                elif expected_sync_token() is None:
                     self.send_json({"error": "positions sync is not configured"}, HTTPStatus.SERVICE_UNAVAILABLE)
                 elif not is_authorized(self.headers.get("Authorization")):
                     self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
@@ -3061,6 +3081,9 @@ class Handler(SimpleHTTPRequestHandler):
                     is_authorized,
                     save_positions,
                 )
+                if not positions_sync_enabled():
+                    self.send_json({"error": "positions sync is temporarily disabled"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
                 if expected_sync_token() is None:
                     self.send_json({"error": "positions sync is not configured"}, HTTPStatus.SERVICE_UNAVAILABLE)
                     return

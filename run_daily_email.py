@@ -109,6 +109,12 @@ def require_fresh_analysis(value_state):
         actual = generated.astimezone(TAIPEI).date().isoformat()
     if actual != expected:
         raise RuntimeError(f"refusing to send stale analysis: expected {expected}, got {actual or 'unknown'}")
+    official = value_state.get("market_expected_as_of")
+    market_as_of = value_state.get("as_of")
+    if official and market_as_of != official:
+        raise RuntimeError(
+            f"refusing to send stale market close: official {official}, got {market_as_of or 'unknown'}"
+        )
 
 
 def archive_daily_analysis(context, position_meta):

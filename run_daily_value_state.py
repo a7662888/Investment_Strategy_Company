@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from company.data.value_fundamentals import load_fundamentals, refresh_pool, save_fundamentals
 from company.model.current_state import save_current_state
 from company.model.value_daily import build_daily_state
-from company.screener.value_rescreen import rescreen_all
+from company.screener.value_rescreen import latest_official_close_date, rescreen_all
 
 ROOT = Path(__file__).resolve().parent
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -35,6 +35,13 @@ def main() -> int:
     symbols = list(dict.fromkeys([row["symbol"] for row in pool.get("stocks", [])] + etf_symbols))
     results = rescreen_all(symbols, fundamentals=fundamentals)
     state = build_daily_state(results, pool_codes, int(pool.get("n") or len(pool_codes)))
+    official_as_of = latest_official_close_date()
+    state["market_expected_as_of"] = official_as_of
+    state["market_data_complete"] = not official_as_of or state.get("as_of") == official_as_of
+    if not state["market_data_complete"]:
+        raise RuntimeError(
+            f"refusing to save stale market state: official={official_as_of}, state={state.get('as_of')}"
+        )
     state["analysis_date_taipei"] = datetime.now(TAIPEI).date().isoformat()
     state["etf_subpool"] = {"count": len(etf_symbols), "symbols": etf_symbols}
     state["fundamentals"] = {

@@ -31,8 +31,77 @@ FUNDAMENTALS = ROOT / "data" / "value_fundamentals.json"
 # v2.2 sector schema
 FINHOLD = {"2881", "2882", "2891", "2886", "2884"}
 RETAIL = {"1216", "2912"}
+EMS = {"2317", "4938", "2382", "3231", "2356", "6669"}
+LEASING = {"5871", "9941"}
 TH = dict(roe_ttm=12.0, gpm=20.0, opm=8.0, eq=0.6, debt=60.0,
-          cyc_pb=25.0, cyc_roe_floor=5.0, ret_roe=12.0, ret_ocfni=0.8, ret_pb=50.0)
+          cyc_pb=25.0, cyc_roe_floor=5.0, ret_roe=12.0, ret_ocfni=0.8, ret_pb=50.0,
+          ems_roe=12.0, ems_ocfni=0.5, ems_debt=90.0, lease_roe=10.0)
+
+_OFFICIAL_CLOSE_CACHE: dict[str, dict] | None = None
+
+
+def _roc_date(value: object) -> str | None:
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    if len(digits) != 7:
+        return None
+    try:
+        return date(int(digits[:3]) + 1911, int(digits[3:5]), int(digits[5:7])).isoformat()
+    except ValueError:
+        return None
+
+
+def _number(value: object) -> float | None:
+    text = str(value or "").replace(",", "").strip()
+    if text in ("", "--", "---"):
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _official_closes() -> dict[str, dict]:
+    """Latest completed TWSE/TPEx closes, fetched once per batch.
+
+    Yahoo can publish a provisional Taiwan daily candle before the market opens and
+    can lag the completed candle well into the next day.  The exchange snapshots are
+    therefore the close-of-record for the newest session; Yahoo remains the long
+    history provider.
+    """
+    global _OFFICIAL_CLOSE_CACHE
+    if _OFFICIAL_CLOSE_CACHE is not None:
+        return _OFFICIAL_CLOSE_CACHE
+    output: dict[str, dict] = {}
+    feeds = (
+        ("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL", ".TW",
+         "Code", "ClosingPrice", "TWSE OpenAPI"),
+        ("https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes", ".TWO",
+         "SecuritiesCompanyCode", "Close", "TPEx OpenAPI"),
+    )
+    for url, suffix, code_key, close_key, source in feeds:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "investment-value-close/1.0"})
+            with urllib.request.urlopen(req, timeout=30) as response:
+                rows = json.loads(response.read().decode("utf-8"))
+            for item in rows if isinstance(rows, list) else []:
+                code = str(item.get(code_key) or "").strip()
+                close = _number(item.get(close_key))
+                close_date = _roc_date(item.get("Date"))
+                if code and close is not None and close_date:
+                    output[f"{code}{suffix}"] = {
+                        "date": close_date, "close": close, "source": source,
+                    }
+        except Exception:
+            # Availability of one official feed must not take down the other market;
+            # the caller still has a Yahoo fallback and a freshness fail-closed gate.
+            continue
+    _OFFICIAL_CLOSE_CACHE = output
+    return output
+
+
+def latest_official_close_date() -> str | None:
+    dates = [row.get("date") for row in _official_closes().values() if row.get("date")]
+    return max(dates, default=None)
 
 
 # ---------- 資料取得 ----------
@@ -56,16 +125,40 @@ def _yahoo_history(symbol: str, days: int = 400) -> list[dict]:
     for i, t in enumerate(ts):
         if q["close"][i] is None:
             continue
-        rows.append({"date": datetime.fromtimestamp(t).date().isoformat(),
+        rows.append({"date": datetime.fromtimestamp(t, timezone.utc).astimezone(
+                         timezone(timedelta(hours=8))).date().isoformat(),
                      "close": float(q["close"][i]),
-                     "adj_close": float(adj[i]) if i < len(adj) and adj[i] is not None else float(q["close"][i])})
+                     "adj_close": float(adj[i]) if i < len(adj) and adj[i] is not None else float(q["close"][i]),
+                     "source": "Yahoo Finance"})
     # Yahoo 會在台股開盤前就先建立當日 K 線，盤中也持續更新。若照單全收，
     # 系統會把「尚未收盤的當日價」當成收盤價寫進決策與凍結紀錄
     # （實測 2026-08-31 04:57、台股未開盤，Yahoo 已回當日 bar）。
     # 台股 13:30 收盤，保守以台北 14:00 為界：未過收盤即剔除當日未完成 bar。
     taipei_now = datetime.now(timezone(timedelta(hours=8)))
-    if rows and rows[-1]["date"] == taipei_now.date().isoformat() and taipei_now.hour < 14:
+    today = taipei_now.date().isoformat()
+    if rows and rows[-1]["date"] == today and taipei_now.hour < 14:
         rows.pop()
+
+    # After 14:00, accept today's bar only when the exchange has published the close.
+    # If Yahoo is late, append the official close; if Yahoo is provisional, replace it.
+    if taipei_now.hour >= 14:
+        official = _official_closes().get(symbol)
+        if official:
+            official_date = official["date"]
+            if rows and rows[-1]["date"] == today and official_date < today:
+                rows.pop()
+            if not rows or official_date > rows[-1]["date"]:
+                ratio = (rows[-1]["adj_close"] / rows[-1]["close"]) if rows and rows[-1]["close"] else 1.0
+                rows.append({
+                    "date": official_date, "close": official["close"],
+                    "adj_close": official["close"] * ratio, "source": official["source"],
+                })
+            elif official_date == rows[-1]["date"]:
+                ratio = rows[-1]["adj_close"] / rows[-1]["close"] if rows[-1]["close"] else 1.0
+                rows[-1].update(
+                    close=official["close"], adj_close=official["close"] * ratio,
+                    source=official["source"],
+                )
     return rows
 
 
@@ -170,6 +263,7 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
     _last_mr = _mr[-1] if _mr else None
     out["data_provenance"] = {
         "price_date": as_of,
+        "price_source": rows[-1].get("source") or "Yahoo Finance",
         "financials_period": (_qs[-1].get("period") if _qs else None),
         "revenue_month": (f"{_last_mr.get('year')}-{int(_last_mr.get('month') or 0):02d}"
                           if _last_mr and _last_mr.get("year") else None),
@@ -242,6 +336,24 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         if eq is not None and eq < TH["ret_ocfni"]:
             fails.append(f"零售 OCF/NI {eq:.2f}<{TH['ret_ocfni']}")
         valuation_pct, basis = pb_pct, "PBR(零售)"
+    elif code in EMS:
+        # EMS/ODM is structurally low-margin and working-capital intensive.  Applying
+        # the generic GPM/OPM/debt gates rejects the whole business model, so retain
+        # ROE, cash conversion and a conservative high debt ceiling instead.
+        if roe is None or roe < TH["ems_roe"]:
+            fails.append(f"EMS ROE {roe}<{TH['ems_roe']}")
+        if eq is not None and eq < TH["ems_ocfni"]:
+            fails.append(f"EMS OCF/NI {eq:.2f}<{TH['ems_ocfni']}")
+        if debt is not None and debt > TH["ems_debt"]:
+            fails.append(f"EMS 負債比 {debt:.1f}>{TH['ems_debt']}")
+        valuation_pct, basis = pe_pct, "PER(EMS)"
+    elif code in LEASING:
+        # Leasing is a credit-spread business: leverage is inventory, not a generic
+        # industrial-company defect.  Use sustainable ROE plus PBR and leave asset
+        # quality/funding-cost deterioration as explicit invalidation evidence.
+        if roe is None or roe < TH["lease_roe"]:
+            fails.append(f"租賃 ROE {roe}<{TH['lease_roe']}")
+        valuation_pct, basis = pb_pct, "PBR(租賃)"
     else:
         if roe is None or roe < TH["roe_ttm"]:
             fails.append(f"ROE_ttm {roe}<{TH['roe_ttm']}")
@@ -270,6 +382,14 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         out["action"] = "hold"
     else:
         out["action"] = "watch"
+
+    if code in LEASING and out["action"] == "accumulate":
+        # The current normalized dataset does not yet carry delinquency/NPL,
+        # funding-cost or capital-adequacy trends.  Removing the industrial debt
+        # gate fixes the false rejection, but must not silently promote a lender to
+        # a buy without its credit-quality evidence.
+        out["action"] = "hold"
+        out["reasons"].append("租賃授信品質／資金成本資料尚未納入 → 本次上限續列觀察")
 
     # 買進區間：估值 P20–P40 對應價位（以現價/現值等比換算）
     src = pbs if basis.startswith("PBR") else pes

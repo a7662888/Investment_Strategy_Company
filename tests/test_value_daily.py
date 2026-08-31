@@ -68,6 +68,17 @@ class ValueDailyTests(unittest.TestCase):
         self.assertEqual(state["waiting_list"][0]["risk_tier"], "高")
         self.assertEqual(state["waiting_list"][0]["decision"], "高風險反轉觀察")
 
+    def test_stale_symbol_is_not_promoted_into_todays_picks(self):
+        stale = _result("1111.TW")
+        fresh = _result("2222.TW", pct=55)
+        fresh["action"] = "hold"
+        stale["as_of"] = "2026-07-28"
+        state = build_daily_state([stale, fresh], {"1111", "2222"}, 2)
+        self.assertEqual(state["as_of"], "2026-07-29")
+        self.assertFalse(state["top_picks"])
+        self.assertEqual(state["coverage"]["price_current"], 1)
+        self.assertEqual(state["coverage"]["price_stale"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -97,23 +97,29 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
 def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int) -> dict:
     items = [_daily_item(r, r.get("symbol", "").split(".")[0] in pool_codes) for r in results]
     eligible = [i for i in items if i["eligible_pool"] and not i["is_etf"]]
-    picks = sorted((i for i in eligible if i["decision"] == "可分批研究"),
+    as_of = max((i.get("as_of") or "" for i in items), default="")
+    current_eligible = [i for i in eligible if i.get("as_of") == as_of]
+    picks = sorted((i for i in current_eligible if i["decision"] == "可分批研究"),
                    key=lambda x: x["rank_score"], reverse=True)[:5]
-    waiting = sorted((i for i in eligible if i["decision"] in (
+    waiting = sorted((i for i in current_eligible if i["decision"] in (
         "等待止跌", "高風險反轉觀察", "高檔，等待拉回"
     )),
                      key=lambda x: x["rank_score"], reverse=True)[:5]
     etf_candidates = sorted(
-        (i for i in items if i["is_etf"]),
+        (i for i in items if i["is_etf"] and i.get("as_of") == as_of),
         key=lambda x: x["rank_score"], reverse=True,
     )[:5]
-    as_of = max((i.get("as_of") or "" for i in items), default="")
     covered = sum(1 for i in eligible if i.get("fundamentals_complete"))
+    priced = [i for i in items if i.get("as_of")]
+    current_prices = sum(i.get("as_of") == as_of for i in priced)
     return {
         "schema_version": 1, "generated_at": datetime.now(timezone.utc).isoformat(), "as_of": as_of,
         "mode": "daily-current-state", "shadow": True,
         "coverage": {"mother_pool": pool_total, "quality_covered": covered,
-                     "not_yet_covered": max(0, pool_total - covered)},
+                     "not_yet_covered": max(0, pool_total - covered),
+                     "price_current": current_prices, "price_total": len(priced),
+                     "price_stale": len(priced) - current_prices,
+                     "oldest_price_as_of": min((i.get("as_of") for i in priced), default=None)},
         "top_picks": picks, "waiting_list": waiting, "etf_candidates": etf_candidates,
         "evaluations": items,
         "method": (

@@ -94,12 +94,21 @@ def test_private_positions_endpoints():
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
     old_token = os.environ.get("POSITIONS_SYNC_TOKEN")
+    old_enabled = os.environ.get("POSITIONS_SYNC_ENABLED")
     os.environ["POSITIONS_SYNC_TOKEN"] = "integration-sync-key"
+    os.environ.pop("POSITIONS_SYNC_ENABLED", None)
     document = {
         "schema_version": 1, "version": 2, "updated_at": "2026-08-04T00:00:00+00:00",
         "positions": [{"symbol": "0056.TW", "shares": 1000.0, "cost": 54.0}],
     }
     try:
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/positions", timeout=5)
+            raise AssertionError("positions sync should be fail-closed by default")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 503
+        os.environ["POSITIONS_SYNC_ENABLED"] = "1"
+
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/api/positions", timeout=5)
             raise AssertionError("unauthenticated positions read should fail")
@@ -129,6 +138,10 @@ def test_private_positions_endpoints():
             os.environ.pop("POSITIONS_SYNC_TOKEN", None)
         else:
             os.environ["POSITIONS_SYNC_TOKEN"] = old_token
+        if old_enabled is None:
+            os.environ.pop("POSITIONS_SYNC_ENABLED", None)
+        else:
+            os.environ["POSITIONS_SYNC_ENABLED"] = old_enabled
         server.shutdown()
 
 

@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,7 +38,7 @@ def normalize_positions(raw: object) -> list[dict]:
         if not isinstance(item, dict):
             raise ValueError("each position must be an object")
         symbol = str(item.get("symbol") or "").strip().upper()
-        if not symbol or len(symbol) > 20:
+        if not re.fullmatch(r"[A-Z0-9^.-]{1,20}", symbol):
             raise ValueError("invalid position symbol")
         try:
             shares = float(item.get("shares") or 0)

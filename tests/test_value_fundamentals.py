@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from company.data.value_fundamentals import completeness, parse_quarterly, refresh_pool
-from company.screener.value_rescreen import _pct_rank_quantiles, evaluate
+from company.screener.value_rescreen import _pct_rank_quantiles, _roc_date, evaluate
 
 
 def row(period, kind, value):
@@ -12,6 +12,10 @@ def row(period, kind, value):
 
 
 class ValueFundamentalsTests(unittest.TestCase):
+    def test_roc_exchange_date_is_normalized(self):
+        self.assertEqual(_roc_date("1150828"), "2026-08-28")
+        self.assertIsNone(_roc_date("bad"))
+
     def test_cumulative_cash_flow_is_converted_to_standalone_quarters(self):
         periods = ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"]
         fin = []
@@ -89,6 +93,54 @@ class ValueFundamentalsTests(unittest.TestCase):
         self.assertEqual(result["action"], "avoid")
         self.assertFalse(result["quality_pass"])
         self.assertGreaterEqual(result["valuation_pct"], 80)
+
+    def test_ems_uses_cash_conversion_not_generic_low_margin_gates(self):
+        rows = [
+            {"date": f"2026-08-{day:02d}", "close": 100 + day, "adj_close": 100 + day,
+             "source": "TWSE OpenAPI"}
+            for day in range(1, 29)
+        ]
+        fundamentals = {"2317": {
+            "name": "鴻海",
+            "quarterly": [
+                {"period": f"2025-{month:02d}-30", "roe": 3.1, "gross_profit_margin": 6.1,
+                 "operating_income_margin": 3.4, "earnings_quality": 0.99, "debt_ratio": 62.0}
+                for month in (3, 6, 9, 12)
+            ],
+            "valuation": {"date": rows[-1]["date"], "pe": 15.0, "pb": 1.5,
+                          "pe_quantiles_5pct": [10, 12, 15, 18, 22],
+                          "pb_quantiles_5pct": [1, 1.2, 1.5, 1.8, 2.0]},
+            "completeness": {"complete": True},
+        }}
+        with patch("company.screener.value_rescreen._yahoo_history", return_value=rows):
+            result = evaluate("2317.TW", fundamentals)
+        self.assertTrue(result["quality_pass"])
+        self.assertEqual(result["valuation_basis"], "PER(EMS)")
+        self.assertEqual(result["data_provenance"]["price_source"], "TWSE OpenAPI")
+
+    def test_leasing_uses_roe_and_pbr_instead_of_generic_debt_gate(self):
+        rows = [
+            {"date": f"2026-08-{day:02d}", "close": 100 + day, "adj_close": 100 + day,
+             "source": "TWSE OpenAPI"}
+            for day in range(1, 29)
+        ]
+        fundamentals = {"5871": {
+            "name": "中租-KY",
+            "quarterly": [
+                {"period": f"2025-{month:02d}-30", "roe": 2.95, "gross_profit_margin": 5,
+                 "operating_income_margin": 4, "earnings_quality": 0.2, "debt_ratio": 79.1}
+                for month in (3, 6, 9, 12)
+            ],
+            "valuation": {"date": rows[-1]["date"], "pe": 12.0, "pb": 1.5,
+                          "pe_quantiles_5pct": [8, 10, 12, 14, 16],
+                          "pb_quantiles_5pct": [1, 1.2, 1.5, 1.8, 2.0]},
+            "completeness": {"complete": True},
+        }}
+        with patch("company.screener.value_rescreen._yahoo_history", return_value=rows):
+            result = evaluate("5871.TW", fundamentals)
+        self.assertTrue(result["quality_pass"])
+        self.assertEqual(result["valuation_basis"], "PBR(租賃)")
+        self.assertEqual(result["action"], "hold")
 
 
 if __name__ == "__main__":

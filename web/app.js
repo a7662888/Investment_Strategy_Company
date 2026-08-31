@@ -1,5 +1,15 @@
 const $ = (id) => document.getElementById(id);
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, ch => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  })[ch]);
+}
+
+function isValidSymbol(value) {
+  return /^[A-Z0-9^.-]{1,20}$/.test(String(value || "").toUpperCase());
+}
+
 function taipeiDateString(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit"
@@ -1872,8 +1882,14 @@ async function loadDataFreshness() {
     const res = await fetch("/api/value-current");
     const data = await readJson(res);
     const asOf = data.as_of || "";
-    const gen = (data.generated_at || "").slice(0, 16).replace("T", " ");
-    const lag = tradingDaysBetween(asOf, new Date());
+    const generated = data.generated_at ? new Date(data.generated_at) : null;
+    const gen = generated && !isNaN(generated)
+      ? new Intl.DateTimeFormat("zh-TW", {timeZone: "Asia/Taipei", year: "numeric", month: "2-digit",
+          day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false}).format(generated)
+      : "";
+    const official = data.market_expected_as_of || "";
+    const lag = official && asOf ? (official === asOf ? 0 : tradingDaysBetween(asOf, new Date(official + "T23:59:59+08:00")))
+      : tradingDaysBetween(asOf, new Date());
     let label, color, bg, border;
     if (lag === null)      { label = "資料日期不明"; color = "#92400e"; bg = "#fffbeb"; border = "#fde68a"; }
     else if (lag <= 1)     { label = `🟢 最新（${asOf} 收盤）`; color = "#137333"; bg = "#e6f4ea"; border = "#ceead6"; }
@@ -1885,7 +1901,7 @@ async function loadDataFreshness() {
       badge.title = `價格與估值皆以 ${asOf} 收盤計算；本頁為盤後系統，不提供盤中即時報價。`;
     }
     if (footer) {
-      footer.textContent = `${asOf} 收盤${gen ? `（產生於 ${gen} UTC）` : ""}`;
+      footer.textContent = `${asOf} 收盤${gen ? `（${gen} 台北產生）` : ""}`;
     }
   } catch (err) {
     if (badge) badge.textContent = "資料狀態讀取失敗";
@@ -1905,8 +1921,9 @@ function provenanceLine(item) {
   if (p.price_date) parts.push(`價格 ${p.price_date} 收盤`);
   if (p.financials_period) parts.push(`財報 ${p.financials_period}`);
   if (p.revenue_month) parts.push(`月營收 ${p.revenue_month}`);
+  if (p.price_source) parts[0] += `（${p.price_source}）`;
   return `<p style="font-size:11px;color:#64748b;margin:4px 0 0;border-top:1px dashed var(--line);padding-top:4px;">
-    📅 ${parts.join("｜")}</p>`;
+    📅 ${parts.map(escapeHtml).join("｜")}</p>`;
 }
 
 async function loadDailyValueState() {
@@ -1917,17 +1934,18 @@ async function loadDailyValueState() {
     const data = await readJson(res);
     dailyValueState = data;
     const c = data.coverage || {};
-    if (status) status.textContent = `${data.as_of || "—"} · 覆蓋 ${c.quality_covered || 0}/${c.mother_pool || 0}`;
+    if (status) status.textContent = `${data.as_of || "—"} · 品質 ${c.quality_covered || 0}/${c.mother_pool || 0}`
+      + (c.price_total ? ` · 同日價格 ${c.price_current || 0}/${c.price_total}` : "");
     const card = item => {
       const highDistance = item.distance_from_high_252 == null
         ? ""
         : `｜距近一年高點 ${Math.abs(Number(item.distance_from_high_252) * 100).toFixed(1)}%`;
       return `<article class="candidate" style="margin-bottom:8px;">
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <span>${item.symbol} ${item.name || ""}</span><span style="color:#0f766e;">${item.decision}</span>
+        <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}</span><span style="color:#0f766e;">${escapeHtml(item.decision)}</span>
       </strong>
-      <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${item.valuation_zone}｜${item.trend}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
-      <p style="font-size:12px;color:var(--muted);margin:0;">${asArray(item.reasons).slice(0, 2).join("；") || "—"}</p>
+      <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
+      <p style="font-size:12px;color:var(--muted);margin:0;">${escapeHtml(asArray(item.reasons).slice(0, 2).join("；") || "—")}</p>
       ${provenanceLine(item)}
     </article>`;
     };
@@ -1943,7 +1961,7 @@ async function loadDailyValueState() {
     renderMyHoldings();
   } catch (err) {
     if (status) status.textContent = "尚未產生";
-    panel.innerHTML = `<p style="font-size:13px;color:#92400e;">每日價值狀態尚未可用：${err.message}</p>`;
+    panel.innerHTML = `<p style="font-size:13px;color:#92400e;">每日價值狀態尚未可用：${escapeHtml(err.message)}</p>`;
   }
 }
 
@@ -2113,7 +2131,7 @@ function renderLedger(filterType) {
     }
     
     const symbolCode = s.symbol.split(".")[0];
-    const name = s.name || symbolCode;
+    const name = escapeHtml(s.name || symbolCode);
     const refPrice = s.reference_price || "—";
     
     let entryRange = "—";
@@ -2170,7 +2188,10 @@ function renderLedger(filterType) {
     const isMedium = s.data_quality?.valuation === "medium";
     const dqBadge = isMedium ? `<span style="font-size:10px; color:#d97706; background:#fffbeb; border:1px solid #fde68a; padding:1px 4px; border-radius:3px;">DQ: Med</span>` : `<span style="font-size:10px; color:#0f766e; background:#e6f4ea; border:1px solid #ceead6; padding:1px 4px; border-radius:3px;">DQ: High</span>`;
     
-    const agentLabel = s.agent_id || "unknown";
+    const agentLabel = escapeHtml(s.agent_id || "unknown");
+    business = escapeHtml(business);
+    valuation = escapeHtml(valuation);
+    chips = escapeHtml(chips);
 
     const pillar1Title = isEtf ? "📈 追蹤指數與邏輯" : "💼 商業與品質";
     const pillar2Title = isEtf ? "💰 內扣費用與成本" : "📊 估值與百分位";
@@ -2180,15 +2201,15 @@ function renderLedger(filterType) {
       <div class="ledger-card">
         <div style="font-weight: bold; font-size: 15px; display: flex; align-items: center; gap: 8px;">
           <span>${name}</span>
-          <span style="font-family: monospace; color: var(--muted); font-size: 12px;">${s.symbol}</span>
+          <span style="font-family: monospace; color: var(--muted); font-size: 12px;">${escapeHtml(s.symbol)}</span>
           ${dqBadge}
           ${heldBadge(s.symbol)}
         </div>
-        <span class="ledger-badge ${badgeCls}">${action.toUpperCase()}</span>
+        <span class="ledger-badge ${badgeCls}">${escapeHtml(action.toUpperCase())}</span>
         
         <div class="ledger-meta">
           <span>Agent: ${agentLabel}</span>
-          <span>Cutoff: ${s.data_cutoff}</span>
+          <span>Cutoff: ${escapeHtml(s.data_cutoff)}</span>
         </div>
         <div class="ledger-meta" style="border-top: none; padding-top: 0; margin-top: -4px;">
           <span>Ref: $${refPrice}</span>
@@ -2215,7 +2236,7 @@ function renderLedger(filterType) {
           </div>
           <div class="pillar-box" style="grid-column: span 2;">
             <span class="pillar-title">⚠️ 風險與失效條件</span>
-            <span class="pillar-desc" style="color:var(--red); font-size:11px;">${s.invalidation || risk}</span>
+            <span class="pillar-desc" style="color:var(--red); font-size:11px;">${escapeHtml(s.invalidation || risk)}</span>
           </div>
         </div>
         
@@ -2274,7 +2295,7 @@ function parsePositionsRaw(raw) {
     const [symPart, costPart] = item.split("@");
     const [symbol, shares] = symPart.split(":");
     return { symbol: (symbol || "").trim().toUpperCase(), shares: Number(shares || 0), cost: Number(costPart || 0) };
-  }).filter(p => p.symbol);
+  }).filter(p => isValidSymbol(p.symbol) && Number.isFinite(p.shares) && Number.isFinite(p.cost));
 }
 
 async function renderMyHoldings() {
@@ -2315,7 +2336,7 @@ async function renderMyHoldings() {
     const gcls = gain === null ? "var(--muted)" : gain >= 0 ? "#137333" : "#c5221f";
     const gtxt = gain === null ? "—" : `${gain >= 0 ? "+" : ""}${(gain * 100).toFixed(2)}%`;
     const value = (price && p.shares) ? Math.round(price * p.shares).toLocaleString() : "—";
-    const advice = va ? `👉 <b>${va.action}</b>${asArray(va.reasons).length ? `：${asArray(va.reasons).join("；")}` : ""}` : sig ? plainAdvice(sig, true)
+    const advice = va ? `👉 <b>${escapeHtml(va.action)}</b>${asArray(va.reasons).length ? `：${escapeHtml(asArray(va.reasons).join("；"))}` : ""}` : sig ? plainAdvice(sig, true)
       : `👉 此標的不在價值引擎追蹤清單中，資料不足，請人工檢查。`;
     const sigLine = va && va.value_state
       ? `<span class="pill" style="font-size:11px;">每日價值：${(va.value_state.action || "").toUpperCase()}</span>`
@@ -2323,7 +2344,7 @@ async function renderMyHoldings() {
       : `<span class="pill" style="font-size:11px; color:var(--muted);">未納入價值分析</span>`;
     return `<article class="candidate" style="margin-bottom:10px;">
       <strong style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-        <span>${p.symbol} ${sig && sig.name ? sig.name : ""} ${sigLine}</span>
+        <span>${escapeHtml(p.symbol)} ${sig && sig.name ? escapeHtml(sig.name) : ""} ${sigLine}</span>
         <span style="color:${gcls}">${gtxt}</span>
       </strong>
       <p style="font-size:13px; margin:6px 0;">
