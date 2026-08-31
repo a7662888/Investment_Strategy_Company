@@ -1207,6 +1207,7 @@ if (endDateEl && !endDateEl.value) {
 }
 
 bindActions();
+loadDataFreshness();
 loadDailyValueState();
 loadDecisionLedger();
 
@@ -1843,6 +1844,55 @@ function parseMarkdown(text) {
 
 let ledgerSignals = [];
 let dailyValueState = null;
+
+// ---- 資料新鮮度（footerDataTimestamp / dataFreshness）----
+// 這兩個欄位原本是死的：HTML 有 id 與初始值「—」「載入中…」，但 app.js 從未寫入，
+// 所以永遠顯示佔位符。使用者（與外部檢視者）因此無從判斷看到的是哪一天的價格，
+// 曾被誤判成「網站資料從未更新」。改為實際回填，並標示落後幾個交易日。
+function tradingDaysBetween(fromISO, toDate) {
+  if (!fromISO) return null;
+  const from = new Date(fromISO + "T00:00:00+08:00");
+  if (isNaN(from)) return null;
+  let days = 0;
+  const cur = new Date(from);
+  while (cur < toDate) {
+    cur.setDate(cur.getDate() + 1);
+    if (cur > toDate) break;               // 不把尚未到來的日子算成落後
+    const wd = cur.getDay();               // 只計工作日；未扣國定假日，故為保守上限
+    if (wd !== 0 && wd !== 6) days++;
+  }
+  return days;
+}
+
+async function loadDataFreshness() {
+  const footer = $("footerDataTimestamp");
+  const badge = $("dataFreshness");
+  if (!footer && !badge) return;
+  try {
+    const res = await fetch("/api/value-current");
+    const data = await readJson(res);
+    const asOf = data.as_of || "";
+    const gen = (data.generated_at || "").slice(0, 16).replace("T", " ");
+    const lag = tradingDaysBetween(asOf, new Date());
+    let label, color, bg, border;
+    if (lag === null)      { label = "資料日期不明"; color = "#92400e"; bg = "#fffbeb"; border = "#fde68a"; }
+    else if (lag <= 1)     { label = `🟢 最新（${asOf} 收盤）`; color = "#137333"; bg = "#e6f4ea"; border = "#ceead6"; }
+    else if (lag === 2)    { label = `🟡 落後 1 個交易日（${asOf} 收盤）`; color = "#92400e"; bg = "#fffbeb"; border = "#fde68a"; }
+    else                   { label = `🔴 落後 ${lag - 1} 個交易日（${asOf} 收盤）`; color = "#c5221f"; bg = "#fce8e6"; border = "#fad2cf"; }
+    if (badge) {
+      badge.textContent = label;
+      badge.style.color = color; badge.style.background = bg; badge.style.border = `1px solid ${border}`;
+      badge.title = `價格與估值皆以 ${asOf} 收盤計算；本頁為盤後系統，不提供盤中即時報價。`;
+    }
+    if (footer) {
+      footer.textContent = `${asOf} 收盤${gen ? `（產生於 ${gen} UTC）` : ""}`;
+    }
+  } catch (err) {
+    if (badge) badge.textContent = "資料狀態讀取失敗";
+    if (footer) footer.textContent = "讀取失敗";
+    console.warn("data freshness unavailable:", err);
+  }
+}
 
 async function loadDailyValueState() {
   const panel = $("dailyValuePanel"), status = $("dailyValueStatus");
