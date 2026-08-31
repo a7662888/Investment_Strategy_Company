@@ -1894,6 +1894,21 @@ async function loadDataFreshness() {
   }
 }
 
+
+// 逐項資料來源時間戳。單一「最後更新」看不出價格與財報的新舊差距——
+// 價格可能是昨天收盤，但財報仍是上一季、月營收落後兩個月。這裡逐項揭露，
+// 使用者才知道一個判定是建立在多新的資訊上。
+function provenanceLine(item) {
+  const p = item && item.data_provenance;
+  if (!p || (!p.price_date && !p.financials_period && !p.revenue_month)) return "";
+  const parts = [];
+  if (p.price_date) parts.push(`價格 ${p.price_date} 收盤`);
+  if (p.financials_period) parts.push(`財報 ${p.financials_period}`);
+  if (p.revenue_month) parts.push(`月營收 ${p.revenue_month}`);
+  return `<p style="font-size:11px;color:#64748b;margin:4px 0 0;border-top:1px dashed var(--line);padding-top:4px;">
+    📅 ${parts.join("｜")}</p>`;
+}
+
 async function loadDailyValueState() {
   const panel = $("dailyValuePanel"), status = $("dailyValueStatus");
   if (!panel) return;
@@ -1913,6 +1928,7 @@ async function loadDailyValueState() {
       </strong>
       <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${item.valuation_zone}｜${item.trend}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
       <p style="font-size:12px;color:var(--muted);margin:0;">${asArray(item.reasons).slice(0, 2).join("；") || "—"}</p>
+      ${provenanceLine(item)}
     </article>`;
     };
     const picks = asArray(data.top_picks);

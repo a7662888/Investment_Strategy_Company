@@ -20,7 +20,7 @@ import statistics
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from company.model.value_policy import CYCLICAL
@@ -59,6 +59,13 @@ def _yahoo_history(symbol: str, days: int = 400) -> list[dict]:
         rows.append({"date": datetime.fromtimestamp(t).date().isoformat(),
                      "close": float(q["close"][i]),
                      "adj_close": float(adj[i]) if i < len(adj) and adj[i] is not None else float(q["close"][i])})
+    # Yahoo 會在台股開盤前就先建立當日 K 線，盤中也持續更新。若照單全收，
+    # 系統會把「尚未收盤的當日價」當成收盤價寫進決策與凍結紀錄
+    # （實測 2026-08-31 04:57、台股未開盤，Yahoo 已回當日 bar）。
+    # 台股 13:30 收盤，保守以台北 14:00 為界：未過收盤即剔除當日未完成 bar。
+    taipei_now = datetime.now(timezone(timedelta(hours=8)))
+    if rows and rows[-1]["date"] == taipei_now.date().isoformat() and taipei_now.hour < 14:
+        rows.pop()
     return rows
 
 
@@ -155,6 +162,18 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
            "distance_from_high_252": round(distance_from_high_252, 6)
            if distance_from_high_252 is not None else None,
            "price_pct_252": price_pct_252}
+
+    # 逐項資料來源時間戳：只有一個籠統的「最後更新」時，使用者無從判斷
+    # 價格、財報、月營收各自新舊（可能價格是昨天、財報卻是上一季）。
+    _qs = info.get("quarterly") or []
+    _mr = info.get("monthly_revenue") or []
+    _last_mr = _mr[-1] if _mr else None
+    out["data_provenance"] = {
+        "price_date": as_of,
+        "financials_period": (_qs[-1].get("period") if _qs else None),
+        "revenue_month": (f"{_last_mr.get('year')}-{int(_last_mr.get('month') or 0):02d}"
+                          if _last_mr and _last_mr.get("year") else None),
+    }
 
     if is_etf:
         adjs = sorted(r["adj_close"] for r in rows)

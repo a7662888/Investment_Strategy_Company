@@ -89,6 +89,8 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
         "price_pct_252": result.get("price_pct_252"), "chase_risk": chase_risk,
         "rank_score": round(score, 2), "reasons": list(result.get("reasons") or []),
         "failed": list(result.get("failed") or []), "is_etf": bool(result.get("is_etf")),
+        # 逐項來源時間戳需一併帶到前端；_daily_item 是白名單式輸出，未列即遺失。
+        "data_provenance": result.get("data_provenance") or {},
     }
 
 
