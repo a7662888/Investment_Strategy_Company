@@ -89,6 +89,7 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
         "price_pct_252": result.get("price_pct_252"), "chase_risk": chase_risk,
         "rank_score": round(score, 2), "reasons": list(result.get("reasons") or []),
         "failed": list(result.get("failed") or []), "is_etf": bool(result.get("is_etf")),
+        "fundamental_trend": result.get("fundamental_trend") or {},
         # 逐項來源時間戳需一併帶到前端；_daily_item 是白名單式輸出，未列即遺失。
         "data_provenance": result.get("data_provenance") or {},
     }
@@ -123,13 +124,15 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
         "top_picks": picks, "waiting_list": waiting, "etf_candidates": etf_candidates,
         "evaluations": items,
         "method": (
-            "母池→季度品質硬篩→近3年估值百分位（景氣股改用PBR＋ROE週期）"
-            "→20/60日趨勢＋近一年高檔追價閘門；不自動下單"
+            "tw_value_method v2.3：母池→季度品質硬篩→近3年估值百分位"
+            "→20/60日趨勢＋高檔追價閘門；持倉另用100分Exit Engine，缺值降級且不自動下單"
         ),
     }
 
 
 def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
+    from company.model.exit_engine import score_exit
+
     by_symbol = {i.get("symbol"): i for i in state.get("evaluations", [])}
     market_values = {}
     for pos in positions:
@@ -138,6 +141,7 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
         price = item.get("price") if item else None
         market_values[symbol] = float(pos.get("shares") or 0) * float(price or 0)
     total_value = sum(market_values.values())
+    priced_position_count = sum(value > 0 for value in market_values.values())
     output = []
     for pos in positions:
         symbol = str(pos.get("symbol") or "").upper()
@@ -197,12 +201,33 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
             else:
                 action = "停止追加，續抱觀察"
                 reasons.append("估值偏高但尚無品質失效證據，不以價格訊號單獨清倉")
+        # 只輸入一檔時顯示的 100% 不足以證明「完整投資組合高度集中」。
+        # Exit Score 至少要有兩檔可定價持股才採計 position-risk；原 ETF 配置提示維持相容。
+        exit_weight = weight if priced_position_count >= 2 else None
+        exit_engine = score_exit(item or {}, gain, exit_weight)
+        base_action = action
+        exit_status = exit_engine["status"]
+        if exit_status in ("trim_20_25", "trim_30_50", "take_profit", "exit"):
+            action = exit_engine["label"]
+            reasons = [
+                f"Exit Score {exit_engine['score']:.1f}/100（資料覆蓋 {exit_engine['coverage']}/100）",
+                *reasons,
+            ]
+        elif (exit_status == "watch_profit" and gain is not None and gain > 0
+              and "賣出" not in base_action and "減碼" not in base_action):
+            action = "獲利續抱，密切觀察"
+            reasons.insert(0, f"Exit Score {exit_engine['score']:.1f}/100，尚未達減碼門檻")
+        elif (item and not item.get("is_etf") and priced_position_count >= 2
+              and weight is not None and weight > 0.25):
+            action = "配置過高，減碼再平衡檢查"
+            reasons.insert(0, f"單一個股約占已輸入持股 {weight * 100:.1f}%，先檢查集中風險")
         output.append({
             "symbol": symbol, "name": item.get("name") if item else None,
             "shares": shares, "cost": cost, "price": price,
             "unrealized_gain": round(gain, 6) if gain is not None else None,
             "portfolio_weight": round(weight, 6) if weight is not None else None,
-            "action": action, "reasons": reasons,
+            "action": action, "base_action": base_action, "reasons": reasons,
+            "exit_engine": exit_engine,
             "value_state": item, "as_of": state.get("as_of"),
             "disclaimer": "研究提示，不自動下單；賣出前須人工確認論點失效與稅費。",
         })

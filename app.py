@@ -788,7 +788,7 @@ def load_model_artifact() -> dict | None:
 
 def build_version() -> dict:
     return {
-        "app_version": "single-value-engine-v1",
+        "app_version": "single-value-engine-exit-shadow-v2.3",
         "expected_min_commit": "65ad098",
         "render_git_commit": os.environ.get("RENDER_GIT_COMMIT"),
         "render_service_id": os.environ.get("RENDER_SERVICE_ID"),
@@ -798,6 +798,8 @@ def build_version() -> dict:
             "quote_twse_tpex_official_close": True,
             "single_value_engine": True,
             "value_portfolio_actions": True,
+            "exit_engine_shadow": True,
+            "automatic_trading": False,
             "legacy_agent_competition": False,
         },
     }
@@ -876,6 +878,7 @@ def get_data_status() -> dict:
         "active_universe_count": len(DISCOVERY_UNIVERSE),
         "mother_pool_count": mother_pool.get("n", 0),
         "production_universe": "mother_pool",
+        "capabilities": {"exit_engine_shadow": True, "automatic_trading": False},
         "cache_files_count": len(cache_files),
         "latest_cache_date": latest_date,
         "providers": providers,

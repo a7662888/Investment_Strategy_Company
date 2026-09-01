@@ -16,7 +16,7 @@
           <span style="font-size: 12px; font-weight: 400; color: var(--muted); background: #f1f5f9; padding: 2px 8px; border-radius: 4px;">shadow · unproven</span>
         </h1>
         <p style="margin: 4px 0 0 0; font-size: 13px; color: var(--muted);">
-          由離線 <code>tw_value_method v2.2</code> 驅動的價值投資決策帳本 —
+          由離線 <code>tw_value_method v2.3</code> 驅動的價值投資決策帳本 —
           所有訊號在 data_cutoff 當時凍結，與大盤 0050.TW 實時對打
         </p>
       </div>
@@ -30,7 +30,7 @@
 
     <!-- Methodology Badge (collapsible) -->
     <details style="margin-bottom: 16px; font-size: 12px; color: var(--muted); background: #f8fafc; border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px;">
-      <summary style="cursor: pointer; font-weight: 600; color: #475569;">📐 方法論準則摘要 (tw_value_method v2.2)</summary>
+      <summary style="cursor: pointer; font-weight: 600; color: #475569;">📐 方法論準則摘要 (tw_value_method v2.3)</summary>
       <div style="margin-top: 8px; line-height: 1.6; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
         <div><strong>選股宇宙</strong><br>母池 100 檔 → 有完整季報者進品質覆蓋池 → 每日估值與時機排序</div>
         <div><strong>Action 光譜</strong><br>accumulate → watch → hold → avoid，附 entry_range 與 invalidation</div>
@@ -38,6 +38,7 @@
         <div><strong>資料來源</strong><br>twstock 盤後日線 + Yahoo Finance · 離線計算 · 無 LLM 在線污染</div>
         <div><strong>持久化</strong><br>每筆決策寫入 <code>decision_ledger.jsonl</code>，GitHub 遠端同步</div>
         <div><strong>單一決策責任</strong><br>只輸出 value-engine 最終動作；其他模型僅能提供可追溯的補充證據或反方風險</div>
+        <div><strong>持倉 Exit Engine</strong><br>估值、基本面、趨勢、盈餘品質與集中度合計 100 分；缺資料降級，shadow 驗證前不自動下單</div>
       </div>
     </details>
 
@@ -62,7 +63,7 @@
         <button id="homePositionCloudSync" type="button" title="連接私有持股同步" style="padding:7px 12px;">雲端同步</button>
         <span id="homePositionCloudStatus" style="font-size:12px; color:var(--muted);">僅此瀏覽器</span>
       </div>
-      <div id="myHoldingsPanel"><p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔的損益、系統建議與白話說明。</p></div>
+      <div id="myHoldingsPanel"><p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔損益、持股建議與可稽核的 Exit Score 獲利保護提醒。</p></div>
     </section>
 
     <!-- 每日 current-state：與不可變的 Decision Ledger 分離 -->

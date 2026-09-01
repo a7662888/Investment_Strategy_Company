@@ -2402,6 +2402,18 @@ async function renderMyHoldings() {
       ? `<span class="pill" style="font-size:11px;">每日價值：${(va.value_state.action || "").toUpperCase()}</span>`
       : sig ? `<span class="pill" style="font-size:11px;">凍結卡：${(sig.action || "").toUpperCase()}</span>`
       : `<span class="pill" style="font-size:11px; color:var(--muted);">未納入價值分析</span>`;
+    const ex = va && va.exit_engine;
+    const exitColor = !ex ? "#64748b" : ex.status === "exit" || ex.status === "take_profit" ? "#b91c1c"
+      : String(ex.status || "").startsWith("trim") ? "#c2410c" : ex.status === "watch_profit" ? "#b45309" : "#137333";
+    const exitReasons = ex ? Object.values(ex.reasons || {}).flat().filter(Boolean).slice(0, 3) : [];
+    const exitPanel = ex ? `<div style="font-size:12px;background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:8px 9px;margin-top:7px;line-height:1.55;">
+      <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <b style="color:${exitColor};">Exit Score ${Number(ex.score || 0).toFixed(1)}/100 · ${escapeHtml(ex.label || "—")}</b>
+        <span style="color:var(--muted);">資料覆蓋 ${Number(ex.coverage || 0)}/100 · shadow</span>
+      </div>
+      <div style="color:#475569;margin-top:3px;">估值 ${Number(ex.components?.valuation || 0)}/30｜基本面 ${Number(ex.components?.fundamentals || 0)}/30｜趨勢 ${Number(ex.components?.momentum || 0)}/20｜盈餘品質 ${Number(ex.components?.accounting_quality || 0)}/10｜部位 ${Number(ex.components?.position_risk || 0)}/10</div>
+      ${exitReasons.length ? `<div style="color:var(--muted);margin-top:3px;">依據：${escapeHtml(exitReasons.join("；"))}</div>` : ""}
+    </div>` : "";
     return `<article class="candidate" style="margin-bottom:10px;">
       <strong style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
         <span>${escapeHtml(p.symbol)} ${sig && sig.name ? escapeHtml(sig.name) : ""} ${sigLine}</span>
@@ -2409,9 +2421,10 @@ async function renderMyHoldings() {
       </strong>
       <p style="font-size:13px; margin:6px 0;">
         成本 ${p.cost || "—"}｜現價 ${price ?? "—"}｜${p.shares || 0} 股｜市值約 ${value} 元
-        ${va ? `｜持股判斷：<b>${va.action}</b>` : ""}
+        ${va ? `｜持股判斷：<b>${escapeHtml(va.action || "—")}</b>` : ""}
       </p>
       <div style="font-size:12.5px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:7px 9px; color:#1e3a8a;">${advice}</div>
+      ${exitPanel}
     </article>`;
   }).join("");
 }

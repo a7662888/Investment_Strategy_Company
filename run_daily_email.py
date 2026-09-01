@@ -229,12 +229,24 @@ def build_html(positions, context=None, position_meta=None, audit_id=None):
         if pa:
             ug = pa.get("unrealized_gain")
             cls = "#137333" if (ug or 0) >= 0 else "#c5221f"
+            exit_engine = pa.get("exit_engine") or {}
+            components = exit_engine.get("components") or {}
+            exit_row = ""
+            if exit_engine:
+                exit_row = (
+                    "<tr><td colspan='5' style='font-size:12px;color:#334155;background:#f8fafc;padding:5px 8px;'>"
+                    f"📤 <b>Exit Score {float(exit_engine.get('score') or 0):.1f}/100 · "
+                    f"{exit_engine.get('label') or '—'}</b>（資料覆蓋 {exit_engine.get('coverage') or 0}/100；shadow）<br>"
+                    f"估值 {components.get('valuation',0)}/30｜基本面 {components.get('fundamentals',0)}/30｜"
+                    f"趨勢 {components.get('momentum',0)}/20｜盈餘品質 {components.get('accounting_quality',0)}/10｜"
+                    f"部位 {components.get('position_risk',0)}/10</td></tr>"
+                )
             rows += (f"<tr><td>{p['symbol']}</td><td>{pa.get('action','—')}</td>"
                      f"<td align='right'>{pa.get('price','—')}</td>"
                      f"<td align='right'>{p.get('cost','—')}</td>"
                      f"<td align='right' style='color:{cls};font-weight:600'>{pct(ug)}</td></tr>"
                      f"<tr><td colspan='5' style='font-size:12px;color:#1e3a8a;background:#eff6ff;padding:4px 8px;'>"
-                     f"👉 {holding_advice(p['symbol'])}</td></tr>")
+                     f"👉 {holding_advice(p['symbol'])}</td></tr>" + exit_row)
         else:
             rows += f"<tr><td>{p['symbol']}</td><td colspan='4' style='color:#c5221f'>今日未取得價值判斷，請人工檢查</td></tr>"
     daily_picks = value_state.get("top_picks") or []

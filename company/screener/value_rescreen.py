@@ -198,6 +198,69 @@ def _avg(quarterly: list[dict], key: str):
     return sum(vals) / len(vals) if vals else None
 
 
+def _growth_pct(current: object, prior: object) -> float | None:
+    try:
+        current_f, prior_f = float(current), float(prior)
+    except (TypeError, ValueError):
+        return None
+    if prior_f <= 0:
+        return None
+    return round((current_f / abs(prior_f) - 1.0) * 100.0, 2)
+
+
+def _fundamental_trend(info: dict) -> dict:
+    """Build point-in-time deterioration inputs from already persisted statements."""
+    quarterly = info.get("quarterly") or []
+    monthly = info.get("monthly_revenue") or []
+    latest = quarterly[-1] if quarterly else {}
+    year_ago = quarterly[-5] if len(quarterly) >= 5 else {}
+
+    def declining_two_quarters(key: str) -> bool | None:
+        values = [row.get(key) for row in quarterly[-3:]]
+        if len(values) < 3 or any(value is None for value in values):
+            return None
+        return float(values[0]) > float(values[1]) > float(values[2])
+
+    monthly_yoys = [float(row["yoy"]) for row in monthly if row.get("yoy") is not None]
+    negative_streak = None
+    if monthly_yoys:
+        negative_streak = 0
+        for value in reversed(monthly_yoys):
+            if value >= 0:
+                break
+            negative_streak += 1
+    earnings_quality = _avg(quarterly, "earnings_quality")
+    latest_debt = latest.get("debt_ratio")
+    prior_debt = year_ago.get("debt_ratio")
+    debt_change = (
+        round(float(latest_debt) - float(prior_debt), 2)
+        if latest_debt is not None and prior_debt is not None else None
+    )
+    result = {
+        "latest_period": latest.get("period"),
+        "quarterly_revenue_yoy": _growth_pct(latest.get("revenue"), year_ago.get("revenue")),
+        "quarterly_eps_yoy": _growth_pct(latest.get("eps"), year_ago.get("eps")),
+        "gross_margin_decline_2q": declining_two_quarters("gross_profit_margin"),
+        "operating_margin_decline_2q": declining_two_quarters("operating_income_margin"),
+        "earnings_quality_ttm": round(float(earnings_quality), 4) if earnings_quality is not None else None,
+        "debt_ratio_change_yoy": debt_change,
+        "monthly_revenue_yoy_latest": round(monthly_yoys[-1], 2) if monthly_yoys else None,
+        "monthly_revenue_yoy_3m_mean": (
+            round(sum(monthly_yoys[-3:]) / 3, 2) if len(monthly_yoys) >= 3 else None
+        ),
+        "monthly_revenue_negative_streak": negative_streak,
+    }
+    result["observed_metrics"] = sum(
+        result.get(key) is not None
+        for key in (
+            "quarterly_revenue_yoy", "quarterly_eps_yoy", "gross_margin_decline_2q",
+            "operating_margin_decline_2q", "earnings_quality_ttm",
+            "debt_ratio_change_yoy", "monthly_revenue_yoy_latest",
+        )
+    )
+    return result
+
+
 def _pct_rank(series: list[float], value: float):
     if not series or value is None:
         return None
@@ -254,7 +317,8 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
            "high_252": round(high_252, 4) if high_252 is not None else None,
            "distance_from_high_252": round(distance_from_high_252, 6)
            if distance_from_high_252 is not None else None,
-           "price_pct_252": price_pct_252}
+           "price_pct_252": price_pct_252,
+           "fundamental_trend": {} if is_etf else _fundamental_trend(info)}
 
     # 逐項資料來源時間戳：只有一個籠統的「最後更新」時，使用者無從判斷
     # 價格、財報、月營收各自新舊（可能價格是昨天、財報卻是上一季）。

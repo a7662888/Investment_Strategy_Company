@@ -38,6 +38,18 @@ class ValueDailyTests(unittest.TestCase):
         state2 = build_daily_state([bad], {"2222"}, 100)
         advice2 = portfolio_actions(state2, [{"symbol": "2222.TW", "shares": 1000, "cost": 80}])[0]
         self.assertEqual(advice2["action"], "賣出／減碼檢查")
+        self.assertIn("exit_engine", advice2)
+
+    def test_profitable_overvalued_holding_gets_exit_score(self):
+        rich = _result(pct=96, price=145, ma20=140, ma60=130)
+        rich["fundamental_trend"] = {
+            "observed_metrics": 5, "monthly_revenue_yoy_latest": 10,
+            "monthly_revenue_negative_streak": 0, "earnings_quality_ttm": 1.1,
+        }
+        state = build_daily_state([rich], {"1111"}, 1)
+        advice = portfolio_actions(state, [{"symbol": "1111.TW", "shares": 100, "cost": 100}])[0]
+        self.assertEqual(advice["exit_engine"]["status"], "watch_profit")
+        self.assertEqual(advice["action"], "獲利續抱，密切觀察")
 
     def test_etf_is_not_sold_on_trend_alone(self):
         etf = _result("0056.TW", pct=85, roe=None, price=40, ma20=42, ma60=43)

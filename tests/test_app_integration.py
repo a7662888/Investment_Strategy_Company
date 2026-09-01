@@ -84,6 +84,7 @@ def test_value_current_and_portfolio_endpoints():
         assert current["coverage"]["mother_pool"] == 100
         assert portfolio["personal_data_saved"] is False
         assert portfolio["actions"][0]["symbol"] == "2330.TW"
+        assert portfolio["actions"][0]["exit_engine"]["shadow"] is True
         print("✅ daily value current-state / portfolio endpoints 正常")
     finally:
         server.shutdown()

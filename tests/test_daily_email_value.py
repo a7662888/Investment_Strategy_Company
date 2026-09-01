@@ -31,6 +31,12 @@ class DailyEmailValueTests(unittest.TestCase):
                     "symbol": "0056.TW", "action": "續抱領息，停止追加",
                     "price": 46.7, "unrealized_gain": -0.1,
                     "reasons": ["ETF 不因均線訊號單獨賣出"],
+                    "exit_engine": {
+                        "score": 30, "label": "風險觀察", "coverage": 90,
+                        "components": {"valuation": 16, "fundamentals": 4,
+                                       "momentum": 10, "accounting_quality": 0,
+                                       "position_risk": 0},
+                    },
                 }]}
             if path.startswith("/api/decision-ledger"):
                 return {"signals": []}
@@ -41,6 +47,7 @@ class DailyEmailValueTests(unittest.TestCase):
         self.assertIn("台灣大", html)
         self.assertIn("高風險反轉觀察", html)
         self.assertIn("續抱領息，停止追加", html)
+        self.assertIn("Exit Score 30.0/100", html)
         self.assertIn("ETF 子池狀態", html)
         self.assertIn("00878.TW", html)
         self.assertNotIn("舊短線動作", html)
