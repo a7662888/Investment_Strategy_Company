@@ -907,6 +907,13 @@ def readiness_status() -> tuple[dict, HTTPStatus]:
         "warnings": warnings,
         "time": datetime.now(timezone.utc).isoformat(),
         "version": build_version(),
+        # 持股同步是 2026-08-31 曝露事件後加設的隱私閘門。旗標狀態必須可觀測，
+        # 否則只能靠打 /api/positions 反推，而該端點正是要保護的對象。
+        # 授權與閘門是兩層：閘門開啟後仍須通過 bearer token 比對。
+        "privacy": {
+            "positions_sync_enabled": positions_sync_enabled(),
+            "positions_sync_requires_auth": True,
+        },
     }
     return payload, HTTPStatus.OK if ready else HTTPStatus.SERVICE_UNAVAILABLE
 
