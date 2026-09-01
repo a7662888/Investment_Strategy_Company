@@ -2368,7 +2368,7 @@ async function renderMyHoldings() {
   const pos = parsePositionsRaw(raw);
   if (!pos.length) {
     if (status) status.textContent = "尚未輸入";
-    panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔的損益、系統建議與白話說明。</p>`;
+    panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔損益、持股建議與可稽核的 Exit Score 獲利保護提醒。</p>`;
     return;
   }
   if (status) status.textContent = `${pos.length} 檔`;
