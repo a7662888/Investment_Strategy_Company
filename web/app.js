@@ -48,6 +48,17 @@ function applyCloudPositions(items) {
   if ($("myHoldingsPanel")) renderMyHoldings();
 }
 
+// 同步失敗有三種完全不同的成因，修法也完全不同：伺服器端閘門沒開、
+// 伺服器沒設定憑證、密鑰打錯。全部收斂成一句「同步失敗」會讓人往錯的地方查
+// （實測：閘門關著時使用者只看到「同步失敗，保留本機」，無從得知要去改 Render 環境變數）。
+function syncFailureMessage(status, errorText) {
+  const text = String(errorText || "");
+  if (status === 503 && text.includes("temporarily disabled")) return "雲端同步未啟用：伺服器端閘門關閉中";
+  if (status === 503 && text.includes("not configured")) return "伺服器尚未設定同步憑證";
+  if (status === 401) return "同步密鑰不正確";
+  return "同步失敗，保留本機";
+}
+
 async function loadCloudPositions() {
   const token = positionSyncToken();
   if (!token) { setPositionCloudStatus("僅此瀏覽器"); return false; }
@@ -55,7 +66,11 @@ async function loadCloudPositions() {
   try {
     const response = await fetch("/api/positions", {headers: {Authorization: `Bearer ${token}`}});
     const data = await response.json();
-    if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok || data.error) {
+      setPositionCloudStatus(syncFailureMessage(response.status, data.error), false);
+      console.warn("Private position sync failed:", response.status, data.error);
+      return false;
+    }
     positionCloudVersion = Number(data.version || 0);
     if (positionCloudVersion > 0) applyCloudPositions(data.positions || []);
     else {
@@ -86,7 +101,11 @@ async function saveCloudPositions(items) {
       await loadCloudPositions();
       throw new Error("雲端版本已更新，已重新載入");
     }
-    if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok || data.error) {
+      setPositionCloudStatus(syncFailureMessage(response.status, data.error).replace("同步失敗", "上傳失敗"), false);
+      console.warn("Private position save failed:", response.status, data.error);
+      return false;
+    }
     positionCloudVersion = Number(data.version || positionCloudVersion);
     setPositionCloudStatus(`私有同步 v${positionCloudVersion}`, true);
     return true;
