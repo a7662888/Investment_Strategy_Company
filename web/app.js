@@ -2488,6 +2488,7 @@ function renderSellTiming(t) {
       <span style="color:var(--muted);">${t.market_open ? "盤中" : "非盤中"} · shadow</span>
     </div>
     ${priceLine ? `<div style="color:#475569;margin-top:3px;">${priceLine}</div>` : ""}
+    ${t.basis_mismatch ? `<div style="margin-top:4px;padding:4px 6px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;color:#92400e;">⚠️ ${escapeHtml(t.basis_note || "")}</div>` : ""}
     ${levels ? `<div style="margin-top:5px;">${levels}</div>` : ""}
     ${plan ? `<div style="margin-top:5px;border-top:1px dashed ${style.line};padding-top:5px;"><b style="color:${style.color};">分批出場計畫</b>${plan}</div>` : ""}
     <div style="color:var(--muted);margin-top:5px;font-size:11.5px;">${escapeHtml(t.confirm_rule || "")}${t.anchor_note ? ` ${escapeHtml(t.anchor_note)}` : ""}</div>

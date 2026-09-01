@@ -222,6 +222,18 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
 
     reference_price = live_price if live_price is not None else last_close
     plan = build_plan(exit_result, levels, is_etf, reference_price)
+
+    # 每日狀態的價格來自 TWSE OpenAPI，該端點常延遲一個交易日；本層的收盤價來自
+    # 日線 OHLC，通常較新。兩者不同日時，卡片上會同時出現兩個「現價」，
+    # 若不標明日期，看起來就像資料打架——本專案過去正是敗在這類參考價混用。
+    value_state_as_of = item.get("as_of")
+    basis_mismatch = bool(value_state_as_of and last_close_date
+                          and value_state_as_of != last_close_date)
+    basis_note = (
+        f"觸發價比較採 {last_close_date} 收盤；Exit Score 與估值位階來自 "
+        f"{value_state_as_of} 的每日狀態，兩者相差一個交易日以上。"
+        if basis_mismatch else None
+    )
     confirmed = [lv for lv in levels if lv["state"] == "confirmed_break"]
     intraday = [lv for lv in levels if lv["state"] == "intraday_break"]
     approaching = [lv for lv in levels if lv["state"] == "approaching"]
@@ -255,6 +267,9 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
         "quote_time": quote_time,
         "last_close": last_close,
         "last_close_date": last_close_date,
+        "value_state_as_of": value_state_as_of,
+        "basis_mismatch": basis_mismatch,
+        "basis_note": basis_note,
         "market_open": bool(market_open),
         "atr14": wilder_atr(rows),
         "atr_multiple": None if is_etf else atr_multiple((exit_result or {}).get("score")),

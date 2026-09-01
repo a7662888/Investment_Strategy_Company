@@ -94,6 +94,29 @@ class TestConfirmationDiscipline(unittest.TestCase):
         )
         self.assertEqual(timing["urgency"], "immediate")
 
+    def test_mixed_price_dates_are_flagged(self) -> None:
+        # 每日狀態走 TWSE OpenAPI（常延遲一個交易日），本層走日線 OHLC，
+        # 兩者不同日時卡片會出現兩個「現價」，必須標明而非讓使用者自己猜。
+        rows = make_rows()
+        rows[-1] = dict(rows[-1], date="2026-09-01")
+        timing = compute_sell_timing(
+            item={"ma20": 99.0, "as_of": "2026-08-31"}, exit_result={},
+            rows=rows, live_quote=None, cost=90.0, gain=0.1, market_open=False,
+        )
+        self.assertTrue(timing["basis_mismatch"])
+        self.assertIn("2026-08-31", timing["basis_note"])
+        self.assertIn("2026-09-01", timing["basis_note"])
+
+    def test_same_date_is_not_flagged(self) -> None:
+        rows = make_rows()
+        rows[-1] = dict(rows[-1], date="2026-09-01")
+        timing = compute_sell_timing(
+            item={"ma20": 99.0, "as_of": "2026-09-01"}, exit_result={},
+            rows=rows, live_quote=None, cost=90.0, gain=0.1, market_open=False,
+        )
+        self.assertFalse(timing["basis_mismatch"])
+        self.assertIsNone(timing["basis_note"])
+
     def test_price_basis_is_labelled_honestly(self) -> None:
         intraday = self._timing(last_close=101.0, live=100.0)
         self.assertEqual(intraday["price_basis"], "盤中即時成交價")
