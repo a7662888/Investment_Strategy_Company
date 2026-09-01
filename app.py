@@ -2806,6 +2806,104 @@ def freeze_candidate_groups(end: str, groups: list[tuple[str, list[dict], str]])
         return {"status": "degraded", "durable": False, "added": 0, "error": f"{type(exc).__name__}: {exc}"}
 
 
+_OHLC_CACHE: dict = {}
+_OHLC_TTL = 900.0
+
+
+def cached_ohlc(symbol: str) -> list[dict]:
+    """日線 OHLC 帶 15 分鐘快取：持股數量少，但避免同一頁反覆重抓。"""
+    from company.data.ohlc import fetch_ohlc
+
+    now = time.time()
+    hit = _OHLC_CACHE.get(symbol)
+    if hit and now - hit["at"] < _OHLC_TTL:
+        return hit["rows"]
+    rows = fetch_ohlc(symbol)
+    _OHLC_CACHE[symbol] = {"at": now, "rows": rows}
+    return rows
+
+
+def build_sell_timing(normalized_positions: list[dict]) -> dict:
+    """每檔持股的賣出時機建議。
+
+    刻意複用 portfolio_actions 產出的 Exit Engine 結果，維持單一決策鏈：
+    本功能只回答「什麼價位、什麼時候動手」，不新增第二套買賣判斷來源。
+    """
+    from company.model.current_state import load_current_state
+    from company.model.value_daily import portfolio_actions
+    from company.model.sell_timing import compute_sell_timing
+
+    state, storage = load_current_state()
+    if state is None:
+        return {"error": "每日價值狀態尚未產生", "storage": storage}
+
+    # 與 /api/value-portfolio 相同的補漏：使用者的 ETF 不在母池，需即時套規則。
+    covered = {item.get("symbol") for item in state.get("evaluations", [])}
+    missing = [pos["symbol"] for pos in normalized_positions if pos["symbol"] not in covered]
+    if missing:
+        try:
+            from company.screener.value_rescreen import rescreen_all
+            extra = [row for row in rescreen_all(missing) if not row.get("error")]
+            if extra:
+                state = dict(state)
+                state["evaluations"] = list(state.get("evaluations", [])) + extra
+        except Exception as exc:
+            print(f"[sell-timing] holdings fallback failed: {exc}")
+
+    actions = portfolio_actions(state, normalized_positions)
+    symbols = [action["symbol"] for action in actions]
+
+    quotes_by_symbol: dict[str, dict] = {}
+    market_open = is_tw_market_session()
+    if symbols:
+        try:
+            payload = fetch_quote(symbols)
+            market_open = bool(payload.get("marketSession", market_open))
+            for quote in (payload.get("quoteResponse") or {}).get("result", []):
+                quotes_by_symbol[quote["symbol"]] = quote
+        except Exception as exc:
+            print(f"[sell-timing] quote failed: {exc}")
+
+    results = []
+    for action in actions:
+        symbol = action["symbol"]
+        try:
+            rows = cached_ohlc(symbol)
+        except Exception as exc:
+            print(f"[sell-timing] ohlc failed for {symbol}: {exc}")
+            rows = []
+        timing = compute_sell_timing(
+            item=action.get("value_state") or {},
+            exit_result=action.get("exit_engine") or {},
+            rows=rows,
+            live_quote=quotes_by_symbol.get(symbol),
+            cost=action.get("cost"),
+            gain=action.get("unrealized_gain"),
+            market_open=market_open,
+        )
+        results.append({
+            "symbol": symbol,
+            "name": action.get("name"),
+            "action": action.get("action"),
+            "exit_score": (action.get("exit_engine") or {}).get("score"),
+            "unrealized_gain": action.get("unrealized_gain"),
+            "timing": timing,
+        })
+
+    return {
+        "as_of": state.get("as_of"),
+        "market_open": market_open,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "items": results,
+        "storage": storage,
+        "personal_data_saved": False,
+        "method": (
+            "賣出時機 v1：Exit Engine 決定賣多少，ATR(14) 移動停損／均線／回撤／保本線決定何時賣；"
+            "盤中穿價僅提醒，收盤跌破才算訊號成立。"
+        ),
+    }
+
+
 class Handler(SimpleHTTPRequestHandler):
     RETIRED_GET_ENDPOINTS = {
         "/api/discover",
@@ -3140,6 +3238,19 @@ class Handler(SimpleHTTPRequestHandler):
                         "as_of": state.get("as_of"), "actions": portfolio_actions(state, normalized),
                         "storage": storage, "personal_data_saved": False,
                     })
+                return
+            if self.path == "/api/sell-timing":
+                body = self.read_body()
+                positions = normalize_positions(body.get("positions", []))
+                normalized = [
+                    {"symbol": symbol, "shares": value.get("shares", 0), "cost": value.get("cost", 0)}
+                    for symbol, value in positions.items()
+                ]
+                payload = build_sell_timing(normalized)
+                self.send_json(
+                    payload,
+                    HTTPStatus.SERVICE_UNAVAILABLE if payload.get("error") else HTTPStatus.OK,
+                )
                 return
             if self.path == "/api/agent-signals":
                 body = self.read_body()

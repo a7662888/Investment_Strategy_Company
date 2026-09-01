@@ -2374,14 +2374,26 @@ async function renderMyHoldings() {
   if (status) status.textContent = `${pos.length} 檔`;
   panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">分析中…</p>`;
   let valueActions = {};
-  try {
-    const res = await fetch("/api/value-portfolio", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ positions: pos })
-    });
-    const data = await readJson(res);
-    asArray(data.actions).forEach(a => { valueActions[a.symbol] = a; });
-  } catch (err) { console.warn("value portfolio failed:", err); }
+  let sellTiming = {};
+  // 兩支端點併行：賣出時機要抓即時報價與日線 OHLC，不應拖慢持股損益顯示。
+  const postPositions = (url) => fetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positions: pos })
+  }).then(readJson);
+  const [portfolioResult, timingResult] = await Promise.allSettled([
+    postPositions("/api/value-portfolio"),
+    postPositions("/api/sell-timing"),
+  ]);
+  if (portfolioResult.status === "fulfilled") {
+    asArray(portfolioResult.value.actions).forEach(a => { valueActions[a.symbol] = a; });
+  } else {
+    console.warn("value portfolio failed:", portfolioResult.reason);
+  }
+  if (timingResult.status === "fulfilled") {
+    asArray(timingResult.value.items).forEach(i => { sellTiming[i.symbol] = i.timing; });
+  } else {
+    console.warn("sell timing failed:", timingResult.reason);
+  }
 
   const bySym = {};
   asArray(ledgerSignals).forEach(s => {
@@ -2414,6 +2426,7 @@ async function renderMyHoldings() {
       <div style="color:#475569;margin-top:3px;">估值 ${Number(ex.components?.valuation || 0)}/30｜基本面 ${Number(ex.components?.fundamentals || 0)}/30｜趨勢 ${Number(ex.components?.momentum || 0)}/20｜盈餘品質 ${Number(ex.components?.accounting_quality || 0)}/10｜部位 ${Number(ex.components?.position_risk || 0)}/10</div>
       ${exitReasons.length ? `<div style="color:var(--muted);margin-top:3px;">依據：${escapeHtml(exitReasons.join("；"))}</div>` : ""}
     </div>` : "";
+    const timingPanel = renderSellTiming(sellTiming[p.symbol]);
     return `<article class="candidate" style="margin-bottom:10px;">
       <strong style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
         <span>${escapeHtml(p.symbol)} ${sig && sig.name ? escapeHtml(sig.name) : ""} ${sigLine}</span>
@@ -2425,8 +2438,60 @@ async function renderMyHoldings() {
       </p>
       <div style="font-size:12.5px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:7px 9px; color:#1e3a8a;">${advice}</div>
       ${exitPanel}
+      ${timingPanel}
     </article>`;
   }).join("");
+}
+
+// ---- 賣出時機 ----
+// Exit Engine 回答「賣多少」，這裡回答「什麼價位、什麼時候」。
+// 盤中穿價與收盤跌破必須在畫面上就分得出來，否則使用者會被日內雜訊掃出場。
+const TIMING_STYLE = {
+  immediate:   { color: "#b91c1c", bg: "#fef2f2", line: "#fecaca", icon: "🔴" },
+  act:         { color: "#c2410c", bg: "#fff7ed", line: "#fed7aa", icon: "🟠" },
+  watch_close: { color: "#b45309", bg: "#fffbeb", line: "#fde68a", icon: "🟡" },
+  prepare:     { color: "#a16207", bg: "#fefce8", line: "#fef08a", icon: "🟡" },
+  hold:        { color: "#137333", bg: "#f0fdf4", line: "#bbf7d0", icon: "🟢" },
+  advisory:    { color: "#475569", bg: "#f8fafc", line: "#e2e8f0", icon: "⚪" },
+};
+const LEVEL_STATE_ICON = {
+  confirmed_break: "🔴", intraday_break: "🟠", approaching: "🟡", safe: "⚪",
+};
+
+function renderSellTiming(t) {
+  if (!t) return "";
+  const style = TIMING_STYLE[t.urgency] || TIMING_STYLE.advisory;
+  const priceLine = [
+    t.live_price != null ? `參考價 ${Number(t.live_price).toFixed(2)}` : null,
+    t.price_basis ? escapeHtml(t.price_basis) : null,
+    t.last_close != null ? `前收 ${Number(t.last_close).toFixed(2)}（${escapeHtml(t.last_close_date || "—")}）` : null,
+    t.atr14 != null ? `ATR14 ${Number(t.atr14).toFixed(2)}` : null,
+  ].filter(Boolean).join("｜");
+
+  const levels = asArray(t.levels).map(lv => {
+    const icon = LEVEL_STATE_ICON[lv.state] || "⚪";
+    const dist = lv.distance_pct != null
+      ? `<span style="color:var(--muted);">（距 ${lv.distance_pct > 0 ? "+" : ""}${Number(lv.distance_pct).toFixed(1)}%）</span>` : "";
+    return `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:2px 0;">
+      <span>${icon} ${escapeHtml(lv.label)} <b>${Number(lv.price).toFixed(2)}</b> ${dist}</span>
+      <span style="color:var(--muted);">${escapeHtml(lv.state_note || "")}</span>
+    </div>`;
+  }).join("");
+
+  const plan = asArray(t.plan).map(step =>
+    `<div style="padding:2px 0;">第 ${step.stage} 批：<b>${Number(step.price).toFixed(2)}</b> 元收盤跌破「${escapeHtml(step.label)}」→ 減碼 ${(Number(step.fraction) * 100).toFixed(0)}%</div>`
+  ).join("");
+
+  return `<div style="font-size:12px;background:${style.bg};border:1px solid ${style.line};border-radius:6px;padding:8px 9px;margin-top:7px;line-height:1.55;">
+    <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+      <b style="color:${style.color};">${style.icon} 賣出時機：${escapeHtml(t.headline || "—")}</b>
+      <span style="color:var(--muted);">${t.market_open ? "盤中" : "非盤中"} · shadow</span>
+    </div>
+    ${priceLine ? `<div style="color:#475569;margin-top:3px;">${priceLine}</div>` : ""}
+    ${levels ? `<div style="margin-top:5px;">${levels}</div>` : ""}
+    ${plan ? `<div style="margin-top:5px;border-top:1px dashed ${style.line};padding-top:5px;"><b style="color:${style.color};">分批出場計畫</b>${plan}</div>` : ""}
+    <div style="color:var(--muted);margin-top:5px;font-size:11.5px;">${escapeHtml(t.confirm_rule || "")}${t.anchor_note ? ` ${escapeHtml(t.anchor_note)}` : ""}</div>
+  </div>`;
 }
 
 // ---- 成績回顧（復盤）----
