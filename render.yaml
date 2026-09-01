@@ -36,10 +36,8 @@ services:
         sync: false
       - key: GITHUB_DATA_BRANCH
         value: main
-      # 2026-08-31 曝露事件後，持股同步以 fail-closed 方式關閉。
-      # 2026-09-01 業主指示重新開啟，開啟前已核驗 gate 自身載明的前提
-      # 「durable repo is verified private」：private=True、forks/watchers/stars 皆 0、
-      # 匿名 repo API 與 raw 持股路徑均回 404。
-      # 本旗標只解除 503 閘門，不解除授權：/api/positions 仍需正確 bearer token，否則 401。
-      - key: POSITIONS_SYNC_ENABLED
-        value: "1"
+      # 注意：本服務並非 Blueprint 管理，這裡的 envVars 實測不會套用到執行環境
+      # （2026-09-01 驗證：宣告 POSITIONS_SYNC_ENABLED=1 後，執行期仍讀不到）。
+      # 因此持股同步的開關改由 app.positions_sync_enabled() 的程式預設決定，
+      # 緊急關閉請用 POSITIONS_SYNC_ENABLED=0 或 POSITIONS_SYNC_DISABLED=1
+      # ——但同樣須經 Render 後台設定才會生效。

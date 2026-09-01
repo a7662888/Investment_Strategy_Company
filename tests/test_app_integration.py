@@ -97,7 +97,8 @@ def test_private_positions_endpoints():
     old_token = os.environ.get("POSITIONS_SYNC_TOKEN")
     old_enabled = os.environ.get("POSITIONS_SYNC_ENABLED")
     os.environ["POSITIONS_SYNC_TOKEN"] = "integration-sync-key"
-    os.environ.pop("POSITIONS_SYNC_ENABLED", None)
+    # 2026-09-01 起預設開啟（業主指示），故「關閉」需明確設定才測得到緊急煞車。
+    os.environ["POSITIONS_SYNC_ENABLED"] = "0"
     document = {
         "schema_version": 1, "version": 2, "updated_at": "2026-08-04T00:00:00+00:00",
         "positions": [{"symbol": "0056.TW", "shares": 1000.0, "cost": 54.0}],
@@ -105,9 +106,32 @@ def test_private_positions_endpoints():
     try:
         try:
             urllib.request.urlopen(f"http://127.0.0.1:{port}/api/positions", timeout=5)
-            raise AssertionError("positions sync should be fail-closed by default")
+            raise AssertionError("explicit POSITIONS_SYNC_ENABLED=0 must stop the sync")
         except urllib.error.HTTPError as exc:
             assert exc.code == 503
+
+        # 第二道緊急煞車：即使旗標未設，POSITIONS_SYNC_DISABLED=1 仍須擋下。
+        os.environ.pop("POSITIONS_SYNC_ENABLED", None)
+        os.environ["POSITIONS_SYNC_DISABLED"] = "1"
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/positions", timeout=5)
+            raise AssertionError("POSITIONS_SYNC_DISABLED=1 must stop the sync")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 503
+        os.environ.pop("POSITIONS_SYNC_DISABLED", None)
+
+        # 真正讓端點 fail-closed 的是「沒有同步密鑰就沒有有效 bearer token」，
+        # 而不是旗標；沒設密鑰時即使旗標開啟也必須 503。
+        saved_token = os.environ.pop("POSITIONS_SYNC_TOKEN")
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("GITHUB_DATA_TOKEN", None)
+            os.environ.pop("GITHUB_PAT", None)
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/api/positions", timeout=5)
+                raise AssertionError("no configured secret must stop the sync")
+            except urllib.error.HTTPError as exc:
+                assert exc.code == 503
+        os.environ["POSITIONS_SYNC_TOKEN"] = saved_token
         os.environ["POSITIONS_SYNC_ENABLED"] = "1"
 
         try:

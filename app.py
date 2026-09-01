@@ -40,8 +40,29 @@ PROVIDER_RUNTIME: dict[str, dict] = {}
 
 
 def positions_sync_enabled() -> bool:
-    """Emergency privacy gate: opt-in only after the durable repo is verified private."""
-    return os.environ.get("POSITIONS_SYNC_ENABLED", "").strip() == "1"
+    """Emergency privacy gate for the 2026-08-31 exposure.
+
+    What actually keeps this endpoint fail-closed is not this flag but
+    `expected_sync_token()`: with no sync secret configured there is no valid
+    bearer token, so a deployment without credentials returns 503 regardless.
+    Authorisation remains the primary control; this flag is the override on top.
+
+    Owner instructed re-enable on 2026-09-01, after the durable repo was verified
+    private (private=True, forks/watchers/stars=0, anonymous repo API and raw
+    positions path both 404).  The default now reflects that standing instruction.
+
+    The switch lives in code rather than a Render env var because this service is
+    not Blueprint-managed — render.yaml envVars are ignored here (verified: the
+    declared flag never reached the runtime).  Neither owner nor agent could set
+    it, which left the brake jammed and unusable in *either* direction.  A code
+    default that a commit can flip (~3 min deploy) is the control that actually
+    works here.  Both env vars are still honoured for an emergency stop:
+    POSITIONS_SYNC_ENABLED=0 or POSITIONS_SYNC_DISABLED=1.
+    """
+    explicit = os.environ.get("POSITIONS_SYNC_ENABLED", "").strip()
+    if explicit:
+        return explicit == "1"
+    return os.environ.get("POSITIONS_SYNC_DISABLED", "").strip() != "1"
 
 
 def record_provider_status(name: str, status: str, started: float, *, error: str | None = None, rows: int | None = None) -> None:
