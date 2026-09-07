@@ -42,6 +42,57 @@
       </div>
     </details>
 
+    <!-- Intraday provisional research note: intentionally separate from frozen current-state / ledger -->
+    <section class="panel" style="border:2px solid #d97706; background:#fffbeb;">
+      <div class="sectionHead">
+        <h2 style="color:#92400e; margin:0; display:flex; align-items:center; gap:8px;"><span>⚡</span> 2026/09/07 盤中研究快訊</h2>
+        <span class="pill" style="font-size:12px; background:#fef3c7; color:#92400e; border-color:#f59e0b;">PROVISIONAL · 非凍結訊號</span>
+      </div>
+      <p style="font-size:12.5px; color:#78350f; margin:6px 0 10px; line-height:1.6;">
+        本區使用 2026/09/07 盤中報價與最新可得 2026/08 月營收／2026Q2 財報交叉檢查，只供當日研究；
+        <strong>不寫入 Decision Ledger，也不取代 16:35 盤後正式 current-state。</strong>
+        今天大盤偏強，因此提高「不追高」門檻。
+      </p>
+      <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px;">
+        <div style="background:#fff; border:1px solid #fcd34d; border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:#92400e; font-weight:700;">#1 · ACCUMULATE</div>
+          <h3 style="margin:4px 0 6px; font-size:17px;">2317 鴻海</h3>
+          <div style="font-size:13px; line-height:1.65; color:#334155;">
+            盤中參考約 <strong>253–258</strong><br>
+            研究買進區：<strong>250–258</strong><br>
+            ≤252：較積極；&gt;265：不追<br>
+            2026/08 營收 YoY 約 <strong>+52%</strong><br>
+            AI server 成長 + 合理估值 + 距波段高點仍有折價
+          </div>
+        </div>
+        <div style="background:#fff; border:1px solid #fcd34d; border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:#92400e; font-weight:700;">#2 · ACCUMULATE SMALL</div>
+          <h3 style="margin:4px 0 6px; font-size:17px;">5871 中租-KY</h3>
+          <div style="font-size:13px; line-height:1.65; color:#334155;">
+            盤中參考約 <strong>112–113</strong><br>
+            研究買進區：<strong>110–114</strong><br>
+            ≤110：吸引力提高；&gt;118：等待<br>
+            約 10× trailing PE、偏低 P/B<br>
+            定位：Value / recovery，非高成長股
+          </div>
+        </div>
+        <div style="background:#fff; border:1px solid #fcd34d; border-radius:8px; padding:12px;">
+          <div style="font-size:11px; color:#92400e; font-weight:700;">#3 · WATCH / SMALL BUY</div>
+          <h3 style="margin:4px 0 6px; font-size:17px;">2379 瑞昱</h3>
+          <div style="font-size:13px; line-height:1.65; color:#334155;">
+            盤中參考約 <strong>720–725</strong><br>
+            今日較佳研究價：<strong>≤715</strong><br>
+            720–725：觀察；&gt;730：不追<br>
+            2026/08 營收 YoY 約 <strong>+28%</strong><br>
+            9/8 除息 25 元，需用除息調整價重新判讀
+          </div>
+        </div>
+      </div>
+      <p style="font-size:11.5px; color:#92400e; margin:10px 0 0;">
+        盤中排序依 Quality × Valuation × Timing 與事件風險人工覆核；正式訊號仍由既有 value-engine 盤後重算。
+      </p>
+    </section>
+
     <!-- 💼 我的持股：使用者最關心的「我現在該怎麼辦」，首頁即可輸入（不必再去策略實驗室） -->
     <section class="panel" style="border:2px solid #1d4ed8; background:rgba(29,78,216,0.02);">
       <div class="sectionHead">
