@@ -1258,6 +1258,7 @@ bindActions();
 loadDataFreshness();
 loadDailyValueState();
 loadDecisionLedger();
+runDailyJobs();
 
 async function loadUniverse() {
   try {
@@ -1965,6 +1966,94 @@ function provenanceLine(item) {
   if (p.price_source) parts[0] += `（${p.price_source}）`;
   return `<p style="font-size:11px;color:#64748b;margin:4px 0 0;border-top:1px dashed var(--line);padding-top:4px;">
     📅 ${parts.map(escapeHtml).join("｜")}</p>`;
+}
+
+// ---- 每日任務（造訪觸發，每個交易日各限一次）----
+// 盤中快訊在本行程產生（很輕）；盤後母池重評交由 GitHub Actions，因此觸發後
+// 不會立刻看到新資料——工作流要跑數分鐘，畫面以狀態列說明，不假裝已完成。
+async function runDailyJobs() {
+  try {
+    const data = await readJson(await fetch("/api/daily-refresh"));
+    const flashJob = (data.jobs || {}).intraday_flash || {};
+    const postJob = (data.jobs || {}).postclose_rescreen || {};
+    const triggered = data.triggered || {};
+
+    if (triggered.postclose_rescreen) {
+      setDailyJobNote(`已觸發今日盤後母池重評（${(triggered.postclose_rescreen.workflows || []).length} 個工作流），`
+        + "需數分鐘完成，完成後重新整理即可看到新名單。");
+    } else if (postJob.last_error) {
+      setDailyJobNote(`盤後重評觸發失敗：${postJob.last_error}`, true);
+    }
+
+    // 剛觸發的盤中快訊要等背景產生完成，因此隔一段時間再抓一次。
+    await loadIntradayFlash();
+    if (triggered.intraday_flash || flashJob.running) {
+      setTimeout(loadIntradayFlash, 12000);
+    }
+  } catch (err) {
+    console.warn("daily jobs check failed:", err);
+  }
+}
+
+function setDailyJobNote(message, isError = false) {
+  const status = $("dailyValueStatus");
+  if (!status) return;
+  status.textContent = `${status.textContent}｜${message}`;
+  if (isError) status.style.color = "#c5221f";
+}
+
+async function loadIntradayFlash() {
+  const section = $("intradayFlashSection"), panel = $("intradayFlashPanel");
+  if (!section || !panel) return;
+  let data;
+  try {
+    const response = await fetch("/api/intraday-flash");
+    if (!response.ok) { section.style.display = "none"; return; }
+    data = await response.json();
+  } catch (err) {
+    section.style.display = "none";
+    return;
+  }
+  const items = asArray(data.items);
+  if (!items.length) { section.style.display = "none"; return; }
+
+  section.style.display = "";
+  const title = $("intradayFlashTitle");
+  if (title) title.textContent = `${data.date || ""} 盤中研究快訊`;
+  const badge = $("intradayFlashBadge");
+  if (badge) badge.textContent = data.market_open ? "PROVISIONAL · 盤中即時" : "PROVISIONAL · 非盤中";
+  const note = $("intradayFlashNote");
+  if (note) {
+    const basis = data.basis || {};
+    note.textContent = `以 ${basis.state_as_of || "—"} 盤後定稿的品質與估值為底，疊上盤中報價比對既有買進區`
+      + `（${basis.quoted || 0}/${basis.candidates || 0} 檔取得報價）。`
+      + "盤中價未定案，不寫入 Decision Ledger，也不取代盤後正式名單。";
+  }
+  const method = $("intradayFlashMethod");
+  if (method) method.textContent = data.method || "";
+
+  const tone = position => position === "落在買進區內" ? "#166534"
+    : position === "低於買進區（更便宜）" ? "#0f766e"
+    : position === "高於買進區，不追價" ? "#b45309" : "#64748b";
+
+  panel.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px;">`
+    + items.map(item => `
+      <div style="background:#fff; border:1px solid #fcd34d; border-radius:8px; padding:12px;">
+        <div style="font-size:11px; color:${tone(item.position)}; font-weight:700;">${escapeHtml(item.position || "")}</div>
+        <h3 style="margin:4px 0 6px; font-size:17px;">${escapeHtml(item.symbol.split(".")[0])} ${escapeHtml(item.name || "")}</h3>
+        <div style="font-size:13px; line-height:1.65; color:#334155;">
+          盤中參考 <strong>${item.live_price != null ? Number(item.live_price).toFixed(2) : "—"}</strong>
+          ${item.close_price != null ? `（前收 ${Number(item.close_price).toFixed(2)}）` : ""}<br>
+          研究買進區：<strong>${Number(item.entry_low).toFixed(2)}–${Number(item.entry_high).toFixed(2)}</strong><br>
+          不追價上限：${Number(item.chase_limit).toFixed(2)}
+          ${item.gap_to_chase_pct != null ? `（距 ${item.gap_to_chase_pct > 0 ? "+" : ""}${Number(item.gap_to_chase_pct).toFixed(1)}%）` : ""}<br>
+          估值位階 P${item.valuation_pct != null ? Number(item.valuation_pct).toFixed(1) : "—"}
+          ${item.roe_ttm != null ? `｜ROE ${Number(item.roe_ttm).toFixed(1)}%` : ""}<br>
+          ${item.monthly_revenue_yoy != null ? `月營收 YoY <strong>${Number(item.monthly_revenue_yoy) >= 0 ? "+" : ""}${Number(item.monthly_revenue_yoy).toFixed(1)}%</strong><br>` : ""}
+          <span style="color:var(--muted);">${escapeHtml(item.decision || "")}</span>
+        </div>
+      </div>`).join("")
+    + `</div>`;
 }
 
 async function loadDailyValueState() {
