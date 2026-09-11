@@ -322,12 +322,47 @@ def build_html(positions, context=None, position_meta=None, audit_id=None):
   下單前請以券商 App 實際報價為準。儀表板：<a href="{BASE}/">{BASE}</a></p>
 </div>"""
 
+EMAIL_LOG_LOCAL = ROOT / "data" / "email_log.json"
+EMAIL_LOG_REMOTE = os.environ.get("EMAIL_LOG_PATH", "value/email_log.json")
+
+
+def already_sent_today(today: str) -> dict | None:
+    """今日是否已寄過。紀錄須持久化：排程與造訪觸發跑在不同的 runner，
+    行程內旗標互相看不到，只有寫進 data repo 才擋得住重複寄信。"""
+    from company.model.durable_document import load_document
+
+    document, _ = load_document(EMAIL_LOG_LOCAL, EMAIL_LOG_REMOTE)
+    if document and document.get("last_sent_date") == today:
+        return document
+    return None
+
+
+def record_email_sent(today: str, audit_id: str | None) -> dict:
+    return save_document(
+        {"schema_version": 1, "last_sent_date": today,
+         "sent_at": datetime.now(TAIPEI).isoformat(), "audit_id": audit_id},
+        EMAIL_LOG_LOCAL, EMAIL_LOG_REMOTE, f"chore(email): digest sent {today}",
+    )
+
+
 def main():
     addr = os.environ.get("EMAIL_ADDRESS", "").strip()
     pw = os.environ.get("SMTP_APP_PASSWORD", "").strip()
     if not addr or not pw:
         print("EMAIL_ADDRESS / SMTP_APP_PASSWORD 未設定", file=sys.stderr)
         sys.exit(1)
+
+    # 每日至多一封。造訪觸發與 16:35 排程都會跑這支，不擋會重複寄。
+    # 檢查刻意放在最前面：後面的持股解析與每日情境取數都要連網，很貴。
+    today = datetime.now(TAIPEI).date().isoformat()
+    force = "--force" in sys.argv
+    previous = already_sent_today(today)
+    if previous and not force:
+        print(json.dumps({"status": "skipped", "reason": "already_sent_today",
+                          "last_sent_date": previous.get("last_sent_date"),
+                          "sent_at": previous.get("sent_at")}, ensure_ascii=False))
+        return 0
+
     positions, position_meta = resolve_positions_with_meta()
     if not positions:
         raise RuntimeError("refusing to send: no positions found in private SSOT or fallback secret")
@@ -344,8 +379,12 @@ def main():
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=ssl.create_default_context(), timeout=30) as s:
         s.login(addr, pw)
         s.sendmail(addr, [addr], msg.as_string())
+    # 只有真的寄出去才記錄，否則寄信失敗會把當天鎖死、再也補寄不了。
+    log_storage = record_email_sent(today, audit_id)
     print(json.dumps({"status": "sent", "position_count": len(positions), "audit_id": audit_id,
-                      "audit_storage": audit_storage, "market_as_of": market_as_of}, ensure_ascii=False))
+                      "audit_storage": audit_storage, "market_as_of": market_as_of,
+                      "email_log": log_storage}, ensure_ascii=False))
+    return 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

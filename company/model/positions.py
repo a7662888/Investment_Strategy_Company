@@ -51,14 +51,76 @@ def normalize_positions(raw: object) -> list[dict]:
     return list(normalized.values())
 
 
-def expected_sync_token() -> str | None:
-    explicit = os.environ.get("POSITIONS_SYNC_TOKEN", "").strip()
-    if explicit:
-        return explicit
+SYNC_SECRET_LOCAL = ROOT / "data" / "sync_secret.json"
+SYNC_SECRET_REMOTE = os.environ.get("SYNC_SECRET_PATH", "private/sync_secret.json")
+_SYNC_SECRET_CACHE: dict = {"at": 0.0, "value": None}
+_SYNC_SECRET_TTL = 300.0
+
+
+def _derived_sync_token() -> str | None:
+    """由資料庫 token 推導的舊式密鑰。
+
+    問題在於它會隨 GITHUB_DATA_TOKEN 輪替而失效，使用者存在瀏覽器裡的密鑰
+    因此突然不能用。保留它只為了兩個用途：既有部署的相容退路，
+    以及第一次固化時的種子（種子取現行值，使用者手上那把才不會失效）。
+    """
     data_token = (os.environ.get("GITHUB_DATA_TOKEN") or os.environ.get("GITHUB_PAT") or "").strip()
     if not data_token:
         return None
     return hmac.new(data_token.encode("utf-8"), b"positions-sync-v1", hashlib.sha256).hexdigest()
+
+
+def stored_sync_token(refresh: bool = False) -> str | None:
+    """已固化、與 token 輪替無關的同步密鑰。
+
+    存放在私有資料庫（能讀它的人本來就已握有全部資料存取權，故未降低安全性），
+    但改讀它之後，輪替 GITHUB_DATA_TOKEN 不再使使用者手上的密鑰失效。
+    以 TTL 快取，避免每次請求都打一次 GitHub API。
+    """
+    import time
+
+    now = time.time()
+    if not refresh and _SYNC_SECRET_CACHE["value"] and now - _SYNC_SECRET_CACHE["at"] < _SYNC_SECRET_TTL:
+        return _SYNC_SECRET_CACHE["value"]
+    try:
+        document, _ = durable_document.load_document(SYNC_SECRET_LOCAL, SYNC_SECRET_REMOTE)
+    except Exception:  # noqa: BLE001 - 讀不到就退回推導值，不要讓同步整個失效
+        return None
+    value = str((document or {}).get("token") or "").strip() or None
+    if value:
+        _SYNC_SECRET_CACHE.update(at=now, value=value)
+    return value
+
+
+def ensure_sync_token() -> tuple[str | None, dict]:
+    """把目前有效的密鑰固化，使其不再隨 token 輪替失效。
+
+    刻意以「現行推導值」為種子而非新亂數：使用者已經把那把密鑰存進瀏覽器，
+    換成新值等於現在就把它弄失效——正好是這次要避免的事。
+    """
+    existing = stored_sync_token(refresh=True)
+    if existing:
+        return existing, {"created": False, "reason": "already_persisted"}
+    seed = _derived_sync_token()
+    if not seed:
+        return None, {"created": False, "error": "no_source_token"}
+    storage = durable_document.save_document(
+        {"schema_version": 1, "token": seed, "created_at": _utc_now(),
+         "note": "seeded from the token-derived key so existing browser keys keep working"},
+        SYNC_SECRET_LOCAL, SYNC_SECRET_REMOTE, "chore(positions): persist sync secret",
+    )
+    _SYNC_SECRET_CACHE.update(at=0.0, value=None)
+    return seed, {"created": True, "storage": storage}
+
+
+def expected_sync_token() -> str | None:
+    explicit = os.environ.get("POSITIONS_SYNC_TOKEN", "").strip()
+    if explicit:
+        return explicit
+    persisted = stored_sync_token()
+    if persisted:
+        return persisted
+    return _derived_sync_token()
 
 
 def is_authorized(authorization: str | None) -> bool:

@@ -16,3 +16,12 @@ data/value_fundamentals_full.json
 data/ledger_archive/
 data/private_positions.json
 data/daily_audit/
+
+# 執行期產生、不得進入公開 repo
+
+# 執行期產生、不得進入公開 repo
+# （.gitignore 不支援行尾註解，pattern 必須獨占一行）
+# data/sync_secret.json：持股同步密鑰，是活憑證
+# data/email_log.json：寄信去重紀錄
+data/sync_secret.json
+data/email_log.json

@@ -9,9 +9,9 @@
    analysis_date_taipei、快訊文件的 date），而不是另存一份可能與現實脫節的旗標。
 2. 若尚未做過且時窗正確，觸發對應的 workflow（盤後）或就地產生（盤中快訊，很輕）。
 
-已知限制：台股休市日未建表，僅以週一～週五判斷。遇到國定假日最多多觸發一次
-workflow，該次會算出與前一交易日相同的結果，不會污染資料；寧可多跑一次，
-也不要為了省一次執行而漏掉真正的交易日。
+交易日判斷採證交所公告的休市日表（company.data.market_calendar）。該表抓取
+失敗時 fail-open 只擋週末：誤判休市會讓當日完全不更新，代價遠大於在休市日
+多觸發一次（該次算出的結果與前一交易日相同，不污染資料）。
 """
 from __future__ import annotations
 
@@ -55,7 +55,31 @@ def _minutes(now: datetime) -> int:
 
 
 def is_trading_weekday(now: datetime) -> bool:
-    return now.weekday() < 5
+    """是否為交易日（週一～週五且非證交所公告休市日）。
+
+    休市日表抓取失敗時 fail-open，只擋週末：誤判休市會讓當日完全不更新，
+    代價遠大於在休市日多觸發一次（該次算出的結果與前一交易日相同）。
+    """
+    if now.weekday() >= 5:
+        return False
+    try:
+        from company.data.market_calendar import is_holiday
+
+        return not is_holiday(now.astimezone(TAIPEI).date())
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def non_trading_reason(now: datetime) -> str:
+    if now.weekday() >= 5:
+        return "非交易日（週末）"
+    try:
+        from company.data.market_calendar import holiday_name
+
+        name = holiday_name(now.astimezone(TAIPEI).date())
+    except Exception:  # noqa: BLE001
+        name = None
+    return f"非交易日（{name}）" if name else "非交易日"
 
 
 def in_market_session(now: datetime) -> bool:
@@ -69,7 +93,7 @@ def is_after_close(now: datetime) -> bool:
 def postclose_due(state: dict | None, now: datetime) -> tuple[bool, str]:
     """盤後母池重評是否該跑。state 為 current-state 文件。"""
     if not is_trading_weekday(now):
-        return False, "非交易日（週末）"
+        return False, non_trading_reason(now)
     if not is_after_close(now):
         return False, f"尚未到盤後（台北 {now:%H:%M}，14:00 後才重評）"
     today = now.date().isoformat()
@@ -82,7 +106,7 @@ def postclose_due(state: dict | None, now: datetime) -> tuple[bool, str]:
 def intraday_due(flash: dict | None, now: datetime) -> tuple[bool, str]:
     """盤中研究快訊是否該產生。"""
     if not is_trading_weekday(now):
-        return False, "非交易日（週末）"
+        return False, non_trading_reason(now)
     if not in_market_session(now):
         return False, f"非盤中時段（台北 {now:%H:%M}，09:00–13:30 才產生）"
     today = now.date().isoformat()

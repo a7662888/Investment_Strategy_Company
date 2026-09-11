@@ -126,11 +126,13 @@ def test_private_positions_endpoints():
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("GITHUB_DATA_TOKEN", None)
             os.environ.pop("GITHUB_PAT", None)
-            try:
-                urllib.request.urlopen(f"http://127.0.0.1:{port}/api/positions", timeout=5)
-                raise AssertionError("no configured secret must stop the sync")
-            except urllib.error.HTTPError as exc:
-                assert exc.code == 503
+            # 固化密鑰存在時「已設定」就成立，故此處一併停用，才測得到未設定的情形。
+            with patch("company.model.positions.stored_sync_token", return_value=None):
+                try:
+                    urllib.request.urlopen(f"http://127.0.0.1:{port}/api/positions", timeout=5)
+                    raise AssertionError("no configured secret must stop the sync")
+                except urllib.error.HTTPError as exc:
+                    assert exc.code == 503
         os.environ["POSITIONS_SYNC_TOKEN"] = saved_token
         os.environ["POSITIONS_SYNC_ENABLED"] = "1"
 
