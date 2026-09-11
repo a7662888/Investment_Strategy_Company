@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -46,6 +47,39 @@ class TestConsensusAsOf(unittest.TestCase):
     def test_no_prices_yields_empty(self) -> None:
         self.assertEqual(_consensus_as_of([]), "")
         self.assertEqual(_consensus_as_of([{"as_of": None}]), "")
+
+
+class TestOfficialCloseDate(unittest.TestCase):
+    """上市與上櫃發布時間不同步，跨市場取 max() 會讓守門誤判整份狀態落後。
+
+    實測 2026-09-11 17:44：TWSE 仍是 09-10（1379 檔），TPEx 已是 09-11（11193 檔）。
+    """
+
+    def _pool(self) -> list[str]:
+        return ([f"{1000 + i}.TW" for i in range(95)]
+                + [f"{3000 + i}.TWO" for i in range(5)])
+
+    def _feed(self) -> dict:
+        pool = self._pool()
+        feed = {s: {"date": "2026-09-10" if s.endswith(".TW") else "2026-09-11"} for s in pool}
+        # 市場其餘上櫃標的數量遠大於母池，正是 max() 被帶偏的原因。
+        feed.update({f"{20000 + i}.TWO": {"date": "2026-09-11"} for i in range(11000)})
+        return feed
+
+    def test_pool_scope_ignores_the_rest_of_the_market(self) -> None:
+        import company.screener.value_rescreen as rescreen
+        with patch.object(rescreen, "_official_closes", return_value=self._feed()):
+            self.assertEqual(rescreen.latest_official_close_date(self._pool()), "2026-09-10")
+
+    def test_without_scope_the_whole_market_decides(self) -> None:
+        import company.screener.value_rescreen as rescreen
+        with patch.object(rescreen, "_official_closes", return_value=self._feed()):
+            self.assertEqual(rescreen.latest_official_close_date(), "2026-09-11")
+
+    def test_no_official_data_is_not_an_error(self) -> None:
+        import company.screener.value_rescreen as rescreen
+        with patch.object(rescreen, "_official_closes", return_value={}):
+            self.assertIsNone(rescreen.latest_official_close_date(["2330.TW"]))
 
 
 class TestJobWindows(unittest.TestCase):

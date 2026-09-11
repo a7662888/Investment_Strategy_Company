@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 import os
 import statistics
 import time
@@ -99,9 +100,27 @@ def _official_closes() -> dict[str, dict]:
     return output
 
 
-def latest_official_close_date() -> str | None:
-    dates = [row.get("date") for row in _official_closes().values() if row.get("date")]
-    return max(dates, default=None)
+def latest_official_close_date(symbols: list[str] | None = None) -> str | None:
+    """官方收盤的「本池」共識日期。
+
+    不可跨市場取 max()：上市與上櫃發布時間不同步。實測 2026-09-11 17:44，
+    TWSE 仍是 09-10（1379 檔）而 TPEx 已是 09-11（11193 檔），max() 因此回 09-11，
+    但母池幾乎都是上市股、狀態只到 09-10，守門遂判定「狀態落後」而整份拒存。
+
+    傳入 symbols 時只看這些標的的官方日期，回答的才是真正該問的問題：
+    「就我們評估的這批標的而言，交易所已公布到哪一天」。
+    """
+    rows = _official_closes()
+    if symbols:
+        dates = [rows[symbol]["date"] for symbol in symbols
+                 if symbol in rows and rows[symbol].get("date")]
+    else:
+        dates = [row.get("date") for row in rows.values() if row.get("date")]
+    if not dates:
+        return None
+    counts = Counter(dates)
+    threshold = max(counts.values()) / 2
+    return max(date for date, count in counts.items() if count >= threshold)
 
 
 # ---------- 資料取得 ----------
