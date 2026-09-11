@@ -2,6 +2,7 @@
 """每日價值選股與持股加減碼決策（純規則、可測試）。"""
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timezone
 
 from company.model.value_policy import CYCLICAL
@@ -95,10 +96,32 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     }
 
 
+def _consensus_as_of(items: list[dict]) -> str:
+    """多數標的共有的價格日期。
+
+    不可用 max()：Yahoo 常有少數標的先出現新一日 bar，而官方收盤尚未發布。
+    取最大值會造成三個連鎖故障（2026-09-10 實際發生，整週狀態停擺）：
+      1. 整份狀態標成只有 5/106 檔擁有的日期，對外宣稱的資料日不實；
+      2. current_eligible 以 as_of 相符為條件，於是選股只從那 5 檔挑，
+         top_picks 被悄悄掏空（實測從 5 檔掉到 1 檔）；
+      3. state.as_of 比官方收盤日新，觸發 run_daily_value_state 的
+         stale-state 守門而整份拒存 —— 資料因此完全不再更新。
+    規則：取「數量至少達最大群一半」的最新日期。這樣少數搶跑的標的無法定義
+    整份狀態的日期（5/106 會被排除），但當新日期已有相當覆蓋時仍會如實前進，
+    不會把真正的新交易日誤判成尚未到來。
+    """
+    dates = [item.get("as_of") for item in items if item.get("as_of")]
+    if not dates:
+        return ""
+    counts = Counter(dates)
+    threshold = max(counts.values()) / 2
+    return max(date for date, count in counts.items() if count >= threshold)
+
+
 def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int) -> dict:
     items = [_daily_item(r, r.get("symbol", "").split(".")[0] in pool_codes) for r in results]
     eligible = [i for i in items if i["eligible_pool"] and not i["is_etf"]]
-    as_of = max((i.get("as_of") or "" for i in items), default="")
+    as_of = _consensus_as_of(items)
     current_eligible = [i for i in eligible if i.get("as_of") == as_of]
     picks = sorted((i for i in current_eligible if i["decision"] == "可分批研究"),
                    key=lambda x: x["rank_score"], reverse=True)[:5]

@@ -2932,6 +2932,106 @@ def build_sell_timing(normalized_positions: list[dict]) -> dict:
     }
 
 
+_FLASH_LOCAL = PROJECT / "data" / "intraday_flash.json"
+_FLASH_REMOTE = os.environ.get("INTRADAY_FLASH_PATH", "value/intraday_flash.json")
+
+
+def load_intraday_flash() -> tuple[dict | None, dict]:
+    from company.model.durable_document import load_document
+
+    return load_document(_FLASH_LOCAL, _FLASH_REMOTE)
+
+
+def generate_intraday_flash() -> str:
+    """產生並持久化盤中快訊。回傳摘要字串供背景任務留痕。"""
+    from company.model.current_state import load_current_state
+    from company.model.daily_jobs import in_market_session, taipei_now
+    from company.model.durable_document import save_document
+    from company.model.intraday_flash import build_flash, select_candidates
+
+    state, _ = load_current_state()
+    if state is None:
+        raise RuntimeError("current-state 尚未產生，無法做盤中比對")
+
+    candidates = select_candidates(state)
+    quotes: dict[str, dict] = {}
+    symbols = [item["symbol"] for item in candidates if item.get("symbol")]
+    if symbols:
+        payload = fetch_quote(symbols)
+        for quote in (payload.get("quoteResponse") or {}).get("result", []):
+            quotes[quote["symbol"]] = quote
+
+    moment = taipei_now()
+    document = build_flash(state, quotes, now=moment, market_open=in_market_session(moment))
+    saved = save_document(
+        document, _FLASH_LOCAL, _FLASH_REMOTE,
+        f"chore(flash): intraday research note {document['date']}",
+    )
+    return f"{len(document['items'])} 檔候選，durable={saved.get('durable')}"
+
+
+def daily_refresh_status(trigger: bool = True) -> dict:
+    """回報兩個每日任務的狀態，並在該跑而今日尚未跑時觸發。
+
+    盤後重評交給 GitHub Actions（重運算，Render 免費方案會休眠殺執行緒）；
+    盤中快訊很輕，就地以背景執行緒產生，避免 Actions 冷啟動的分鐘級延遲。
+    """
+    from company.model import daily_jobs as jobs
+    from company.model.current_state import load_current_state
+
+    now = jobs.taipei_now()
+    today = now.date().isoformat()
+    state, state_storage = load_current_state()
+    flash, _ = load_intraday_flash()
+
+    postclose_due, postclose_why = jobs.postclose_due(state, now)
+    intraday_due, intraday_why = jobs.intraday_due(flash, now)
+    triggered: dict[str, dict] = {}
+
+    if trigger and postclose_due and jobs.claim(jobs.POSTCLOSE_JOB, today):
+        # 兩支都不帶 inputs：email-daily 宣告 workflow_dispatch:{} 不收任何輸入，
+        # 送了會被 GitHub 拒絕；value-rescreen 的 dry_run 預設本就是 false。
+        results = [jobs.dispatch_workflow(name) for name in jobs.POSTCLOSE_WORKFLOWS]
+        ok = all(item.get("dispatched") for item in results)
+        jobs.finish(jobs.POSTCLOSE_JOB, today, ok, json.dumps(results, ensure_ascii=False))
+        triggered["postclose_rescreen"] = {"workflows": results, "all_dispatched": ok}
+
+    if trigger and intraday_due and jobs.claim(jobs.INTRADAY_JOB, today):
+        jobs.run_in_background(jobs.INTRADAY_JOB, today, generate_intraday_flash)
+        triggered["intraday_flash"] = {"started": True}
+
+    def _describe(job: str, due: bool, why: str) -> dict:
+        entry = jobs.job_state(job)
+        return {
+            "due": due, "reason": why,
+            "running": bool(entry.get("running")),
+            "last_done_date": entry.get("done_date"),
+            "last_error": entry.get("error"),
+            "detail": entry.get("detail"),
+        }
+
+    return {
+        "schema_version": 1,
+        "taipei_time": now.isoformat(),
+        "trading_weekday": jobs.is_trading_weekday(now),
+        "market_open": jobs.in_market_session(now),
+        "after_close": jobs.is_after_close(now),
+        "state_as_of": (state or {}).get("as_of"),
+        "state_analysis_date": (state or {}).get("analysis_date_taipei"),
+        "state_storage": state_storage,
+        "flash_date": (flash or {}).get("date"),
+        "jobs": {
+            "postclose_rescreen": _describe(jobs.POSTCLOSE_JOB, postclose_due, postclose_why),
+            "intraday_flash": _describe(jobs.INTRADAY_JOB, intraday_due, intraday_why),
+        },
+        "triggered": triggered,
+        "policy": (
+            "盤後母池重評每個交易日限一次（14:00 後，交由 GitHub Actions 執行）；"
+            "盤中研究快訊每個交易日限一次（09:00–13:30），為 provisional 不寫入決策帳本。"
+        ),
+    }
+
+
 class Handler(SimpleHTTPRequestHandler):
     RETIRED_GET_ENDPOINTS = {
         "/api/discover",
@@ -3042,6 +3142,20 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
                 else:
                     document, storage = load_positions()
+                    self.send_json({**document, "storage": storage})
+                return
+            if parsed.path == "/api/daily-refresh":
+                # 前端每次載入呼叫一次；只在「該跑且今日尚未跑」時才真的觸發。
+                query = urllib.parse.parse_qs(parsed.query or "")
+                trigger = query.get("trigger", ["1"])[0] != "0"
+                self.send_json(daily_refresh_status(trigger=trigger))
+                return
+            if parsed.path == "/api/intraday-flash":
+                document, storage = load_intraday_flash()
+                if document is None:
+                    self.send_json({"error": "尚未產生盤中快訊", "storage": storage},
+                                   HTTPStatus.NOT_FOUND)
+                else:
                     self.send_json({**document, "storage": storage})
                 return
             if parsed.path == "/api/value-current":
