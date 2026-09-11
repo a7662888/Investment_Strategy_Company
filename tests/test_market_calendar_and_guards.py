@@ -124,9 +124,30 @@ class TestSyncTokenSurvivesRotation(unittest.TestCase):
         self.assertEqual(token, expected_seed)
         self.assertEqual(saved["token"], expected_seed)
 
-    def test_explicit_env_still_wins(self) -> None:
+    def test_persisted_beats_the_env_var(self) -> None:
+        """2026-09-07 設在 Render 的環境變數密鑰只存在於剪貼簿、已遺失，
+        而環境變數既非業主也非 agent 所能修改；若它永遠勝出就是死鎖。"""
+        with patch.dict("os.environ", {"POSITIONS_SYNC_TOKEN": "lost-env-key"}, clear=False):
+            with patch.object(positions_model.durable_document, "load_document",
+                              return_value=({"token": "persisted-key"}, {})):
+                self.assertEqual(positions_model.expected_sync_token(), "persisted-key")
+                self.assertEqual(positions_model.sync_token_source(), "persisted")
+
+    def test_env_var_is_still_used_when_nothing_is_persisted(self) -> None:
         with patch.dict("os.environ", {"POSITIONS_SYNC_TOKEN": "explicit"}, clear=False):
-            self.assertEqual(positions_model.expected_sync_token(), "explicit")
+            with patch.object(positions_model.durable_document, "load_document",
+                              return_value=(None, {})):
+                self.assertEqual(positions_model.expected_sync_token(), "explicit")
+
+    def test_rotation_produces_a_strong_new_key(self) -> None:
+        saved = {}
+        with patch.object(positions_model.durable_document, "save_document",
+                          side_effect=lambda doc, *a, **k: saved.update(doc) or {"durable": True}):
+            first, _ = positions_model.rotate_sync_token()
+            second, _ = positions_model.rotate_sync_token()
+        self.assertNotEqual(first, second)
+        self.assertGreaterEqual(len(first), 40)
+        self.assertEqual(saved["token"], second)
 
 
 class TestDailyEmailOnce(unittest.TestCase):

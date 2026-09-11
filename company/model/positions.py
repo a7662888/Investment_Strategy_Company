@@ -117,24 +117,48 @@ def sync_token_source() -> str:
     """密鑰目前來自哪一層。只回來源名稱，不回值——供健康檢查診斷用。
 
     加這個是因為線上曾出現「本機三處指紋一致、伺服器卻回 401」，
-    沒有來源資訊就只能靠猜。
+    沒有來源資訊就只能靠猜；後來正是靠它查出伺服器在用一把已遺失的環境變數密鑰。
+    順序須與 expected_sync_token 一致。
     """
-    if os.environ.get("POSITIONS_SYNC_TOKEN", "").strip():
-        return "explicit_env"
     if stored_sync_token():
         return "persisted"
+    if os.environ.get("POSITIONS_SYNC_TOKEN", "").strip():
+        return "explicit_env"
     if _derived_sync_token():
         return "derived_from_data_token"
     return "none"
 
 
+def rotate_sync_token() -> tuple[str, dict]:
+    """產生並固化一把新的同步密鑰（32-byte CSPRNG）。
+
+    沿用 codex 2026-09-07 的強度標準，但改存私有資料庫而非 Render 環境變數：
+    當時那把只放在剪貼簿、未留任何副本，事後無法取回，使用者因此被鎖在外面。
+    存進資料庫後可隨時重新交付，且仍與 GITHUB_DATA_TOKEN 輪替解耦。
+    """
+    import secrets
+
+    token = secrets.token_urlsafe(32)
+    storage = durable_document.save_document(
+        {"schema_version": 1, "token": token, "created_at": _utc_now(),
+         "note": "32-byte CSPRNG; persisted so it can be re-delivered without a redeploy"},
+        SYNC_SECRET_LOCAL, SYNC_SECRET_REMOTE, "chore(positions): rotate sync secret",
+    )
+    _SYNC_SECRET_CACHE.update(at=0.0, value=None)
+    return token, storage
+
+
 def expected_sync_token() -> str | None:
-    explicit = os.environ.get("POSITIONS_SYNC_TOKEN", "").strip()
-    if explicit:
-        return explicit
+    # 固化密鑰優先於環境變數。原本環境變數最優先，結果是 2026-09-07 設在 Render
+    # 的那把（只存在於剪貼簿、已遺失）長期勝出，使用者無論拿到什麼密鑰都是 401，
+    # 而 Render 環境變數既非業主、也非本 agent 所能修改，等於死鎖。
+    # 固化密鑰存在私有資料庫，可重新交付且同樣與 GITHUB_DATA_TOKEN 輪替解耦。
     persisted = stored_sync_token()
     if persisted:
         return persisted
+    explicit = os.environ.get("POSITIONS_SYNC_TOKEN", "").strip()
+    if explicit:
+        return explicit
     return _derived_sync_token()
 
 

@@ -99,6 +99,10 @@ def test_private_positions_endpoints():
     os.environ["POSITIONS_SYNC_TOKEN"] = "integration-sync-key"
     # 2026-09-01 起預設開啟（業主指示），故「關閉」需明確設定才測得到緊急煞車。
     os.environ["POSITIONS_SYNC_ENABLED"] = "0"
+    # 固化密鑰優先於環境變數，且本機可能真的存在一份；停用它，本測試才測得到
+    # 「以環境變數設定同步」這條路徑。
+    persisted_patch = patch("company.model.positions.stored_sync_token", return_value=None)
+    persisted_patch.start()
     document = {
         "schema_version": 1, "version": 2, "updated_at": "2026-08-04T00:00:00+00:00",
         "positions": [{"symbol": "0056.TW", "shares": 1000.0, "cost": 54.0}],
@@ -161,6 +165,7 @@ def test_private_positions_endpoints():
         assert result["version"] == 3 and result["storage"]["durable"] is True
         print("✅ private positions endpoints require auth and preserve versions")
     finally:
+        persisted_patch.stop()
         if old_token is None:
             os.environ.pop("POSITIONS_SYNC_TOKEN", None)
         else:
