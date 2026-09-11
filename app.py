@@ -39,6 +39,15 @@ MODEL_ARTIFACT_PATH = PROJECT / "model_artifacts" / "logit_v1.json"
 PROVIDER_RUNTIME: dict[str, dict] = {}
 
 
+def _sync_token_source() -> str:
+    try:
+        from company.model.positions import sync_token_source
+
+        return sync_token_source()
+    except Exception as exc:  # noqa: BLE001 - 診斷欄位不得讓健康檢查失敗
+        return f"error:{type(exc).__name__}"
+
+
 def positions_sync_enabled() -> bool:
     """Emergency privacy gate for the 2026-08-31 exposure.
 
@@ -934,6 +943,8 @@ def readiness_status() -> tuple[dict, HTTPStatus]:
         "privacy": {
             "positions_sync_enabled": positions_sync_enabled(),
             "positions_sync_requires_auth": True,
+            # 只報來源不報值：診斷「伺服器用的是哪一把密鑰」而不洩漏密鑰本身。
+            "sync_token_source": _sync_token_source(),
         },
     }
     return payload, HTTPStatus.OK if ready else HTTPStatus.SERVICE_UNAVAILABLE

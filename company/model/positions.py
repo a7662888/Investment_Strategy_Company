@@ -113,6 +113,21 @@ def ensure_sync_token() -> tuple[str | None, dict]:
     return seed, {"created": True, "storage": storage}
 
 
+def sync_token_source() -> str:
+    """密鑰目前來自哪一層。只回來源名稱，不回值——供健康檢查診斷用。
+
+    加這個是因為線上曾出現「本機三處指紋一致、伺服器卻回 401」，
+    沒有來源資訊就只能靠猜。
+    """
+    if os.environ.get("POSITIONS_SYNC_TOKEN", "").strip():
+        return "explicit_env"
+    if stored_sync_token():
+        return "persisted"
+    if _derived_sync_token():
+        return "derived_from_data_token"
+    return "none"
+
+
 def expected_sync_token() -> str | None:
     explicit = os.environ.get("POSITIONS_SYNC_TOKEN", "").strip()
     if explicit:
