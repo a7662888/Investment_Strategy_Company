@@ -836,10 +836,23 @@ def build_version() -> dict:
 
 
 def load_mother_pool_status() -> dict:
-    """Expose the production investable universe without reviving the retired weekly race pool."""
+    """Expose the production investable universe without reviving the retired weekly race pool.
+
+    優先讀私有資料庫：母池是資料而非程式，但 repo 檔案要靠部署才生效，而
+    Render 的 buildFilter 把 model_artifacts/** 列為 ignoredPaths，月更 commit
+    不觸發部署（實測 2026-09-22：repo 已更新，線上仍回 09-01 版且缺新增三檔）。
+    資料庫讀不到時才退回 repo 檔案，確保舊部署仍可運作。
+    """
     path = PROJECT / "model_artifacts" / "active_pool.json"
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
+        from company.model.durable_document import load_document
+
+        remote, _ = load_document(
+            path, os.environ.get("UNIVERSE_POOL_PATH", "universe/active_pool.json"))
+        if isinstance(remote, dict) and remote.get("stocks"):
+            document = remote
+        else:
+            document = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
         return {
             "status": "unavailable",
@@ -3101,7 +3114,7 @@ def daily_refresh_status(trigger: bool = True) -> dict:
 
     postclose_due, postclose_why = jobs.postclose_due(state, now)
     intraday_due, intraday_why = jobs.intraday_due(flash, now)
-    premarket_due, premarket_why = jobs.premarket_due(brief, now)
+    premarket_due, premarket_why = jobs.premarket_due(brief, now, (state or {}).get("as_of"))
     triggered: dict[str, dict] = {}
 
     if trigger and postclose_due and jobs.claim(jobs.POSTCLOSE_JOB, today):

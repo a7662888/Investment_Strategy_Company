@@ -21,7 +21,17 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from company.model import ledger  # noqa: E402
+from company.data.value_fundamentals import load_fundamentals  # noqa: E402
 from company.screener.value_rescreen import rescreen_all  # noqa: E402
+
+
+def _current_fundamentals() -> dict:
+    """與 run_daily_value_state 完全相同的基本面來源：靜態 seed 疊上已刷新的季度資料。"""
+    seed_path = ROOT / "data" / "value_fundamentals.json"
+    fundamentals = json.loads(seed_path.read_text(encoding="utf-8")) if seed_path.exists() else {}
+    full_doc, _ = load_fundamentals()
+    fundamentals.update(full_doc.get("stocks") or {})
+    return fundamentals
 
 VALUE_AGENTS = ("claude-value", "claude-etf-subtrack")
 MV = "tw_value_method v2.2 / weekly-rescreen"
@@ -78,7 +88,12 @@ def main() -> int:
     symbols = sorted(cards)
     print(f"重篩 {len(symbols)} 檔：{', '.join(s.replace('.TW','') for s in symbols)}\n")
 
-    results = rescreen_all(symbols)
+    # 必須與 run_daily_value_state 餵同一份基本面，否則同一個引擎會對同一檔給出
+    # 兩種判定：帳本走靜態 seed（實測僅 9 季），每日狀態走已刷新的季度資料（12 季）。
+    # 實測分叉案例：台灣大 3045 今日狀態 quality_pass=False／排除，帳本卻仍 accumulate。
+    # 帳本的意義是「凍結同一條決策鏈當時的判斷」，資料源分叉會讓它記錄一個
+    # 現行引擎根本不會做出的決定，整個 shadow 驗證因此失去意義。
+    results = rescreen_all(symbols, fundamentals=_current_fundamentals())
     changed, unchanged, errors = [], [], []
     signals = []
 

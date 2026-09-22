@@ -121,8 +121,15 @@ def intraday_due(flash: dict | None, now: datetime) -> tuple[bool, str]:
     return True, f"今日尚未產生快訊（最後一次 {done or '無紀錄'}）"
 
 
-def premarket_due(brief: dict | None, now: datetime) -> tuple[bool, str]:
-    """盤前簡報是否該產生。"""
+def premarket_due(brief: dict | None, now: datetime,
+                  state_as_of: str | None = None) -> tuple[bool, str]:
+    """盤前簡報是否該產生。
+
+    除了「今日尚未產生」，還要在**底層狀態已前進**時重做：簡報引用當時的
+    current-state，若它是在盤後重評之前產生的，內容會停在更舊的資料日
+    （實測 2026-09-22 20:31 產生的簡報，state_as_of 仍是 09-18），
+    而「今日已產生」又讓它整天不再更新。以資料日比對可自我修復。
+    """
     if not is_trading_weekday(now):
         return False, non_trading_reason(now)
     if _minutes(now) < PREMARKET_FROM_MINUTES:
@@ -130,6 +137,9 @@ def premarket_due(brief: dict | None, now: datetime) -> tuple[bool, str]:
     today = now.date().isoformat()
     done = (brief or {}).get("date")
     if done == today:
+        brief_state = (brief or {}).get("state_as_of")
+        if state_as_of and brief_state and brief_state != state_as_of:
+            return True, f"簡報依據 {brief_state} 已落後於最新狀態 {state_as_of}，需重做"
         return False, f"今日（{today}）盤前簡報已產生"
     return True, f"今日尚未產生盤前簡報（最後一次 {done or '無紀錄'}）"
 

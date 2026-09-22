@@ -220,6 +220,27 @@ def refresh_weekly_from_pool(as_of: Optional[str] = None, token: Optional[str] =
     }
 
 
+POOL_REMOTE_PATH = os.environ.get("UNIVERSE_POOL_PATH", "universe/active_pool.json")
+
+
+def save_pool_durable(doc: dict) -> dict:
+    """母池另存私有資料庫。
+
+    母池是「資料」而非程式，卻只存在 repo 檔案中，於是更新必須靠一次部署才會
+    生效——而 Render 的 buildFilter 把 model_artifacts/** 列為 ignoredPaths，
+    月更 commit 根本不觸發部署（實測 2026-09-22：repo 已是新母池，
+    線上 /api/mother-pool 仍回 2026-09-01 版、缺新增的三檔）。
+    寫進資料庫後，網站讀得到最新母池，不必依賴部署。
+    """
+    try:
+        from company.model.durable_document import save_document
+
+        return save_document(doc, POOL_PATH, POOL_REMOTE_PATH,
+                             f"chore(universe): active pool {doc.get('as_of') or ''}")
+    except Exception as exc:  # noqa: BLE001 - 持久化失敗不該讓月更整個失敗
+        return {"durable": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def save_pool(doc: dict) -> None:
     POOL_PATH.parent.mkdir(parents=True, exist_ok=True)
     POOL_PATH.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")

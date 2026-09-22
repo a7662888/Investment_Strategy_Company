@@ -39,9 +39,12 @@ def main():
         raise SystemExit("週選30與三方競賽已退役；唯一支援模式為 pool")
     res = u.refresh_all(as_of=as_of)
     u.save_pool(res["pool"])
+    # 同時寫入私有資料庫：repo 檔案要靠部署才生效，而母池 commit 不觸發部署。
+    durable = u.save_pool_durable(res["pool"])
+    print("持久化:", durable)
     _summary(res["pool"], "母池100(月)")
 
-    print("\n已寫入 model_artifacts/active_pool.json — 請 commit 以在 Render 持久生效。")
+    print("\n已寫入 model_artifacts/active_pool.json 與私有資料庫；網站不必等部署即可讀到新母池。")
 
 
 if __name__ == "__main__":
