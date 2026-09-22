@@ -2566,6 +2566,34 @@ const LEVEL_STATE_ICON = {
   confirmed_break: "🔴", intraday_break: "🟠", approaching: "🟡", safe: "⚪",
 };
 
+// 量價證據（永豐 Shioaji 盤後快照）：回答「這次跌破可不可信」。
+// 只呈現成色，不改變觸發價與比例——觸發規則仍是單一決策鏈。
+const CONFIRM_STYLE = {
+  strong:    { color: "#b91c1c", icon: "⚠️" },
+  normal:    { color: "#b45309", icon: "◐" },
+  weak:      { color: "#0f766e", icon: "◌" },
+  resilient: { color: "#137333", icon: "✓" },
+};
+
+function renderConfirmation(c) {
+  if (!c) return "";
+  const style = CONFIRM_STYLE[c.quality] || CONFIRM_STYLE.normal;
+  const bits = [
+    c.vwap != null ? `當日均價 ${Number(c.vwap).toFixed(2)}` : null,
+    c.close_vs_vwap_pct != null
+      ? `收盤 ${Number(c.close_vs_vwap_pct) >= 0 ? "+" : ""}${Number(c.close_vs_vwap_pct).toFixed(2)}%` : null,
+    c.volume_ratio != null ? `量比 ${Number(c.volume_ratio).toFixed(2)}` : null,
+    c.tick_pressure ? `內外盤 ${c.tick_pressure === "sell" ? "偏賣" : "偏買"}` : null,
+  ].filter(Boolean).join("｜");
+  return `<div style="margin-top:5px;padding:5px 7px;background:rgba(255,255,255,0.65);border-radius:5px;">
+    <b style="color:${style.color};">${style.icon} 量價證據：${escapeHtml(c.note || "")}</b>
+    ${bits ? `<div style="color:#475569;margin-top:2px;">${bits}</div>` : ""}
+    <div style="color:var(--muted);font-size:11.5px;margin-top:2px;">
+      ${escapeHtml(c.trade_date || "")} ${escapeHtml(c.source || "")}．僅評估跌破成色，不改變觸發價與減碼比例
+    </div>
+  </div>`;
+}
+
 function renderSellTiming(t) {
   if (!t) return "";
   const style = TIMING_STYLE[t.urgency] || TIMING_STYLE.advisory;
@@ -2597,6 +2625,7 @@ function renderSellTiming(t) {
     </div>
     ${priceLine ? `<div style="color:#475569;margin-top:3px;">${priceLine}</div>` : ""}
     ${t.basis_mismatch ? `<div style="margin-top:4px;padding:4px 6px;background:#fffbeb;border:1px solid #fde68a;border-radius:4px;color:#92400e;">⚠️ ${escapeHtml(t.basis_note || "")}</div>` : ""}
+    ${renderConfirmation(t.confirmation)}
     ${levels ? `<div style="margin-top:5px;">${levels}</div>` : ""}
     ${plan ? `<div style="margin-top:5px;border-top:1px dashed ${style.line};padding-top:5px;"><b style="color:${style.color};">分批出場計畫</b>${plan}</div>` : ""}
     <div style="color:var(--muted);margin-top:5px;font-size:11.5px;">${escapeHtml(t.confirm_rule || "")}${t.anchor_note ? ` ${escapeHtml(t.anchor_note)}` : ""}</div>
