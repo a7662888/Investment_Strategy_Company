@@ -312,6 +312,12 @@ def build_signal_event(signal: dict) -> dict:
         "evidence": list(signal.get("evidence") or signal.get("reasons") or []),
         "market_risk": signal.get("market_risk"),
         "data_quality": signal.get("data_quality") or {},
+        # 凍結當下的量價脈絡（當日 VWAP／量比／買賣價差）。本欄位**不參與判定**，
+        # 純為日後驗證保留證據：要回答「凍結時的量價條件有沒有預測力」，
+        # 就必須在凍結當下把它存下來，事後無法補（帳本 append-only）。
+        # 本函式是白名單式輸出，未列於此的欄位會被靜默丟棄。
+        # 舊事件無此欄位，讀取端須容忍缺席。
+        "market_context": signal.get("market_context") or {},
     }
 
 

@@ -76,6 +76,32 @@ def qualitative(result: dict, old: dict | None) -> list[dict]:
     return carried
 
 
+def market_context() -> dict[str, dict]:
+    """凍結當下的量價脈絡（永豐盤後快照）。
+
+    只保留少數幾個可解釋的欄位，不整包塞進帳本：帳本體積曾在 2026-07-09
+    超過 1MB 被覆蓋，欄位要挑過。缺快照時回空字典，凍卡照常進行。
+    """
+    try:
+        from company.model.durable_document import load_document
+
+        document, _ = load_document(
+            ROOT / "data" / "shioaji_snapshot.json",
+            os.environ.get("SHIOAJI_SNAPSHOT_PATH", "market/shioaji_snapshot.json"),
+        )
+    except Exception:  # noqa: BLE001 - 量價是加分項，缺了不該讓凍卡失敗
+        return {}
+    if not document:
+        return {}
+    trade_date = document.get("trade_date")
+    keep = ("vwap", "close_vs_vwap_pct", "volume_ratio", "spread_pct", "tick_pressure")
+    return {
+        symbol: {**{k: row.get(k) for k in keep}, "trade_date": trade_date,
+                 "source": row.get("source")}
+        for symbol, row in (document.get("snapshots") or {}).items()
+    }
+
+
 def candidate_symbols() -> list[str]:
     """今日被價值引擎選出的標的（可分批研究＋觀察名單）。
 
@@ -115,6 +141,7 @@ def main() -> int:
     # 帳本的意義是「凍結同一條決策鏈當時的判斷」，資料源分叉會讓它記錄一個
     # 現行引擎根本不會做出的決定，整個 shadow 驗證因此失去意義。
     results = rescreen_all(symbols, fundamentals=_current_fundamentals())
+    contexts = market_context()
     changed, unchanged, errors = [], [], []
     signals = []
 
@@ -164,7 +191,18 @@ def main() -> int:
             "source": "TASK-018 每週重篩", "data_quality": "high",
         })
 
+        context = contexts.get(sym) or {}
+        if context.get("volume_ratio") is not None or context.get("close_vs_vwap_pct") is not None:
+            # 明示不參與判定，避免日後被誤讀成凍結理由之一。
+            ev.append({
+                "claim": (f"凍結當下量價脈絡：收盤相對當日均價 {context.get('close_vs_vwap_pct')}%、"
+                          f"量比 {context.get('volume_ratio')}（僅存證，未參與判定，預測力尚未驗證）"),
+                "source": context.get("source") or "Shioaji snapshots",
+                "data_quality": "high",
+            })
+
         signals.append({
+            "market_context": context,
             "agent_id": (old or {}).get("agent_id") or ("claude-etf-subtrack" if r.get("is_etf") else "claude-value"),
             "model_version": MV, "symbol": sym, "name": r.get("name"),
             "data_cutoff": r["as_of"], "action": new_action, "horizon": "120D",
