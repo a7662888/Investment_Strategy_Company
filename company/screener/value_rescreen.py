@@ -96,7 +96,50 @@ def _official_closes() -> dict[str, dict]:
             # Availability of one official feed must not take down the other market;
             # the caller still has a Yahoo fallback and a freshness fail-closed gate.
             continue
+    # 券商快照覆蓋交易所 feed，但只在日期較新時：交易所仍是預設 close-of-record，
+    # Shioaji 的角色是補上交易所尚未發布的那一兩天。
+    for symbol, row in _shioaji_closes().items():
+        existing = output.get(symbol)
+        if not existing or row["date"] > existing["date"]:
+            output[symbol] = row
     _OFFICIAL_CLOSE_CACHE = output
+    return output
+
+
+def _shioaji_closes() -> dict[str, dict]:
+    """永豐盤後快照作為 close-of-record 的補充來源。
+
+    交易所 OpenAPI 經常延遲一至兩個交易日發布（實測 2026-09-22 19:53 仍停在
+    09-21），而既有規則在官方未發布當日收盤時會丟棄 Yahoo 的當日 K 線，
+    結果是整個系統長期落後——這是業主長期回報「資料過期」的結構性來源。
+    券商自有行情是當日即得且已與 Yahoo／TWSE 三方交叉驗證一致，足以補上這段。
+
+    只採用**已完成的交易日**：當日資料需過台北 14:00 才視為定稿，
+    與 _yahoo_history 的未完成 bar 護欄同一標準。
+    """
+    try:
+        from company.model.durable_document import load_document
+
+        document, _ = load_document(
+            ROOT / "data" / "shioaji_snapshot.json",
+            os.environ.get("SHIOAJI_SNAPSHOT_PATH", "market/shioaji_snapshot.json"),
+        )
+    except Exception:  # noqa: BLE001 - 沒有快照就退回交易所 feed，不得讓重評失敗
+        return {}
+    if not document:
+        return {}
+    trade_date = document.get("trade_date")
+    if not trade_date:
+        return {}
+    taipei_now = datetime.now(timezone(timedelta(hours=8)))
+    if trade_date == taipei_now.date().isoformat() and taipei_now.hour < 14:
+        return {}
+
+    output: dict[str, dict] = {}
+    for symbol, row in (document.get("snapshots") or {}).items():
+        close = _number(row.get("close"))
+        if close is not None and close > 0:
+            output[symbol] = {"date": trade_date, "close": close, "source": "Shioaji snapshots"}
     return output
 
 

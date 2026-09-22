@@ -201,3 +201,44 @@ class TestIntradayFlash(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestShioajiCloseOfRecord(unittest.TestCase):
+    """券商快照補上交易所尚未發布的那一兩天，但不得採用未完成的當日盤中價。"""
+
+    def _doc(self, trade_date):
+        return {"trade_date": trade_date,
+                "snapshots": {"2330.TW": {"close": 2460.0}, "1513.TW": {"close": 166.0}}}
+
+    def _closes(self, trade_date, hour):
+        import company.screener.value_rescreen as rescreen
+        from datetime import datetime as real_datetime, timedelta as td, timezone as tz
+
+        class FrozenNow(real_datetime):
+            @classmethod
+            def now(cls, tzinfo=None):
+                return real_datetime(2026, 9, 22, hour, 0, tzinfo=tz(td(hours=8)))
+
+        with patch.object(rescreen, "load_document", create=True):
+            pass
+        with patch("company.model.durable_document.load_document",
+                   return_value=(self._doc(trade_date), {})):
+            with patch.object(rescreen, "datetime", FrozenNow):
+                return rescreen._shioaji_closes()
+
+    def test_completed_session_is_accepted(self) -> None:
+        closes = self._closes("2026-09-22", hour=19)
+        self.assertEqual(closes["2330.TW"]["close"], 2460.0)
+        self.assertEqual(closes["2330.TW"]["source"], "Shioaji snapshots")
+
+    def test_todays_intraday_snapshot_is_refused_before_the_close_settles(self) -> None:
+        # 與 _yahoo_history 的未完成 bar 護欄同一標準：台北 14:00 前不算定稿。
+        self.assertEqual(self._closes("2026-09-22", hour=11), {})
+
+    def test_previous_session_is_always_acceptable(self) -> None:
+        self.assertIn("2330.TW", self._closes("2026-09-19", hour=11))
+
+    def test_missing_document_falls_back_quietly(self) -> None:
+        import company.screener.value_rescreen as rescreen
+        with patch("company.model.durable_document.load_document", return_value=(None, {})):
+            self.assertEqual(rescreen._shioaji_closes(), {})
