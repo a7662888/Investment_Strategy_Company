@@ -76,6 +76,22 @@ def qualitative(result: dict, old: dict | None) -> list[dict]:
     return carried
 
 
+def candidate_symbols() -> list[str]:
+    """今日被價值引擎選出的標的（可分批研究＋觀察名單）。
+
+    帳本原本只重篩既有卡片，新標的永遠進不來——實測今日 7 檔候選中有 4 檔
+    （中興電、祥碩、AES-KY、英業達）從未被記錄。帳本的目的是驗證這套方法，
+    只記錄舊卡而不記錄現在的選股，驗證的就是一個已不代表系統判斷的樣本。
+    """
+    from company.model.current_state import load_current_state
+
+    state, _ = load_current_state()
+    if not state:
+        return []
+    return [item["symbol"] for bucket in ("top_picks", "waiting_list")
+            for item in (state.get(bucket) or []) if item.get("symbol")]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -85,8 +101,13 @@ def main() -> int:
     if not cards:
         print("找不到現行價值卡，先執行初始凍結。", file=sys.stderr)
         return 1
-    symbols = sorted(cards)
-    print(f"重篩 {len(symbols)} 檔：{', '.join(s.replace('.TW','') for s in symbols)}\n")
+    fresh = [s for s in candidate_symbols() if s not in cards]
+    symbols = sorted(set(cards) | set(fresh))
+    print(f"重篩 {len(symbols)} 檔（既有卡 {len(cards)}、今日新候選 {len(fresh)}）："
+          f"{', '.join(s.replace('.TW','') for s in symbols)}")
+    if fresh:
+        print(f"首次凍結對象：{', '.join(s.replace('.TW','') for s in fresh)}")
+    print()
 
     # 必須與 run_daily_value_state 餵同一份基本面，否則同一個引擎會對同一檔給出
     # 兩種判定：帳本走靜態 seed（實測僅 9 季），每日狀態走已刷新的季度資料（12 季）。
@@ -123,16 +144,25 @@ def main() -> int:
             unchanged.append(note)
             continue
 
-        why = [f"判定 {old_action or '—'} → {new_action}"]
-        if left_range:
-            why.append(f"現價 {price} 已離開原買進區間 {old_er}")
-        changed.append(f"{sym} {r.get('name','')}：{'；'.join(why)}")
+        is_new = old is None
+        if is_new:
+            why = [f"首次凍結：{new_action}"]
+        else:
+            why = [f"判定 {old_action or '—'} → {new_action}"]
+            if left_range:
+                why.append(f"現價 {price} 已離開原買進區間 {old_er}")
+        changed.append(("＋新卡 " if is_new else "") + f"{sym} {r.get('name','')}：{'；'.join(why)}")
 
         ev = qualitative(r, old)
         for reason in r.get("reasons", []):
             ev.append({"claim": reason, "source": "weekly rescreen (rule layer)", "data_quality": "high"})
-        ev.append({"claim": f"本卡取代 {(old or {}).get('signal_id','(舊卡)')}：{'；'.join(why)}",
-                   "source": "TASK-018 每週重篩", "data_quality": "high"})
+        # 新卡沒有前身，不可寫「本卡取代 (舊卡)」——那會在帳本留下不存在的血緣關係。
+        ev.append({
+            "claim": (f"首次納入帳本：今日經價值引擎選為候選（{new_action}）"
+                      if is_new else
+                      f"本卡取代 {(old or {}).get('signal_id','(舊卡)')}：{'；'.join(why)}"),
+            "source": "TASK-018 每週重篩", "data_quality": "high",
+        })
 
         signals.append({
             "agent_id": (old or {}).get("agent_id") or ("claude-etf-subtrack" if r.get("is_etf") else "claude-value"),

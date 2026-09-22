@@ -1,0 +1,50 @@
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+import run_value_rescreen as rescreen
+
+
+class TestCandidateSymbols(unittest.TestCase):
+    """帳本原本只重篩既有卡片，新標的永遠進不來，驗證樣本因此不代表系統判斷。"""
+
+    def test_both_buckets_are_collected(self) -> None:
+        state = {"top_picks": [{"symbol": "1513.TW"}, {"symbol": "5269.TW"}],
+                 "waiting_list": [{"symbol": "6781.TW"}]}
+        with patch("company.model.current_state.load_current_state", return_value=(state, {})):
+            self.assertEqual(rescreen.candidate_symbols(), ["1513.TW", "5269.TW", "6781.TW"])
+
+    def test_missing_state_is_not_an_error(self) -> None:
+        with patch("company.model.current_state.load_current_state", return_value=(None, {})):
+            self.assertEqual(rescreen.candidate_symbols(), [])
+
+    def test_entries_without_symbol_are_skipped(self) -> None:
+        state = {"top_picks": [{"name": "無代號"}, {"symbol": "1513.TW"}], "waiting_list": []}
+        with patch("company.model.current_state.load_current_state", return_value=(state, {})):
+            self.assertEqual(rescreen.candidate_symbols(), ["1513.TW"])
+
+
+class TestFundamentalsAreShared(unittest.TestCase):
+    """帳本與每日狀態必須餵同一份基本面，否則同一引擎會給出兩種判定。"""
+
+    def test_seed_is_overlaid_with_refreshed_quarters(self) -> None:
+        seed = {"2330": {"quarterly": [1] * 9}, "9999": {"quarterly": [1]}}
+        full = {"stocks": {"2330": {"quarterly": [1] * 12}}}
+        with patch.object(rescreen, "load_fundamentals", return_value=(full, {})):
+            with patch.object(Path, "read_text", return_value=__import__("json").dumps(seed)):
+                with patch.object(Path, "exists", return_value=True):
+                    merged = rescreen._current_fundamentals()
+        # 刷新後的季度資料必須勝出，未刷新的標的仍保留 seed
+        self.assertEqual(len(merged["2330"]["quarterly"]), 12)
+        self.assertIn("9999", merged)
+
+
+if __name__ == "__main__":
+    unittest.main()
