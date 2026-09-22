@@ -42,6 +42,17 @@
       </div>
     </details>
 
+    <!-- 盤前簡報：每個交易日一次，內容由 /api/premarket-brief 動態帶入。
+         定位是「今天怎麼執行」的脈絡，不改變選股名單與買賣判定。 -->
+    <section id="premarketSection" class="panel" style="border:2px solid #4338ca; background:#eef2ff; display:none;">
+      <div class="sectionHead">
+        <h2 style="color:#3730a3; margin:0; display:flex; align-items:center; gap:8px;"><span>🌅</span> <span id="premarketTitle">盤前簡報</span></h2>
+        <span id="premarketBadge" class="pill" style="font-size:12px; background:#e0e7ff; color:#3730a3; border-color:#818cf8;">執行脈絡 · 不改變選股</span>
+      </div>
+      <div id="premarketPanel"></div>
+      <p id="premarketNote" style="font-size:11.5px; color:#3730a3; margin:10px 0 0;"></p>
+    </section>
+
     <!-- 盤中研究快訊：每個交易日限產生一次，內容由 /api/intraday-flash 動態帶入。
          先前此處為手寫死的靜態區塊（日期寫死 2026/09/07），會隨時間變成過期資訊。
          刻意與凍結的 current-state／決策帳本分離：盤中價未定案，不寫入帳本。 -->

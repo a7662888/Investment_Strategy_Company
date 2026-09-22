@@ -2886,6 +2886,58 @@ def load_market_snapshots() -> dict[str, dict]:
             for symbol, item in (document.get("snapshots") or {}).items()}
 
 
+_PREMARKET_LOCAL = PROJECT / "data" / "premarket_brief.json"
+_PREMARKET_REMOTE = os.environ.get("PREMARKET_BRIEF_PATH", "market/premarket_brief.json")
+
+
+def load_premarket_brief() -> tuple[dict | None, dict]:
+    from company.model.durable_document import load_document
+
+    return load_document(_PREMARKET_LOCAL, _PREMARKET_REMOTE)
+
+
+def generate_premarket_brief() -> str:
+    """產生盤前簡報：隔夜全球市場 ＋ 候選新聞旗標。
+
+    刻意全部使用標準函式庫可達的來源（Yahoo 指數、Google News RSS），
+    不需 shioaji，因此可直接跑在網站行程內，不必等 workflow 權限。
+    """
+    from company.data.global_markets import fetch_global_markets, risk_regime
+    from company.data.news_rss import fetch_rss_news
+    from company.model.current_state import load_current_state
+    from company.model.durable_document import save_document
+    from company.model.premarket import MAX_NEWS_SYMBOLS, NEWS_PER_SYMBOL, build_brief
+
+    state, _ = load_current_state()
+    if state is None:
+        raise RuntimeError("每日價值狀態尚未產生，無法組盤前簡報")
+    state = annotate_entry_evidence(state)
+
+    markets = fetch_global_markets()
+    regime = risk_regime(markets)
+
+    # 新聞只查前幾檔：每檔一次 RSS 請求，且整頁標題本來就不該當成研究。
+    candidates = [item for bucket in ("top_picks", "waiting_list")
+                  for item in (state.get(bucket) or [])][:MAX_NEWS_SYMBOLS]
+    news_by_symbol: dict[str, list[dict]] = {}
+    for item in candidates:
+        name = item.get("name") or item.get("symbol", "")
+        try:
+            news_by_symbol[item["symbol"]] = fetch_rss_news(name, limit=NEWS_PER_SYMBOL)
+        except Exception as exc:  # noqa: BLE001 - 單檔新聞失敗不該讓整份簡報消失
+            print(f"[premarket] news failed for {name}: {exc}")
+    try:
+        market_news = fetch_rss_news("台股 盤前", limit=5)
+    except Exception:  # noqa: BLE001
+        market_news = []
+
+    brief = build_brief(state, markets, regime, news_by_symbol, market_news)
+    saved = save_document(brief, _PREMARKET_LOCAL, _PREMARKET_REMOTE,
+                          f"chore(market): premarket brief {brief['date']}")
+    return (f"{brief['date']} 風險氛圍={regime['level']}，"
+            f"候選 {len(brief['watchlist'])} 檔，durable={saved.get('durable')}")
+
+
 def annotate_entry_evidence(state: dict) -> dict:
     """在候選名單附上當日量價佐證。
 
@@ -3045,9 +3097,11 @@ def daily_refresh_status(trigger: bool = True) -> dict:
     today = now.date().isoformat()
     state, state_storage = load_current_state()
     flash, _ = load_intraday_flash()
+    brief, _ = load_premarket_brief()
 
     postclose_due, postclose_why = jobs.postclose_due(state, now)
     intraday_due, intraday_why = jobs.intraday_due(flash, now)
+    premarket_due, premarket_why = jobs.premarket_due(brief, now)
     triggered: dict[str, dict] = {}
 
     if trigger and postclose_due and jobs.claim(jobs.POSTCLOSE_JOB, today):
@@ -3061,6 +3115,11 @@ def daily_refresh_status(trigger: bool = True) -> dict:
     if trigger and intraday_due and jobs.claim(jobs.INTRADAY_JOB, today):
         jobs.run_in_background(jobs.INTRADAY_JOB, today, generate_intraday_flash)
         triggered["intraday_flash"] = {"started": True}
+
+    # 盤前簡報只打幾支 Yahoo 與 RSS，夠輕可就地產生，不必等 workflow 權限。
+    if trigger and premarket_due and jobs.claim(jobs.PREMARKET_JOB, today):
+        jobs.run_in_background(jobs.PREMARKET_JOB, today, generate_premarket_brief)
+        triggered["premarket_brief"] = {"started": True}
 
     def _describe(job: str, due: bool, why: str) -> dict:
         entry = jobs.job_state(job)
@@ -3085,6 +3144,7 @@ def daily_refresh_status(trigger: bool = True) -> dict:
         "jobs": {
             "postclose_rescreen": _describe(jobs.POSTCLOSE_JOB, postclose_due, postclose_why),
             "intraday_flash": _describe(jobs.INTRADAY_JOB, intraday_due, intraday_why),
+            "premarket_brief": _describe(jobs.PREMARKET_JOB, premarket_due, premarket_why),
         },
         "triggered": triggered,
         "policy": (
@@ -3211,6 +3271,14 @@ class Handler(SimpleHTTPRequestHandler):
                 query = urllib.parse.parse_qs(parsed.query or "")
                 trigger = query.get("trigger", ["1"])[0] != "0"
                 self.send_json(daily_refresh_status(trigger=trigger))
+                return
+            if parsed.path == "/api/premarket-brief":
+                document, storage = load_premarket_brief()
+                if document is None:
+                    self.send_json({"error": "尚未產生盤前簡報", "storage": storage},
+                                   HTTPStatus.NOT_FOUND)
+                else:
+                    self.send_json({**document, "storage": storage})
                 return
             if parsed.path == "/api/intraday-flash":
                 document, storage = load_intraday_flash()

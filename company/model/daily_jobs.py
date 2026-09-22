@@ -31,6 +31,11 @@ POSTCLOSE_MINUTES = 14 * 60
 
 POSTCLOSE_JOB = "postclose_rescreen"
 INTRADAY_JOB = "intraday_flash"
+PREMARKET_JOB = "premarket_brief"
+
+# 盤前簡報自台北 06:00 起可產生。刻意不設上限：若當天開盤前無人造訪，
+# 稍晚補跑仍然有效——隔夜海外收盤是既成事實，不會因為台股已開盤而改變。
+PREMARKET_FROM_MINUTES = 6 * 60
 
 # 盤後重評要做兩件事，分別由既有的兩個 workflow 承擔：
 #   email-daily.yml   → run_daily_value_state.py，重算「今日優質股與進場時機」
@@ -114,6 +119,19 @@ def intraday_due(flash: dict | None, now: datetime) -> tuple[bool, str]:
     if done == today:
         return False, f"今日（{today}）快訊已產生"
     return True, f"今日尚未產生快訊（最後一次 {done or '無紀錄'}）"
+
+
+def premarket_due(brief: dict | None, now: datetime) -> tuple[bool, str]:
+    """盤前簡報是否該產生。"""
+    if not is_trading_weekday(now):
+        return False, non_trading_reason(now)
+    if _minutes(now) < PREMARKET_FROM_MINUTES:
+        return False, f"尚未到產生時間（台北 {now:%H:%M}，06:00 後產生）"
+    today = now.date().isoformat()
+    done = (brief or {}).get("date")
+    if done == today:
+        return False, f"今日（{today}）盤前簡報已產生"
+    return True, f"今日尚未產生盤前簡報（最後一次 {done or '無紀錄'}）"
 
 
 def job_state(job: str) -> dict:

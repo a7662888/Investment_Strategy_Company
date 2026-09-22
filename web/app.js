@@ -1971,6 +1971,66 @@ function provenanceLine(item) {
 // ---- 每日任務（造訪觸發，每個交易日各限一次）----
 // 盤中快訊在本行程產生（很輕）；盤後母池重評交由 GitHub Actions，因此觸發後
 // 不會立刻看到新資料——工作流要跑數分鐘，畫面以狀態列說明，不假裝已完成。
+// 盤前簡報：隔夜海外市場與新聞旗標。定位是執行脈絡，不是新的買賣訊號，
+// 因此區塊標題與註腳都明示「不改變選股名單與買賣判定」。
+const REGIME_STYLE = {
+  risk_off: ["#b91c1c", "隔夜偏弱"],
+  risk_on: ["#c2410c", "隔夜偏強"],
+  neutral: ["#3730a3", "隔夜平穩"],
+};
+
+async function loadPremarketBrief() {
+  const section = $("premarketSection"), panel = $("premarketPanel");
+  if (!section || !panel) return;
+  let d;
+  try {
+    const res = await fetch("/api/premarket-brief");
+    if (!res.ok) { section.style.display = "none"; return; }
+    d = await res.json();
+  } catch (err) { section.style.display = "none"; return; }
+  if (!d || !d.regime) { section.style.display = "none"; return; }
+
+  section.style.display = "";
+  const [color, label] = REGIME_STYLE[d.regime.level] || REGIME_STYLE.neutral;
+  const title = $("premarketTitle");
+  if (title) title.textContent = `${d.date || ""} 盤前簡報`;
+
+  const markets = Object.values(d.markets || {}).map(m => {
+    const pct = Number(m.change_pct || 0);
+    const c = pct >= 0 ? "#137333" : "#c5221f";
+    return `<span style="display:inline-block;margin:0 10px 4px 0;">${escapeHtml(m.name)}
+      <b style="color:${c};">${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%</b></span>`;
+  }).join("");
+
+  const rows = asArray(d.watchlist).map(w => {
+    const b = (w.entry_evidence || {}).day_balance || {};
+    const [bl] = BALANCE_LABEL[b.state] || ["—"];
+    const flags = asArray(w.material_news);
+    return `<div style="padding:4px 0;border-top:1px dashed #c7d2fe;">
+      <b>${escapeHtml(String(w.symbol).split(".")[0])} ${escapeHtml(w.name || "")}</b>
+      <span style="color:var(--muted);">｜${escapeHtml(w.bucket_label)}｜${escapeHtml(w.decision || "")}</span>
+      ${b.state ? `<span style="color:#475569;">｜${escapeHtml(bl)}</span>` : ""}
+      ${flags.length ? `<div style="color:#b91c1c;margin-top:2px;">⚑ ${flags.map(f => escapeHtml(f.title || "")).join("；")}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  const news = asArray(d.market_news).map(n =>
+    `<li style="margin:2px 0;">${escapeHtml(n.title || "")}</li>`).join("");
+
+  panel.innerHTML = `
+    <div style="font-size:13px;color:${color};font-weight:700;margin-bottom:4px;">
+      ${escapeHtml(label)}：${escapeHtml(asArray(d.regime.reasons).join("；"))}
+    </div>
+    <div style="font-size:12.5px;color:#1e293b;margin-bottom:6px;">${escapeHtml(d.execution_note || "")}</div>
+    <div style="font-size:12px;color:#334155;margin-bottom:6px;">${markets}</div>
+    ${rows ? `<div style="font-size:12.5px;">${rows}</div>` : ""}
+    ${news ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12.5px;font-weight:600;">大盤新聞（${asArray(d.market_news).length}）</summary>
+      <ul style="font-size:12px;color:#475569;margin:6px 0 0 18px;">${news}</ul></details>` : ""}`;
+
+  const note = $("premarketNote");
+  if (note) note.textContent = `${d.discipline || ""} ${d.disclaimer || ""}`;
+}
+
 async function runDailyJobs() {
   try {
     const data = await readJson(await fetch("/api/daily-refresh"));
@@ -1986,6 +2046,7 @@ async function runDailyJobs() {
     }
 
     // 剛觸發的盤中快訊要等背景產生完成，因此隔一段時間再抓一次。
+    await loadPremarketBrief();
     await loadIntradayFlash();
     if (triggered.intraday_flash || flashJob.running) {
       setTimeout(loadIntradayFlash, 12000);
