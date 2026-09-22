@@ -2071,6 +2071,34 @@ async function loadDailyValueState() {
   }
 }
 
+// 買進側當日量價佐證。分兩層呈現：流動性是客觀可成交性（可直接採用），
+// 量價態勢僅為佐證且尚未通過 outcome 驗證，因此明白標示、不影響排序。
+const BALANCE_LABEL = {
+  stabilizing: ["買方守住均價", "#137333"],
+  capitulation: ["爆量下殺", "#b91c1c"],
+  drifting: ["無量整理", "#64748b"],
+  firm: ["收在均價之上", "#0f766e"],
+  soft: ["收在均價之下", "#b45309"],
+};
+
+function renderEntryEvidence(e) {
+  if (!e) return "";
+  const b = e.day_balance;
+  const liq = e.liquidity || {};
+  const [label, color] = b ? (BALANCE_LABEL[b.state] || ["—", "#64748b"]) : ["—", "#64748b"];
+  const metrics = b ? [
+    b.close_vs_vwap_pct != null ? `收盤 ${Number(b.close_vs_vwap_pct) >= 0 ? "+" : ""}${Number(b.close_vs_vwap_pct).toFixed(2)}% vs 均價` : null,
+    b.volume_ratio != null ? `量比 ${Number(b.volume_ratio).toFixed(2)}` : null,
+  ].filter(Boolean).join("｜") : "";
+  const warn = asArray(liq.warnings);
+  return `<div style="font-size:12px;margin-top:6px;padding:5px 7px;background:#f8fafc;border:1px solid var(--line);border-radius:5px;">
+    ${b ? `<b style="color:${color};">${escapeHtml(label)}</b>${metrics ? `<span style="color:#475569;">｜${metrics}</span>` : ""}` : ""}
+    ${warn.length ? `<div style="color:#b91c1c;margin-top:2px;">⚠ ${escapeHtml(warn.join("；"))}</div>` : ""}
+    ${e.hint ? `<div style="color:#1e3a8a;margin-top:2px;">→ ${escapeHtml(e.hint)}</div>` : ""}
+    <div style="color:var(--muted);font-size:11px;margin-top:2px;">${escapeHtml(e.trade_date || "")} 量價佐證，未進排序、未改判定（尚未驗證預測力）</div>
+  </div>`;
+}
+
 function renderDailyValuePanel() {
     const panel = $("dailyValuePanel"), status = $("dailyValueStatus");
     const data = dailyValueState;
@@ -2098,6 +2126,7 @@ function renderDailyValuePanel() {
       <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
       <p style="font-size:12px;color:var(--muted);margin:0;">${escapeHtml(asArray(item.reasons).slice(0, 2).join("；") || "—")}</p>
       ${liveLine}
+      ${renderEntryEvidence(item.entry_evidence)}
       ${provenanceLine(item)}
     </article>`;
     };

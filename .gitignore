@@ -25,3 +25,7 @@ data/daily_audit/
 # data/email_log.json：寄信去重紀錄
 data/sync_secret.json
 data/email_log.json
+
+# Shioaji 盤後快照（執行期資料，體積會累積）
+data/shioaji/
+data/shioaji_snapshot.json

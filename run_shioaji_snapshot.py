@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parent
 TAIPEI = timezone(timedelta(hours=8))
 LOCAL_PATH = ROOT / "data" / "shioaji_snapshot.json"
 REMOTE_PATH = os.environ.get("SHIOAJI_SNAPSHOT_PATH", "market/shioaji_snapshot.json")
+LOCAL_DIR = ROOT / "data" / "shioaji"
+REMOTE_DIR = os.environ.get("SHIOAJI_SNAPSHOT_DIR", "market/shioaji")
 
 
 def _trade_date(snapshots: dict) -> str | None:
@@ -54,11 +56,25 @@ def main() -> int:
             pass
 
     document = build_document(snapshots, missing, simulation, _trade_date(snapshots))
+    trade_date = document["trade_date"]
+
+    # 每日各存一份不可變的當日檔：量價訊號是否真的有預測力，必須靠累積的歷史
+    # 用既有 outcome 框架驗證。只留「最新一份」等於永遠無法回測，這個決定
+    # 要在第一天就做對——資料錯過就補不回來了。
+    dated_storage = None
+    if trade_date:
+        dated_storage = save_document(
+            document, LOCAL_DIR / f"{trade_date}.json", f"{REMOTE_DIR}/{trade_date}.json",
+            f"chore(market): shioaji snapshot {trade_date}",
+        )
+    # 另存一份「最新」供網站單次讀取，避免前端要先查日期再抓檔。
     storage = save_document(document, LOCAL_PATH, REMOTE_PATH,
-                            f"chore(market): shioaji snapshot {document['trade_date']}")
+                            f"chore(market): latest shioaji snapshot {trade_date}")
+
     print(json.dumps({
-        "trade_date": document["trade_date"], "count": document["count"],
-        "missing": missing, "simulation": simulation, "storage": storage,
+        "trade_date": trade_date, "count": document["count"],
+        "missing": missing, "simulation": simulation,
+        "latest_storage": storage, "dated_storage": dated_storage,
     }, ensure_ascii=False, indent=2))
     return 0 if storage.get("local_saved") else 1
 

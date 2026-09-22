@@ -2886,6 +2886,31 @@ def load_market_snapshots() -> dict[str, dict]:
             for symbol, item in (document.get("snapshots") or {}).items()}
 
 
+def annotate_entry_evidence(state: dict) -> dict:
+    """在候選名單附上當日量價佐證。
+
+    只標註 top_picks／waiting_list／etf_candidates：那是使用者會據以行動的清單，
+    全部 106 檔都掛會讓回應肥大而沒人看。**不改動排序與判定**——量價在通過
+    outcome 驗證前只是佐證（見 entry_timing 模組的分層原則）。
+    """
+    snapshots = load_market_snapshots()
+    if not snapshots:
+        return state
+
+    from company.model.entry_timing import grade_entry
+
+    annotated = dict(state)
+    for key in ("top_picks", "waiting_list", "etf_candidates"):
+        items = state.get(key) or []
+        annotated[key] = [
+            {**item, "entry_evidence": grade_entry(item, snapshots.get(item.get("symbol")))}
+            for item in items
+        ]
+    annotated["market_evidence_date"] = next(
+        (s.get("trade_date") for s in snapshots.values() if s.get("trade_date")), None)
+    return annotated
+
+
 def build_sell_timing(normalized_positions: list[dict]) -> dict:
     """每檔持股的賣出時機建議。
 
@@ -3201,7 +3226,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if state is None:
                     self.send_json({"error": "每日價值狀態尚未產生", "storage": storage}, HTTPStatus.SERVICE_UNAVAILABLE)
                 else:
-                    self.send_json({**state, "storage": storage})
+                    self.send_json({**annotate_entry_evidence(state), "storage": storage})
                 return
             if parsed.path == "/api/mother-pool":
                 payload = load_mother_pool_status()
