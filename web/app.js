@@ -2475,9 +2475,7 @@ function renderLedger(filterType) {
         </div>
         
         ${freshnessBadge(s)}
-        <div style="margin:8px 0; padding:8px 10px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; font-size:12.5px; line-height:1.6; color:#14532d;">
-          ${plainAdvice(s, _heldSet && _heldSet.has((s.symbol || "").toUpperCase()))}
-        </div>
+        ${presentDecision(s, _heldSet && _heldSet.has((s.symbol || "").toUpperCase()))}
 
         <div class="ledger-pillars">
           <div class="pillar-box" style="grid-column: span 2;">
@@ -2541,8 +2539,11 @@ function freshnessBadge(signal) {
       return `<div style="margin:6px 0;padding:7px 9px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:12px;color:#1e3a8a;">
         📉 現價 <b>${cur}</b> 已跌破區間下緣 ${lo}${driftTxt}。比凍結時更便宜，但請先確認「失效條件」未被觸發。</div>`;
     }
-    return `<div style="margin:6px 0;padding:7px 9px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:12px;color:#14532d;">
-      ✅ 現價 <b>${cur}</b> <b>仍在買進區間</b> ${lo}–${hi} 內${driftTxt}。</div>`;
+    // 不可寫「✅ 仍在買進區間」：那個區間是凍結當時的值，而該檔今日可能已被
+    // 品質硬篩排除。綠勾＋現在式會讓一張歷史 watch 卡看起來像今天的買進建議。
+    return `<div style="margin:6px 0;padding:7px 9px;background:#f8fafc;border:1px solid var(--line);border-radius:6px;font-size:12px;color:#334155;">
+      現價 <b>${cur}</b> 落在本卡凍結時的區間 ${lo}–${hi} 內${driftTxt}。
+      此為與<b>歷史區間</b>的對照，非今日建議——今日判定見下方。</div>`;
   }
   return `<div style="margin:6px 0;font-size:12px;color:var(--muted);">現價 ${cur}${driftTxt}</div>`;
 }
@@ -2606,8 +2607,13 @@ async function renderMyHoldings() {
     const gcls = gain === null ? "var(--muted)" : gain >= 0 ? "#137333" : "#c5221f";
     const gtxt = gain === null ? "—" : `${gain >= 0 ? "+" : ""}${(gain * 100).toFixed(2)}%`;
     const value = (price && p.shares) ? Math.round(price * p.shares).toLocaleString() : "—";
-    const advice = va ? `👉 <b>${escapeHtml(va.action)}</b>${asArray(va.reasons).length ? `：${escapeHtml(asArray(va.reasons).join("；"))}` : ""}` : sig ? plainAdvice(sig, true)
-      : `👉 此標的不在價值引擎追蹤清單中，資料不足，請人工檢查。`;
+    // 沒有今日判定時，**不可**退回用凍結卡產生建議：那是歷史紀錄，
+    // 拿它配今日價格會說出過時的現在式指令（3045 台灣大即為實例）。
+    const advice = va
+      ? `👉 <b>${escapeHtml(va.action)}</b>${asArray(va.reasons).length ? `：${escapeHtml(asArray(va.reasons).join("；"))}` : ""}`
+      : sig
+        ? `👉 今日無最新判定；帳本有 ${escapeHtml(sig.data_cutoff || "")} 的凍結卡（${escapeHtml(sig.action || "—")}），<b>僅供績效追蹤，不可作為現在的進出依據</b>。`
+        : `👉 此標的不在價值引擎追蹤清單中，資料不足，請人工檢查。`;
     const sigLine = va && va.value_state
       ? `<span class="pill" style="font-size:11px;">每日價值：${(va.value_state.action || "").toUpperCase()}</span>`
       : sig ? `<span class="pill" style="font-size:11px;">凍結卡：${(sig.action || "").toUpperCase()}</span>`
@@ -2786,32 +2792,37 @@ function renderReview() {
 }
 
 // 白話一句話：把 action + 是否持有翻成「我現在該做什麼」，給非專業使用者看。
-function plainAdvice(signal, isHeld) {
-  const act = (signal.action || "").toLowerCase();
-  const er = Array.isArray(signal.entry_range) ? `${signal.entry_range[0]}–${signal.entry_range[1]}` : null;
-  const ref = signal.reference_price;
-  if (act.includes("accumulate")) {
-    return isHeld
-      ? `👉 <b>已持有＋目前在便宜區</b>：可考慮分批加碼${er ? `（參考區間 ${er}）` : ""}，但別一次全押。`
-      : `👉 <b>相對便宜</b>：想買的話可分批進場${er ? `（參考區間 ${er}）` : ""}，不必急著一次買滿。`;
-  }
-  if (act.includes("avoid")) {
-    return isHeld
-      ? `👉 <b>你持有這檔，但系統判定體質轉弱且價格偏貴</b>：宜檢視是否減碼；至少不要再加碼。`
-      : `👉 <b>不建議進場</b>：基本面轉弱又貴，先觀望。`;
-  }
-  if (act.includes("watch")) {
-    return isHeld
-      ? `👉 <b>已持有、目前價格偏貴</b>：續抱可以（尤其領息型），但<b>不建議在這個價位加碼</b>${er ? `；回到 ${er} 才算便宜` : ""}。`
-      : `👉 <b>好標的但現在不便宜</b>：先列觀察，${er ? `等回到 ${er} 附近` : "等回檔"}再考慮。`;
-  }
-  if (act.includes("hold")) {
-    return isHeld
-      ? `👉 <b>價格合理</b>：續抱領息即可，不需特別動作。`
-      : `👉 <b>價格合理但沒明顯折扣</b>：想長期持有可小量建立，不急。`;
-  }
-  return ref ? `👉 參考價 ${ref}，詳見下方分析。` : "";
+// 帳本卡是**歷史凍結紀錄**，不得用來產生現在式建議。
+// 原本的 plainAdvice(凍結 action) 配上今日價格，會說出「好標的但現在不便宜」——
+// 而該檔今日可能已是品質未過、排除／賣出檢查（實測 3045 台灣大即如此）。
+// 現在式一律改由今日 current-state 提供；沒有今日判定就明說，不以舊卡推論。
+function currentEvaluation(symbol) {
+  const target = String(symbol || "").toUpperCase();
+  return asArray(dailyValueState && dailyValueState.evaluations)
+    .find(e => String(e.symbol || "").toUpperCase() === target) || null;
 }
+
+function presentDecision(signal, isHeld) {
+  const frozen = String(signal.action || "").toLowerCase();
+  const cur = currentEvaluation(signal.symbol);
+  if (!cur) {
+    return `<div style="margin:8px 0;padding:8px 10px;background:#f8fafc;border:1px solid var(--line);border-radius:6px;font-size:12.5px;line-height:1.6;color:#475569;">
+      本卡為 <b>${escapeHtml(signal.data_cutoff || "")}</b> 的凍結紀錄，保留供成績驗證。
+      今日<b>沒有</b>此標的的最新判定（不在目前覆蓋池），<b>不可據此進出</b>。</div>`;
+  }
+  const changed = String(cur.action || "").toLowerCase() !== frozen;
+  const reasons = asArray(cur.reasons).slice(0, 2).join("；");
+  const tone = changed ? ["#fffbeb", "#fde68a", "#92400e"] : ["#f0fdf4", "#bbf7d0", "#14532d"];
+  return `<div style="margin:8px 0;padding:8px 10px;background:${tone[0]};border:1px solid ${tone[1]};border-radius:6px;font-size:12.5px;line-height:1.6;color:${tone[2]};">
+    👉 <b>今日判定（${escapeHtml(cur.as_of || "")}）：${escapeHtml(cur.decision || "—")}</b>
+    ${cur.price != null ? `｜現價 ${Number(cur.price).toFixed(2)}` : ""}
+    ${isHeld ? "｜<b>你持有此檔</b>" : ""}
+    ${changed ? `<div style="margin-top:3px;">⚠️ 本卡凍結時為 <b>${escapeHtml(signal.action || "—")}</b>，與今日判定不同；
+      <b>請以今日判定為準</b>，本卡僅供績效追蹤。</div>` : ""}
+    ${reasons ? `<div style="margin-top:3px;color:#475569;">依據：${escapeHtml(reasons)}</div>` : ""}
+  </div>`;
+}
+
 
 // 凍結後各期成績。ledger 的 outcome 事件掛在 outcomes[horizon]，欄位為 gross_return /
 // excess_return（對 0050 超額）。只顯示「已算出」的期數，避免整排 Pending 讓人以為壞掉。
