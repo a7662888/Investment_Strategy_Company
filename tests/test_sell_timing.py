@@ -190,3 +190,48 @@ class TestPlan(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestVolumePriceConfirmation(unittest.TestCase):
+    """收盤跌破仍有真假之分；量價證據只評成色，不得變成第二套買賣判斷。"""
+
+    def _timing(self, snapshot, last_close=94.0):
+        from company.model.sell_timing import compute_sell_timing
+        rows = make_rows()
+        rows[-1] = dict(rows[-1], close=last_close)
+        return compute_sell_timing(
+            item={"ma20": 99.0, "ma60": 95.0, "high_252": 120.0},
+            exit_result={"score": 10.0, "suggested_fraction": 0.0},
+            rows=rows, live_quote=None, cost=90.0, gain=0.10,
+            market_open=False, market_snapshot=snapshot,
+        )
+
+    def test_heavy_volume_below_vwap_is_a_credible_break(self) -> None:
+        timing = self._timing({"close_vs_vwap_pct": -1.5, "volume_ratio": 1.8})
+        self.assertEqual(timing["confirmation"]["quality"], "strong")
+        self.assertEqual(timing["urgency"], "act")
+        self.assertIn("帶量", timing["headline"])
+
+    def test_thin_volume_break_waits_for_a_second_bar(self) -> None:
+        timing = self._timing({"close_vs_vwap_pct": -0.2, "volume_ratio": 0.5})
+        self.assertEqual(timing["confirmation"]["quality"], "weak")
+        self.assertEqual(timing["urgency"], "act_low_conviction")
+        self.assertIn("第二根", timing["headline"])
+
+    def test_close_above_vwap_without_volume_shows_resilience(self) -> None:
+        confirmation = self._timing({"close_vs_vwap_pct": 0.8, "volume_ratio": 0.9})["confirmation"]
+        self.assertEqual(confirmation["quality"], "resilient")
+
+    def test_missing_snapshot_leaves_behaviour_unchanged(self) -> None:
+        timing = self._timing(None)
+        self.assertIsNone(timing["confirmation"])
+        self.assertEqual(timing["urgency"], "act")
+
+    def test_snapshot_without_volume_price_fields_is_ignored(self) -> None:
+        self.assertIsNone(self._timing({"vwap": 100.0})["confirmation"])
+
+    def test_confirmation_never_changes_the_trigger_prices(self) -> None:
+        weak = self._timing({"close_vs_vwap_pct": -0.2, "volume_ratio": 0.5})
+        strong = self._timing({"close_vs_vwap_pct": -1.5, "volume_ratio": 1.8})
+        self.assertEqual([s["price"] for s in weak["plan"]], [s["price"] for s in strong["plan"]])
+        self.assertEqual([s["fraction"] for s in weak["plan"]], [s["fraction"] for s in strong["plan"]])

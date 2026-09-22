@@ -189,9 +189,60 @@ def build_plan(exit_result: dict, levels: list[dict], is_etf: bool,
     } for idx, level in enumerate(stages)]
 
 
+def grade_confirmation(snapshot: dict | None) -> dict | None:
+    """用當日量價評估「收盤跌破」的成色。
+
+    引擎既有紀律是「收盤跌破才算數」，但收盤跌破仍有真假之分：
+    無量下跌常是雜訊，帶量且收在均價之下才是賣方真的主導。這兩項證據
+    （當日 VWAP 與量比）本來取不到，接上 Shioaji 盤後快照後才有。
+
+    刻意只評「成色」而不新增觸發條件：觸發價仍由既有規則決定，
+    這裡只回答「這次跌破可不可信」，避免變成第二套買賣判斷。
+    """
+    if not snapshot:
+        return None
+    vwap_gap = snapshot.get("close_vs_vwap_pct")
+    volume_ratio = snapshot.get("volume_ratio")
+    if vwap_gap is None and volume_ratio is None:
+        return None
+
+    below_vwap = vwap_gap is not None and float(vwap_gap) < 0
+    heavy = volume_ratio is not None and float(volume_ratio) >= 1.2
+    light = volume_ratio is not None and float(volume_ratio) < 0.8
+
+    reasons = []
+    if vwap_gap is not None:
+        reasons.append(
+            f"收盤{'低於' if below_vwap else '高於'}當日均價 {abs(float(vwap_gap)):.2f}%")
+    if volume_ratio is not None:
+        reasons.append(f"量比 {float(volume_ratio):.2f}")
+
+    if below_vwap and heavy:
+        quality, note = "strong", "帶量且收盤低於當日均價，賣方主導；若觸發跌破，可信度高"
+    elif light:
+        quality, note = "weak", "量能明顯不足，價格變化可信度低；若觸發跌破，建議等第二根確認"
+    elif below_vwap or heavy:
+        quality, note = "normal", "量價證據僅一半成立；若觸發跌破，照既定比例執行即可"
+    else:
+        quality, note = "resilient", "收在均價之上且量能未放大，賣壓尚未真正出現"
+
+    return {
+        "quality": quality, "note": note,
+        "vwap": snapshot.get("vwap"),
+        "close_vs_vwap_pct": vwap_gap,
+        "volume_ratio": volume_ratio,
+        "spread_pct": snapshot.get("spread_pct"),
+        "tick_pressure": snapshot.get("tick_pressure"),
+        "trade_date": snapshot.get("trade_date"),
+        "reasons": reasons,
+        "source": snapshot.get("source"),
+    }
+
+
 def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
                         live_quote: dict | None, cost: float | None,
-                        gain: float | None, market_open: bool) -> dict:
+                        gain: float | None, market_open: bool,
+                        market_snapshot: dict | None = None) -> dict:
     """回傳可稽核的賣出時機建議。不下單、不自動執行。"""
     is_etf = bool(item.get("is_etf"))
     # Yahoo 會回 54.849998474121094 這類浮點雜訊；台股報價本身只有兩位小數，
@@ -222,6 +273,7 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
 
     reference_price = live_price if live_price is not None else last_close
     plan = build_plan(exit_result, levels, is_etf, reference_price)
+    confirmation = grade_confirmation(market_snapshot)
 
     # 每日狀態的價格來自 TWSE OpenAPI，該端點常延遲一個交易日；本層的收盤價來自
     # 日線 OHLC，通常較新。兩者不同日時，卡片上會同時出現兩個「現價」，
@@ -246,8 +298,18 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
         headline = "ETF 不因均線或單日波動賣出；僅在估值過高或配置失衡時再平衡"
     elif confirmed:
         stage = plan[0]["stage"] if plan else 1
-        urgency = "act"
-        headline = f"已收盤跌破「{confirmed[0]['label']}」：可執行第 {stage} 階段減碼"
+        label = confirmed[0]["label"]
+        # 收盤跌破仍有真假之分：無量下跌常是雜訊。有量價證據時據此調整行動急迫性，
+        # 但不改變觸發價與既定比例——量價只評成色，不另立判斷。
+        if confirmation and confirmation["quality"] == "weak":
+            urgency = "act_low_conviction"
+            headline = f"已收盤跌破「{label}」，但量能不足：建議等第二根確認再執行第 {stage} 階段"
+        elif confirmation and confirmation["quality"] == "strong":
+            urgency = "act"
+            headline = f"已收盤跌破「{label}」且帶量收在均價之下：執行第 {stage} 階段減碼"
+        else:
+            urgency = "act"
+            headline = f"已收盤跌破「{label}」：可執行第 {stage} 階段減碼"
     elif intraday:
         urgency = "watch_close"
         headline = f"盤中已跌破「{intraday[0]['label']}」，但尚未收盤確認——先不動手"
@@ -275,6 +337,7 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
         "atr_multiple": None if is_etf else atr_multiple((exit_result or {}).get("score")),
         "levels": levels,
         "plan": plan,
+        "confirmation": confirmation,
         "confirm_rule": CONFIRM_NOTE,
         "anchor_note": "移動停損錨點採近 60 交易日最高價；系統未保存個人進場日，故非「進場後最高點」。",
         "shadow": True,

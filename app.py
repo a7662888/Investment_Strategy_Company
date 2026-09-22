@@ -2862,6 +2862,30 @@ def cached_ohlc(symbol: str) -> list[dict]:
     return rows
 
 
+_SHIOAJI_SNAPSHOT_LOCAL = PROJECT / "data" / "shioaji_snapshot.json"
+_SHIOAJI_SNAPSHOT_REMOTE = os.environ.get("SHIOAJI_SNAPSHOT_PATH", "market/shioaji_snapshot.json")
+
+
+def load_market_snapshots() -> dict[str, dict]:
+    """盤後 Shioaji 快照（當日 VWAP／量比／買賣價差）。
+
+    網站本身不安裝 shioaji：資料由 Actions 批次寫入私有資料庫，這裡只讀。
+    讀不到就回空字典——量價證據是加分項，缺了不該讓賣出時機整個失效。
+    """
+    try:
+        from company.model.durable_document import load_document
+
+        document, _ = load_document(_SHIOAJI_SNAPSHOT_LOCAL, _SHIOAJI_SNAPSHOT_REMOTE)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[sell-timing] market snapshot unavailable: {exc}")
+        return {}
+    if not document:
+        return {}
+    trade_date = document.get("trade_date")
+    return {symbol: {**item, "trade_date": trade_date}
+            for symbol, item in (document.get("snapshots") or {}).items()}
+
+
 def build_sell_timing(normalized_positions: list[dict]) -> dict:
     """每檔持股的賣出時機建議。
 
@@ -2903,6 +2927,7 @@ def build_sell_timing(normalized_positions: list[dict]) -> dict:
         except Exception as exc:
             print(f"[sell-timing] quote failed: {exc}")
 
+    market_snapshots = load_market_snapshots()
     results = []
     for action in actions:
         symbol = action["symbol"]
@@ -2919,6 +2944,7 @@ def build_sell_timing(normalized_positions: list[dict]) -> dict:
             cost=action.get("cost"),
             gain=action.get("unrealized_gain"),
             market_open=market_open,
+            market_snapshot=market_snapshots.get(symbol),
         )
         results.append({
             "symbol": symbol,
