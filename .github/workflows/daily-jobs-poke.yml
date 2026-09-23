@@ -1,0 +1,39 @@
+name: Daily Jobs Poke
+
+# 盤前簡報、盤中快訊、盤後重評都採「造訪觸發」：有人開網站才會跑。
+# 但盤前 07:00 通常沒人在看，於是最需要的那一份反而最容易漏掉。
+# 本工作流只做一件事——打一次 /api/daily-refresh，讓該跑的自己跑。
+# 不需任何 secrets，也不搬運資料；真正的判斷與執行都在網站端，
+# 「今日是否已做」由產物日期決定，重複觸發是安全的。
+#
+# 註：Actions 排程常有數十分鐘至數小時延遲，但本設計對延遲免疫——
+# 任務條件是「今日尚未完成」而非「準時執行」。
+
+on:
+  schedule:
+    - cron: "30 22 * * 0-4"   # 台北 06:30（隔夜美股已收，盤前簡報）
+    - cron: "30 1 * * 1-5"    # 台北 09:30（盤中研究快訊）
+    - cron: "30 6 * * 1-5"    # 台北 14:30（盤後母池重評）
+  workflow_dispatch: {}
+
+jobs:
+  poke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wake the site and let due jobs fire
+        run: |
+          # Render 免費方案會休眠，首次請求需較長時間喚醒。
+          for attempt in 1 2 3; do
+            body=$(curl -sS --max-time 120 \
+              "https://investment-strategy-company.onrender.com/api/daily-refresh") && break
+            echo "attempt $attempt failed, retrying…"; sleep 20
+          done
+          echo "$body" | python -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          print('台北', d.get('taipei_time','')[:16], '| 交易日', d.get('trading_weekday'))
+          for name, job in (d.get('jobs') or {}).items():
+              print(f\"  {name}: due={job.get('due')} {job.get('reason')}\")
+          print('本次觸發:', list((d.get('triggered') or {}).keys()) or '（無，皆已完成或未到時窗）')
+          "

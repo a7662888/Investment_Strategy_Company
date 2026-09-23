@@ -30,6 +30,23 @@ jobs:
           test -n "$EMAIL_ADDRESS"
           test -n "$SMTP_APP_PASSWORD"
 
+      # 券商盤後快照必須先跑：它是 close-of-record 的補充來源，交易所 OpenAPI
+      # 常延遲一至兩個交易日，沒有它的話下一步算出來的狀態會落後（實測曾落後 2 日）。
+      - name: Install broker data client
+        run: pip install --quiet shioaji
+
+      - name: Post-close broker snapshot (close-of-record)
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        # 快照失敗不得讓整條管線停擺：交易所 feed 仍是可用退路，
+        # 只是資料會回到原本的落後狀態，而不是整天沒有資料。
+        continue-on-error: true
+        run: python run_shioaji_snapshot.py
+
       - name: Refresh daily value state (mother pool + ETF subpool)
         env:
           GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
