@@ -2125,6 +2125,12 @@ async function loadDailyValueState() {
     const data = await readJson(res);
     dailyValueState = data;
     renderDailyValuePanel();
+    // value-current 與 ledger 會並行載入。若 ledger 先完成，第一次 render 時
+    // dailyValueState 仍是 null，所有卡片都會誤顯示「今日沒有最新判定」。
+    // 今日狀態抵達後主動重畫既有卡片，消除這個非同步競態。
+    if (ledgerSignals.length) {
+      renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "value-engine");
+    }
     await refreshDailyLivePrices();
   } catch (err) {
     if (status) status.textContent = "尚未產生";
