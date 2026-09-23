@@ -2047,9 +2047,9 @@ async function runDailyJobs() {
 
     // 剛觸發的盤中快訊要等背景產生完成，因此隔一段時間再抓一次。
     await loadPremarketBrief();
-    await loadIntradayFlash();
+    await loadIntradayFlash(data.market_open === true);
     if (triggered.intraday_flash || flashJob.running) {
-      setTimeout(loadIntradayFlash, 12000);
+      setTimeout(() => loadIntradayFlash(data.market_open === true), 12000);
     }
   } catch (err) {
     console.warn("daily jobs check failed:", err);
@@ -2063,7 +2063,7 @@ function setDailyJobNote(message, isError = false) {
   if (isError) status.style.color = "#c5221f";
 }
 
-async function loadIntradayFlash() {
+async function loadIntradayFlash(marketOpenNow = false) {
   const section = $("intradayFlashSection"), panel = $("intradayFlashPanel");
   if (!section || !panel) return;
   let data;
@@ -2076,13 +2076,19 @@ async function loadIntradayFlash() {
     return;
   }
   const items = asArray(data.items);
-  if (!items.length) { section.style.display = "none"; return; }
+  // 盤中快訊是 provisional，不可讓舊產物在隔日或盤後繼續冒充「盤中即時」。
+  // 當前市場狀態由 /api/daily-refresh 以台北時區與交易日曆判定；artifact 自帶的
+  // market_open 只代表產生當下，不能拿來判斷現在仍在盤中。
+  if (!items.length || !marketOpenNow || data.date !== taipeiDateString()) {
+    section.style.display = "none";
+    return;
+  }
 
   section.style.display = "";
   const title = $("intradayFlashTitle");
   if (title) title.textContent = `${data.date || ""} 盤中研究快訊`;
   const badge = $("intradayFlashBadge");
-  if (badge) badge.textContent = data.market_open ? "PROVISIONAL · 盤中即時" : "PROVISIONAL · 非盤中";
+  if (badge) badge.textContent = "PROVISIONAL · 盤中即時";
   const note = $("intradayFlashNote");
   if (note) {
     const basis = data.basis || {};
