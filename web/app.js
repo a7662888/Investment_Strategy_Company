@@ -77,7 +77,7 @@ async function loadCloudPositions() {
       const local = parsePositionsRaw(localStorage.getItem(POSITION_STORAGE_KEY) || "");
       if (local.length) await saveCloudPositions(local);
     }
-    setPositionCloudStatus(`私有同步 v${positionCloudVersion}`, true);
+    setPositionCloudStatus(`私有同步 v${positionCloudVersion} · 已從雲端載入`, true);
     return true;
   } catch (err) {
     console.warn("Private position sync failed:", err);
@@ -99,7 +99,8 @@ async function saveCloudPositions(items) {
     const data = await response.json();
     if (response.status === 409) {
       await loadCloudPositions();
-      throw new Error("雲端版本已更新，已重新載入");
+      setPositionCloudStatus("雲端已有較新版本，已載入最新資料；請確認後再儲存", false);
+      return false;
     }
     if (!response.ok || data.error) {
       setPositionCloudStatus(syncFailureMessage(response.status, data.error).replace("同步失敗", "上傳失敗"), false);
@@ -107,7 +108,7 @@ async function saveCloudPositions(items) {
       return false;
     }
     positionCloudVersion = Number(data.version || positionCloudVersion);
-    setPositionCloudStatus(`私有同步 v${positionCloudVersion}`, true);
+    setPositionCloudStatus(`私有同步 v${positionCloudVersion} · 已更新雲端`, true);
     return true;
   } catch (err) {
     console.warn("Private position save failed:", err);
@@ -1224,7 +1225,7 @@ function bindActions() {
     _heldSet = null;                    // 讓卡片的 💼 標記重算
     renderMyHoldings();
     await saveCloudPositions(parsePositionsRaw(v));
-    if (ledgerSignals) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "value-engine");
+    if (ledgerSignals) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
   });
   safeBind("homePositionCloudSync", configurePositionCloud);
   document.addEventListener("click", event => {
@@ -2135,7 +2136,7 @@ async function loadDailyValueState() {
     // dailyValueState 仍是 null，所有卡片都會誤顯示「今日沒有最新判定」。
     // 今日狀態抵達後主動重畫既有卡片，消除這個非同步競態。
     if (ledgerSignals.length) {
-      renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "value-engine");
+      renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
     }
     await refreshDailyLivePrices();
   } catch (err) {
@@ -2290,9 +2291,9 @@ async function loadDecisionLedger() {
                              .map(s => s.symbol);
     livePrices = await fetchLivePrices(valueSyms);
 
-    // 預設視圖 = 唯一正式決策來源：價值引擎。
-    const defBtn = document.querySelector('.ledger-filter[data-filter="value-engine"]');
-    if (defBtn) defBtn.click(); else renderLedger("value-engine");
+    // 預設顯示所有歷史卡；各動作分頁則以今日 current-state 篩選。
+    const defBtn = document.querySelector('.ledger-filter[data-filter="all"]');
+    if (defBtn) defBtn.click(); else renderLedger("all");
 
     // 帳本就緒後才能對照持股建議與復盤成績
     renderReview();
@@ -2350,6 +2351,35 @@ function heldBadge(symbol) {
     : "";
 }
 
+// 分頁顯示的是「今天應該怎麼做」，不是歷史卡凍結時的 action。
+// quality fail / 排除 / 賣出檢查一律歸入今日排除，避免 action=watch 掩蓋硬篩失敗。
+function currentDecisionKind(signal) {
+  const cur = currentEvaluation(signal.symbol);
+  if (!cur) return null;
+  const action = String(cur.action || "").toLowerCase();
+  const decision = String(cur.decision || "");
+  if (action.includes("avoid") || cur.quality_pass === false || /排除|賣出檢查/.test(decision)) return "avoid";
+  if (action.includes("hold")) return "hold";
+  if (action.includes("accumulate") || action.includes("buy_zone") || action.includes("buy")) return "accumulate";
+  return "watch";
+}
+
+function updateLedgerFilterCounts(valueSignals) {
+  const counts = {
+    all: valueSignals.length,
+    accumulate: valueSignals.filter(s => currentDecisionKind(s) === "accumulate").length,
+    watch: valueSignals.filter(s => currentDecisionKind(s) === "watch").length,
+    holdings: valueSignals.filter(s => _heldSet.has((s.symbol || "").toUpperCase())).length,
+    avoid: valueSignals.filter(s => currentDecisionKind(s) === "avoid").length
+  };
+  document.querySelectorAll(".ledger-filter").forEach(btn => {
+    const label = btn.dataset.label;
+    if (label && Object.prototype.hasOwnProperty.call(counts, btn.dataset.filter)) {
+      btn.textContent = `${label} (${counts[btn.dataset.filter]})`;
+    }
+  });
+}
+
 function renderLedger(filterType) {
   const grid = $("ledgerGrid");
   if (!grid || !ledgerSignals) return;
@@ -2357,30 +2387,29 @@ function renderLedger(filterType) {
 
   const isValueAgent = (s) => s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack";
   const valueSignals = ledgerSignals.filter(isValueAgent);
+  updateLedgerFilterCounts(valueSignals);
 
   let filtered = [];
   if (filterType === "all") {
     filtered = valueSignals;
-  } else if (filterType === "value-engine") {
-    filtered = valueSignals;
+  } else if (filterType === "holdings") {
+    filtered = valueSignals.filter(s => _heldSet.has((s.symbol || "").toUpperCase()));
   } else if (filterType === "accumulate") {
-    filtered = valueSignals.filter(s => {
-      const act = (s.action || "").toLowerCase();
-      return act.includes("accumulate") || act.includes("buy_zone") || act.includes("buy");
-    });
+    filtered = valueSignals.filter(s => currentDecisionKind(s) === "accumulate");
   } else if (filterType === "watch") {
-    filtered = valueSignals.filter(s => (s.action || "").toLowerCase().includes("watch"));
-  } else if (filterType === "hold") {
-    filtered = valueSignals.filter(s => {
-      const act = (s.action || "").toLowerCase();
-      return act.includes("hold") || act.includes("benchmark");
-    });
+    filtered = valueSignals.filter(s => currentDecisionKind(s) === "watch");
   } else if (filterType === "avoid") {
-    filtered = valueSignals.filter(s => (s.action || "").toLowerCase().includes("avoid"));
+    filtered = valueSignals.filter(s => currentDecisionKind(s) === "avoid");
   }
   
   if (filtered.length === 0) {
-    grid.innerHTML = `<p style="grid-column: span 3; text-align: center; color: var(--muted); padding: 20px;">無符合篩選條件的決策信號。</p>`;
+    const emptyMessages = {
+      holdings: "目前已儲存的持股中，沒有可對應的歷史決策卡；持股分析仍顯示在頁面上方。",
+      avoid: "帳本追蹤標的目前沒有今日排除；母池的其他排除標的請看上方今日狀態。",
+      accumulate: "帳本追蹤標的目前沒有今日買進訊號。",
+      watch: "帳本追蹤標的目前沒有今日觀察訊號。"
+    };
+    grid.innerHTML = `<p style="grid-column: span 3; text-align: center; color: var(--muted); padding: 20px;">${emptyMessages[filterType] || "無符合篩選條件的決策信號。"}</p>`;
     return;
   }
   
@@ -2486,8 +2515,8 @@ function renderLedger(filterType) {
           <span>Entry: [${entryRange}]</span>
         </div>
         
-        ${freshnessBadge(s)}
         ${presentDecision(s, _heldSet && _heldSet.has((s.symbol || "").toUpperCase()))}
+        ${freshnessBadge(s)}
 
         <div class="ledger-pillars">
           <div class="pillar-box" style="grid-column: span 2;">
@@ -2544,8 +2573,8 @@ function freshnessBadge(signal) {
     const hi = Number(er[1]), lo = Number(er[0]);
     if (cur > hi) {
       return `<div style="margin:6px 0;padding:7px 9px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#b91c1c;">
-        ⚠️ <b>此建議已過時</b>：現價 <b>${cur}</b> 已高於買進區間上緣 ${hi}${driftTxt}。
-        <b>目前不是進場點</b>；本卡為 ${signal.data_cutoff} 的凍結紀錄，保留供成績驗證用。</div>`;
+        ⚠️ <b>凍結區間已過時</b>：現價 <b>${cur}</b> 已高於歷史區間上緣 ${hi}${driftTxt}。
+        舊區間不可作為今日進場依據；請以上方「今日判定」為準。本卡為 ${signal.data_cutoff} 的凍結紀錄，保留供成績驗證用。</div>`;
     }
     if (cur < lo) {
       return `<div style="margin:6px 0;padding:7px 9px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:12px;color:#1e3a8a;">
@@ -2555,7 +2584,7 @@ function freshnessBadge(signal) {
     // 品質硬篩排除。綠勾＋現在式會讓一張歷史 watch 卡看起來像今天的買進建議。
     return `<div style="margin:6px 0;padding:7px 9px;background:#f8fafc;border:1px solid var(--line);border-radius:6px;font-size:12px;color:#334155;">
       現價 <b>${cur}</b> 落在本卡凍結時的區間 ${lo}–${hi} 內${driftTxt}。
-      此為與<b>歷史區間</b>的對照，非今日建議——今日判定見下方。</div>`;
+      此為與<b>歷史區間</b>的對照，非今日建議——請以上方今日判定為準。</div>`;
   }
   return `<div style="margin:6px 0;font-size:12px;color:var(--muted);">現價 ${cur}${driftTxt}</div>`;
 }

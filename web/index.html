@@ -87,6 +87,9 @@
         <button id="homePositionCloudSync" type="button" title="連接私有持股同步" style="padding:7px 12px;">雲端同步</button>
         <span id="homePositionCloudStatus" style="font-size:12px; color:var(--muted);">僅此瀏覽器</span>
       </div>
+      <p style="font-size:11.5px; color:var(--muted); margin:-4px 0 10px; line-height:1.5;">
+        其他裝置輸入同一把同步密鑰後按「雲端同步」，即可載入私有持股；儲存採版本衝突保護，不會靜默覆蓋較新的雲端資料。
+      </p>
       <div id="myHoldingsPanel"><p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔損益、持股建議與可稽核的 Exit Score 獲利保護提醒。</p></div>
     </section>
 
@@ -103,8 +106,8 @@
       </p>
       <p style="font-size:12.5px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:8px 10px; margin:0 0 10px; color:#1e3a8a; line-height:1.6;">
         <b>本區與下方「決策帳本」為什麼名單不同？</b>兩者用途不同，不是互相矛盾：<br>
-        • <b>本區＝「今天該看什麼」</b>：每天從 <b>100 檔母池</b>重新評估，名單會變，涵蓋較廣（含上櫃）。<b>要找進場標的看這裡。</b><br>
-        • <b>決策帳本＝「過去說過什麼、後來對不對」</b>：固定 21 檔的<b>凍結紀錄</b>，事後不可改，用來累積成績驗證方法是否有效。<br>
+        • <b>本區＝「今天該看什麼」</b>：每天從<b>約百檔母池</b>重新評估，名單會變，涵蓋較廣（含上櫃）。<b>要找進場標的看這裡。</b><br>
+        • <b>決策帳本＝「過去說過什麼、後來對不對」</b>：追蹤池的<b>凍結紀錄</b>，事後不可改，用來累積成績驗證方法是否有效。<br>
         兩邊都出現的標的，代表「今天便宜」且「先前就已看好」。
       </p>
       <div id="dailyValuePanel"><p style="color:var(--muted); font-size:13px;">正在讀取每日選股結果…</p></div>
@@ -127,18 +130,19 @@
     <section class="panel" style="border: 2px solid #10b981; background: rgba(16, 185, 129, 0.01);">
       <div class="sectionHead">
         <h2 style="color: #0f766e; display: flex; align-items: center; gap: 8px; margin: 0;">
-          <span>🧠</span> 決策帳本 (Decision Ledger)
+          <span>🧠</span> 歷史決策帳本 (Decision Ledger)
         </h2>
         <span id="ledgerStatus" class="pill" style="font-weight: bold; background: #e6f4ea; color: #137333; border-color: #ceead6;">
           Durable: 載入中...
         </span>
       </div>
       <p style="font-size: 13px; color: var(--muted); margin: 8px 0 12px 0; line-height: 1.5;">
-        每筆決策在 data_cutoff 時凍結，禁止事後修改。action 光譜包含 accumulate / watch / hold / avoid，
+        每筆決策在 data_cutoff 時凍結，只有判定改變才新增卡片，禁止事後修改；因此舊日期代表「歷史判定未變」，不代表每日資料停止更新。
+        卡片中的「今日判定」才是目前狀態。歷史 action 光譜包含 accumulate / watch / hold / avoid，
         附 entry_range (分批買進區間) 與 invalidation (失效條件)。正式決策只採
         <span style="background: #e6f4ea; padding: 1px 6px; border-radius: 3px;">value-engine</span>，
         並以 <span style="background: #f1f5f9; padding: 1px 6px; border-radius: 3px;">0050.TW</span> 作績效基準。
-        <br><span style="color:#92400e;">註：「🤲 持有」是<b>訊號動作</b>，不是你的個人持股；你的持股請在上方「💼 我的持股」輸入，對應卡片會標記 <b>💼 您持有</b>。買進(accumulate)訊號稀少屬價值紀律——多數權值股與 ETF 現正處於自身歷史高位，沒便宜貨時本來就不該有很多買進。</span>
+        <br><span style="color:#92400e;">下方篩選採<b>今日判定</b>；「💼 我的持股」則依上方已儲存的私人持股比對歷史卡。買進訊號稀少屬價值紀律——沒便宜貨時本來就不該有很多買進。</span>
       </p>
 
       <!-- Ledger Stats -->
@@ -163,12 +167,11 @@
 
       <!-- Filter tabs for ledger -->
       <div style="display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap;" id="ledgerFilters">
-        <button class="ledger-filter" data-filter="all" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">全部價值訊號</button>
-        <button class="ledger-filter" data-filter="accumulate" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">📈 買進</button>
-        <button class="ledger-filter" data-filter="watch" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">👀 觀察</button>
-        <button class="ledger-filter" data-filter="hold" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">🤲 持有</button>
-        <button class="ledger-filter" data-filter="avoid" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">⛔ 避開</button>
-        <button class="ledger-filter active" data-filter="value-engine" style="padding: 4px 12px; border-radius: 16px; border: 1px solid #10b981; background: #e6f4ea; color: #137333; cursor: pointer; font-size: 12px; font-weight: 600;">📐 Value-Engine</button>
+        <button class="ledger-filter active" data-filter="all" data-label="全部歷史卡" style="padding: 4px 12px; border-radius: 16px; border: 1px solid #10b981; background: #e6f4ea; color: #137333; cursor: pointer; font-size: 12px; font-weight: 600;">全部歷史卡</button>
+        <button class="ledger-filter" data-filter="accumulate" data-label="📈 今日買進" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">📈 今日買進</button>
+        <button class="ledger-filter" data-filter="watch" data-label="👀 今日觀察" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">👀 今日觀察</button>
+        <button class="ledger-filter" data-filter="holdings" data-label="💼 我的持股" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">💼 我的持股</button>
+        <button class="ledger-filter" data-filter="avoid" data-label="⛔ 今日排除" style="padding: 4px 12px; border-radius: 16px; border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer; font-size: 12px;">⛔ 今日排除</button>
       </div>
 
       <!-- Ledger Cards Grid -->
@@ -226,6 +229,6 @@
     }
   </style>
 
-  <script src="/app.js?v=20260810-1" charset="utf-8"></script>
+  <script src="/app.js?v=20260923-1" charset="utf-8"></script>
 </body>
 </html>
