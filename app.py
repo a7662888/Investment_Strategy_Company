@@ -20,6 +20,7 @@ try:
                 os.environ[_k.strip()] = _v.strip()
 except Exception:
     pass
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -931,6 +932,43 @@ def get_data_status() -> dict:
     }
 
 
+_DURABLE_PROBE: dict = {"at": 0.0, "ok": None, "error": None, "running": False}
+_DURABLE_PROBE_TTL = 300.0
+
+
+def durable_storage_probe() -> dict:
+    """實際讀一次私有資料庫，而不是只檢查環境變數有沒有設。
+
+    2026-09-23 輪替 DATA_REPO_TOKEN 後，Render 仍持有舊值，網站所有持久化
+    讀取都回 401（as_of 變成 None、帳本讀不到），健康檢查卻仍回
+    status=ready、warnings=[]——因為它只驗「有沒有設定」，不驗「能不能用」。
+    撤銷或過期的憑證因此完全隱形，這正是最該被監控發現的一種故障。
+
+    **請求路徑不得打網路**：readiness 會被健康檢查頻繁呼叫，同步探測會拖慢
+    每次回應，也會讓測試依賴外部網路（實測加入同步探針後整合測試開始不穩）。
+    因此這裡只讀快取，過期時另起背景執行緒更新，下次呼叫才看到新結果。
+    尚未探測過時回 ok=None，不發警告——在確知之前不喊狼來了。
+    """
+    now = time.time()
+    if now - _DURABLE_PROBE["at"] >= _DURABLE_PROBE_TTL and not _DURABLE_PROBE["running"]:
+        _DURABLE_PROBE["running"] = True
+        threading.Thread(target=_refresh_durable_probe, name="durable-probe", daemon=True).start()
+    return {k: v for k, v in _DURABLE_PROBE.items() if k != "running"}
+
+
+def _refresh_durable_probe() -> None:
+    try:
+        from company.model.current_state import load_current_state
+
+        _, storage = load_current_state()
+        error = storage.get("remote_error") or storage.get("error")
+        ok = bool(storage.get("durable")) or not error
+    except Exception as exc:  # noqa: BLE001 - 探針本身不得讓健康檢查失敗
+        ok, error = False, f"{type(exc).__name__}: {exc}"
+    _DURABLE_PROBE.update(at=time.time(), ok=ok, error=None if ok else str(error),
+                          running=False)
+
+
 def readiness_status() -> tuple[dict, HTTPStatus]:
     checks = {
         "web_index": (WEB_ROOT / "index.html").exists(),
@@ -942,6 +980,12 @@ def readiness_status() -> tuple[dict, HTTPStatus]:
     warnings = []
     if not (os.environ.get("GITHUB_DATA_TOKEN") or os.environ.get("GITHUB_PAT")) or not os.environ.get("GITHUB_DATA_REPO"):
         warnings.append("Decision Ledger遠端持久化尚未設定，目前僅有ephemeral本機快照")
+    else:
+        probe = durable_storage_probe()
+        # ok is None 代表尚未探測完成，不在確知之前發警告。
+        if probe["ok"] is False:
+            warnings.append(f"私有資料庫讀取失敗（{probe['error']}）：憑證可能已撤銷或過期，"
+                            "網站將讀不到每日狀態與決策帳本")
     ready = all(checks.values())
     payload = {
         "status": "ready" if ready and not warnings else "degraded" if ready else "not_ready",
