@@ -64,7 +64,8 @@ class BrokerRunnerTests(unittest.TestCase):
             runner._fetch()
         sdk.Shioaji.assert_called_once_with(simulation=False)
         fake_api.login.assert_called_once_with(api_key="fake-key", secret_key="fake-secret", subscribe_trade=False)
-        fetch.assert_called_once_with(fake_api, broker_id="fake-branch", account_id="fake-account", share_unit="share-enum")
+        fetch.assert_called_once_with(fake_api, broker_id="fake-branch", account_id="fake-account",
+                                      share_unit="share-enum", production_confirmed=True)
         fake_api.logout.assert_called_once()
 
     def test_logout_on_login_error(self):

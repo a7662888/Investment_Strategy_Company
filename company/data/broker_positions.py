@@ -127,9 +127,14 @@ def select_stock_account(api, *, broker_id="", account_id=""):
     return account
 
 
-def fetch_broker_positions(api, *, broker_id="", account_id="", share_unit) -> dict:
+def fetch_broker_positions(api, *, broker_id="", account_id="", share_unit,
+                           production_confirmed=False) -> dict:
     """Use only list_accounts/list_positions and the contract catalog; never orders."""
-    if getattr(api, "simulation", None) is not False:
+    mode = getattr(api, "simulation", None)
+    # Shioaji's public constructor accepts simulation=False, but some SDK
+    # versions do not expose an instance attribute. Only the controlled runner
+    # that constructed that client may attest to its mode.
+    if mode is not False and not (mode is None and production_confirmed is True):
         raise BrokerPositionsError("PRODUCTION_REQUIRED")
     if _enum(share_unit) != "Share":
         raise BrokerPositionsError("SHARE_UNIT_REQUIRED")

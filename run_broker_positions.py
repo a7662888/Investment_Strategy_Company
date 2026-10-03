@@ -68,7 +68,8 @@ def _fetch():
             share_unit = getattr(unit_class, "Share", None)
             if share_unit is None:
                 raise broker.BrokerPositionsError("SHARE_UNIT_REQUIRED")
-            return broker.fetch_broker_positions(api, broker_id=broker_id, account_id=account_id, share_unit=share_unit)
+            return broker.fetch_broker_positions(api, broker_id=broker_id, account_id=account_id,
+                                                share_unit=share_unit, production_confirmed=True)
         finally:
             try:
                 api.logout()
