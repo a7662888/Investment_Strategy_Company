@@ -12,6 +12,7 @@ import contextlib
 import importlib
 import json
 import os
+import re
 import sys
 
 from company.data import broker_positions as broker
@@ -77,10 +78,87 @@ def _fetch():
                 pass
 
 
+def _account_diagnostics(api):
+    """Whitelist structural metadata only; never serialize an SDK object."""
+    accounts = api.list_accounts()
+    if not isinstance(accounts, (list, tuple)) or len(accounts) > 100:
+        raise broker.BrokerPositionsError("INVALID_RESPONSE")
+    default = getattr(api, "stock_account", None)
+    rows = []
+    for index, account in enumerate(accounts):
+        kind = broker._enum(broker._value(account, "account_type"))
+        signed = broker._value(account, "signed")
+        signed_type = {bool: "boolean", str: "string", int: "integer", type(None): "none"}.get(type(signed), "other")
+        if signed is True:
+            state = "true"
+        elif signed is False:
+            state = "false"
+        elif signed is None:
+            state = "missing_or_null"
+        elif type(signed) is str and signed in ("True", "true", "False", "false"):
+            state = "text_true" if signed.lower() == "true" else "text_false"
+        else:
+            state = "unexpected_type_or_value"
+        ids = [broker._value(account, key) for key in ("broker_id", "account_id")]
+        default_ids = [broker._value(default, key) for key in ("broker_id", "account_id")]
+        rows.append({"index": index, "account_type": kind if kind in ("S", "F", "H") else "unknown",
+                     "signed_present": "signed" in account if isinstance(account, dict) else hasattr(account, "signed"),
+                     "signed_type": signed_type, "signed_state": state,
+                     "is_default_stock": account is default or (all(isinstance(v, str) and v for v in ids) and ids == default_ids)})
+    broker_id = os.environ.get("SHIOAJI_BROKER_ID", "").strip()
+    account_id = os.environ.get("SHIOAJI_ACCOUNT_ID", "").strip()
+    # Reuse the exact selection policy on the already fetched account list.
+    class AccountList:
+        def list_accounts(self):
+            return accounts
+    try:
+        broker.select_stock_account(AccountList(), broker_id=broker_id, account_id=account_id)
+        selection_error = None
+    except Exception as exc:
+        selection_error = broker.error_code(exc)
+    return {"account_count": len(rows), "accounts": rows,
+            "selector_configured": bool(broker_id or account_id), "selection_error": selection_error}
+
+
+def _diagnose():
+    """Production login/list_accounts/logout only: no inventory or storage writes."""
+    if os.environ.get("SHIOAJI_SIMULATION", "").strip().lower() not in ("", "0", "false"):
+        raise broker.BrokerPositionsError("PRODUCTION_REQUIRED")
+    credentials = [os.environ.get(key, "").strip() for key in ("SHIOAJI_API_KEY", "SHIOAJI_SECRET_KEY")]
+    if not all(credentials):
+        raise broker.BrokerPositionsError("CREDENTIALS_REQUIRED")
+    with _quiet_sdk():
+        try:
+            sj = importlib.import_module("shioaji")
+        except ImportError:
+            raise broker.BrokerPositionsError("SDK_UNAVAILABLE") from None
+        api = sj.Shioaji(simulation=False)
+        try:
+            api.login(api_key=credentials[0], secret_key=credentials[1], subscribe_trade=False)
+            result = _account_diagnostics(api)
+            version = getattr(sj, "__version__", "")
+            result["sdk_version"] = version if isinstance(version, str) and re.fullmatch(r"[0-9]+(?:\.[0-9]+){1,3}", version) else "unknown"
+            return result
+        finally:
+            try:
+                api.logout()
+            except Exception:
+                pass
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fetch", action="store_true", help="Explicitly authorize one production inventory query and private snapshot write")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--fetch", action="store_true", help="Explicitly authorize one production inventory query and private snapshot write")
+    modes.add_argument("--diagnose", action="store_true", help="Read account metadata only, without inventory queries or storage writes")
     args = parser.parse_args(argv)
+    if args.diagnose:
+        try:
+            result = _diagnose()
+        except Exception as exc:
+            result = {"error_code": broker.error_code(exc)}
+        print(json.dumps(result))
+        return 1 if result.get("error_code") else 0
     if not args.fetch:
         print(json.dumps({"error_code": "LIVE_FETCH_NOT_REQUESTED", "broker_calls": 0}))
         return 0

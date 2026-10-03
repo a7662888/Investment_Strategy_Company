@@ -12,6 +12,56 @@ from company.data import broker_positions as broker
 
 
 class BrokerRunnerTests(unittest.TestCase):
+    def test_diagnosis_whitelists_metadata_not_private_fields(self):
+        accounts = [SimpleNamespace(account_type="S", signed=True, broker_id="PRIVATE_BRANCH", account_id="PRIVATE_ACCOUNT", person_id="PRIVATE_PERSON"),
+                    {"account_type": "F", "signed": "True", "username": "PRIVATE_NAME"},
+                    {"account_type": "H"}, {"account_type": "PRIVATE_KIND", "signed": "PRIVATE_SIGNED"}]
+        api = SimpleNamespace(list_accounts=Mock(return_value=accounts), stock_account=accounts[0])
+        with patch.dict(os.environ, {}, clear=True):
+            result = runner._account_diagnostics(api)
+        self.assertEqual(result["selection_error"], None)
+        self.assertEqual(result["accounts"][0]["signed_state"], "true")
+        self.assertTrue(result["accounts"][0]["is_default_stock"])
+        self.assertEqual(result["accounts"][1]["signed_state"], "text_true")
+        self.assertFalse(result["accounts"][2]["signed_present"])
+        self.assertEqual(result["accounts"][3]["signed_state"], "unexpected_type_or_value")
+        self.assertNotIn("PRIVATE", json.dumps(result))
+        api.list_accounts.assert_called_once()
+
+    def test_diagnosis_does_not_query_inventory_trade_or_write_storage(self):
+        api = SimpleNamespace(login=Mock(), logout=Mock(), list_accounts=Mock(return_value=[]),
+                              list_positions=Mock(), place_order=Mock())
+        sdk = SimpleNamespace(Shioaji=Mock(return_value=api), __version__="1.2.3")
+        with patch.dict(os.environ, {"SHIOAJI_API_KEY": "fake-key", "SHIOAJI_SECRET_KEY": "fake-secret"}, clear=True), \
+             patch.object(runner, "_quiet_sdk", side_effect=contextlib.nullcontext), \
+             patch.object(runner.importlib, "import_module", return_value=sdk), \
+             patch.object(broker, "record_broker_attempt") as record:
+            code, output = self.run_cli(["--diagnose"])
+        self.assertEqual(code, 0)
+        self.assertEqual(output["selection_error"], "ACCOUNT_NOT_FOUND")
+        self.assertEqual(output["sdk_version"], "1.2.3")
+        sdk.Shioaji.assert_called_once_with(simulation=False)
+        api.login.assert_called_once_with(api_key="fake-key", secret_key="fake-secret", subscribe_trade=False)
+        api.logout.assert_called_once()
+        api.list_positions.assert_not_called()
+        api.place_order.assert_not_called()
+        record.assert_not_called()
+
+    def test_diagnosis_failure_never_records_or_exposes_exception(self):
+        with patch.object(runner, "_diagnose", side_effect=RuntimeError("PRIVATE forbidden")), \
+             patch.object(broker, "record_broker_attempt") as record:
+            code, output = self.run_cli(["--diagnose"])
+        self.assertEqual(code, 1)
+        self.assertNotIn("PRIVATE", json.dumps(output))
+        record.assert_not_called()
+
+    def test_diagnosis_signed_false_is_not_bypassed(self):
+        api = SimpleNamespace(list_accounts=lambda: [{"account_type": "S", "signed": False}])
+        with patch.dict(os.environ, {}, clear=True):
+            result = runner._account_diagnostics(api)
+        self.assertEqual(result["selection_error"], "ACCOUNT_NOT_SIGNED")
+        self.assertEqual(result["accounts"][0]["signed_type"], "boolean")
+
     def run_cli(self, args):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
