@@ -20,6 +20,11 @@ function taipeiDateString(date = new Date()) {
 const POSITION_STORAGE_KEY = "investment_strategy_positions";
 const POSITION_SYNC_TOKEN_KEY = "investment_strategy_positions_sync_token";
 let positionCloudVersion = 0;
+let positionSyncGeneration = 0;
+let brokerSyncGeneration = 0;
+let holdingsRenderVersion = 0;
+let brokerInventory = null;
+let brokerPositionsEnabled = localStorage.getItem("investment_strategy_broker_enabled") === "true";
 
 function positionSyncToken() {
   try { return localStorage.getItem(POSITION_SYNC_TOKEN_KEY) || ""; }
@@ -37,15 +42,19 @@ function positionsToRaw(items) {
   return asArray(items).map(item => `${item.symbol}:${Number(item.shares)}@${Number(item.cost)}`).join(", ");
 }
 
-function applyCloudPositions(items) {
+function applyCloudPositions(items, brokerEnabled = brokerPositionsEnabled) {
+  brokerPositionsEnabled = brokerEnabled === true;
+  localStorage.setItem("investment_strategy_broker_enabled", String(brokerPositionsEnabled));
   const raw = positionsToRaw(items);
   if (raw) localStorage.setItem(POSITION_STORAGE_KEY, raw);
   else localStorage.removeItem(POSITION_STORAGE_KEY);
   const home = $("homePositionInput"), lab = $("positionInput");
   if (home) home.value = raw;
   if (lab) lab.value = raw;
+  _heldSet = null;
   updatePositionSaveStatus();
   if ($("myHoldingsPanel")) renderMyHoldings();
+  if (ledgerSignals.length) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
 }
 
 // 同步失敗有三種完全不同的成因，修法也完全不同：伺服器端閘門沒開、
@@ -61,45 +70,62 @@ function syncFailureMessage(status, errorText) {
 
 async function loadCloudPositions() {
   const token = positionSyncToken();
+  const generation = ++positionSyncGeneration;
+  const draft = $("homePositionInput")?.value;
   if (!token) { setPositionCloudStatus("僅此瀏覽器"); return false; }
   setPositionCloudStatus("同步中…");
   try {
     const response = await fetch("/api/positions", {headers: {Authorization: `Bearer ${token}`}});
     const data = await response.json();
+    if (generation !== positionSyncGeneration || token !== positionSyncToken()) return false;
     if (!response.ok || data.error) {
       setPositionCloudStatus(syncFailureMessage(response.status, data.error), false);
       console.warn("Private position sync failed:", response.status, data.error);
       return false;
     }
-    positionCloudVersion = Number(data.version || 0);
-    if (positionCloudVersion > 0) applyCloudPositions(data.positions || []);
-    else {
-      const local = parsePositionsRaw(localStorage.getItem(POSITION_STORAGE_KEY) || "");
-      if (local.length) await saveCloudPositions(local);
+    if (data.storage?.durable !== true) {
+      setPositionCloudStatus("雲端不可驗證；未覆蓋本機持股", false);
+      return false;
     }
-    setPositionCloudStatus(`私有同步 v${positionCloudVersion} · 已從雲端載入`, true);
+    const version = Number(data.version || 0);
+    if (!Number.isSafeInteger(version) || version < positionCloudVersion) return false;
+    if ($("homePositionInput")?.value !== draft) {
+      setPositionCloudStatus("持股編輯中，未覆蓋草稿；請完成編輯後再同步", false);
+      return false;
+    }
+    positionCloudVersion = version;
+    if (positionCloudVersion > 0) applyCloudPositions(data.positions || [], data.broker_enabled);
+    else {
+      setPositionCloudStatus("雲端尚無持股；本機清單未上傳，請核對後按儲存", false);
+      await loadBrokerInventory();
+      return false;
+    }
+    setPositionCloudStatus(`私有同步 v${positionCloudVersion} · 已從雲端載入 · ${data.updated_at ? new Date(data.updated_at).toLocaleString("zh-TW", {timeZone: "Asia/Taipei"}) : "未記錄日期"} · 手動清單`, true);
+    await loadBrokerInventory();
     return true;
   } catch (err) {
+    if (generation !== positionSyncGeneration || token !== positionSyncToken()) return false;
     console.warn("Private position sync failed:", err);
     setPositionCloudStatus("同步失敗，保留本機", false);
     return false;
   }
 }
 
-async function saveCloudPositions(items) {
+async function saveCloudPositions(items, brokerEnabled = brokerPositionsEnabled) {
   const token = positionSyncToken();
+  const generation = ++positionSyncGeneration;
   if (!token) { setPositionCloudStatus("僅此瀏覽器"); return false; }
   setPositionCloudStatus("上傳中…");
   try {
     const response = await fetch("/api/positions", {
       method: "POST",
       headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
-      body: JSON.stringify({version: positionCloudVersion, positions: items})
+      body: JSON.stringify({version: positionCloudVersion, positions: items, broker_enabled: brokerEnabled})
     });
     const data = await response.json();
+    if (generation !== positionSyncGeneration || token !== positionSyncToken()) return false;
     if (response.status === 409) {
-      await loadCloudPositions();
-      setPositionCloudStatus("雲端已有較新版本，已載入最新資料；請確認後再儲存", false);
+      setPositionCloudStatus("雲端已有較新版本，未覆蓋目前草稿；請核對後重新連接同步", false);
       return false;
     }
     if (!response.ok || data.error) {
@@ -107,10 +133,17 @@ async function saveCloudPositions(items) {
       console.warn("Private position save failed:", response.status, data.error);
       return false;
     }
-    positionCloudVersion = Number(data.version || positionCloudVersion);
+    if (data.storage?.durable !== true) {
+      setPositionCloudStatus("未寫入雲端；只保留此瀏覽器", false);
+      return false;
+    }
+    const version = Number(data.version);
+    if (!Number.isSafeInteger(version) || version <= positionCloudVersion) return false;
+    positionCloudVersion = version;
     setPositionCloudStatus(`私有同步 v${positionCloudVersion} · 已更新雲端`, true);
     return true;
   } catch (err) {
+    if (generation !== positionSyncGeneration || token !== positionSyncToken()) return false;
     console.warn("Private position save failed:", err);
     setPositionCloudStatus("上傳失敗，保留本機", false);
     return false;
@@ -172,16 +205,7 @@ function roles() {
 }
 
 function positions() {
-  const raw = $("positionInput").value.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
-  return raw.map(item => {
-    const [symbolPart, costPart] = item.split("@");
-    const [symbol, shares] = symbolPart.split(":");
-    return {
-      symbol: symbol?.trim(),
-      shares: Number(shares || 0),
-      cost: Number(costPart || 0)
-    };
-  }).filter(item => item.symbol);
+  return effectiveHoldings();
 }
 
 // 三家 Agent 最近一次選股的所有推薦代碼(由 discoverToday 更新)
@@ -1220,14 +1244,29 @@ function bindActions() {
     const input = $("homePositionInput");
     if (!input) return;
     const v = input.value.trim();
-    if (v) localStorage.setItem(POSITION_STORAGE_KEY, v);
+    let parsed;
+    try { parsed = validatePositionsRaw(v); }
+    catch (err) { setPositionCloudStatus(err.message, false); return; }
+    const canonical = positionsToRaw(parsed);
+    input.value = canonical;
+    if (canonical) localStorage.setItem(POSITION_STORAGE_KEY, canonical);
     else localStorage.removeItem(POSITION_STORAGE_KEY);
+    if ($("positionInput")) $("positionInput").value = canonical;
     _heldSet = null;                    // 讓卡片的 💼 標記重算
     renderMyHoldings();
-    await saveCloudPositions(parsePositionsRaw(v));
+    await saveCloudPositions(parsed);
     if (ledgerSignals) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
   });
   safeBind("homePositionCloudSync", configurePositionCloud);
+  safeBind("brokerPositionRefresh", loadBrokerInventory);
+  safeBind("brokerPositionAdopt", adoptBrokerInventory);
+  safeBind("brokerPositionDisable", async () => {
+    const manual = validatePositionsRaw($("homePositionInput")?.value || "");
+    if (await saveCloudPositions(manual, false)) applyCloudPositions(manual, false);
+  });
+  safeBind("dailyHistoryRefresh", loadDailyHistory);
+  $("dailyHistoryDate")?.addEventListener("change", loadDailyHistoryDay);
+  $("marketResearchMode")?.addEventListener("change", renderMarketResearch);
   document.addEventListener("click", event => {
     const closeModal = event.target.closest(".js-ai-modal-close");
     if (closeModal) { closeAiModal(); return; }
@@ -2132,6 +2171,8 @@ async function loadDailyValueState() {
     const data = await readJson(res);
     dailyValueState = data;
     renderDailyValuePanel();
+    loadDailyHistory();
+    loadMarketResearch();
     // value-current 與 ledger 會並行載入。若 ledger 先完成，第一次 render 時
     // dailyValueState 仍是 null，所有卡片都會誤顯示「今日沒有最新判定」。
     // 今日狀態抵達後主動重畫既有卡片，消除這個非同步競態。
@@ -2181,6 +2222,10 @@ function renderDailyValuePanel() {
     if (status) status.textContent = `${data.as_of || "—"} · 品質 ${c.quality_covered || 0}/${c.mother_pool || 0}`
       + (c.price_total ? ` · 同日價格 ${c.price_current || 0}/${c.price_total}` : "")
       + (dailyLiveMarketSession ? " · 盤中價同步中" : "");
+    if (status && data.freshness?.status === "stale") {
+      status.textContent += " · 資料落後，暫不作買賣依據";
+      status.style.color = "#b91c1c";
+    }
     const card = item => {
       const highDistance = item.distance_from_high_252 == null
         ? ""
@@ -2197,10 +2242,11 @@ function renderDailyValuePanel() {
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}</span><span style="color:#0f766e;">${escapeHtml(item.decision)}</span>
       </strong>
-      <p style="font-size:12.5px;margin:6px 0;">現價 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
+      <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
       <p style="font-size:12px;color:var(--muted);margin:0;">${escapeHtml(asArray(item.reasons).slice(0, 2).join("；") || "—")}</p>
       ${liveLine}
       ${renderEntryEvidence(item.entry_evidence)}
+      ${renderFundamentalWarnings(item)}
       ${provenanceLine(item)}
     </article>`;
     };
@@ -2214,6 +2260,66 @@ function renderDailyValuePanel() {
       ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">今天沒有同時通過品質、估值與止跌條件的標的；保留現金也是結果。</p>`}
       ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}`;
     renderMyHoldings();
+}
+
+function renderFundamentalWarnings(item) {
+  const f = item.fundamental_trend || {};
+  const warnings = [];
+  if (Number(f.monthly_revenue_negative_streak) >= 3) warnings.push(`月營收年減連續 ${f.monthly_revenue_negative_streak} 個月`);
+  if (f.gross_margin_decline_2q) warnings.push("毛利率連兩季下降");
+  if (f.operating_margin_decline_2q) warnings.push("營益率連兩季下降");
+  if (f.earnings_quality_ttm != null && Number(f.earnings_quality_ttm) < 0.8) warnings.push("現金流／盈餘品質偏弱");
+  return warnings.length ? `<p style="font-size:12px;color:#b91c1c;margin:6px 0;">基本面警訊：${escapeHtml(warnings.join("；"))}。低估值不代表獲利必然復甦。</p>` : "";
+}
+
+let marketResearchData = null;
+async function loadMarketResearch() {
+  if (!$("marketResearchPanel")) return;
+  try {
+    marketResearchData = await readJson(await fetch("/api/market-research", {cache: "no-store"}));
+    renderMarketResearch();
+  } catch (err) { $("marketResearchPanel").textContent = `行情排行暫不可用：${err.message}`; }
+}
+
+function renderMarketResearch() {
+  const data = marketResearchData;
+  if (!data) return;
+  const key = $("marketResearchMode")?.value || "amount";
+  const market = data.market_scanners;
+  const rows = asArray(market?.rankings?.[key] || data.rankings?.[key]);
+  $("marketResearchStatus").textContent = `${data.as_of || "—"} · ${market ? "永豐全市場掃描" : `母池＋ETF ${data.coverage || 0} 檔`} · ${data.freshness?.status === "current" ? "完整交易日" : "資料落後"}`;
+  $("marketResearchPanel").innerHTML = rows.length ? `<div style="overflow:auto;"><table><thead><tr><th>代號／名稱</th><th>收盤</th><th>漲跌</th><th>成交值</th><th>成交量（張）</th><th>量比</th><th>品質判定</th></tr></thead><tbody>`
+    + rows.map(row => `<tr><td>${escapeHtml(row.symbol || row.code)} ${escapeHtml(row.name || "")}</td><td>${row.close == null ? "—" : Number(row.close).toFixed(2)}</td><td>${row.change_rate != null ? Number(row.change_rate).toFixed(2) + "%" : (key === "gainers" || key === "losers") && row.rank_value != null ? Number(row.rank_value).toFixed(2) + "%" : "—"}</td><td>${row.total_amount == null ? "—" : (Number(row.total_amount) / 1e8).toFixed(2) + " 億"}</td><td>${row.total_volume == null ? "—" : Number(row.total_volume).toLocaleString()}</td><td>${row.volume_ratio == null ? "—" : Number(row.volume_ratio).toFixed(2)}</td><td>${escapeHtml(row.decision || "須另核對基本面")}</td></tr>`).join("") + "</tbody></table></div>"
+    : "此排行尚無同日有效資料，不以舊排行替代。";
+}
+
+async function loadDailyHistory() {
+  const select = $("dailyHistoryDate");
+  if (!select) return;
+  try {
+    const data = await readJson(await fetch("/api/daily-history", {cache: "no-store"}));
+    const dates = asArray(data.entries || data.days || data.dates).map(entry => typeof entry === "string" ? entry : entry.as_of || entry.date).filter(Boolean);
+    select.innerHTML = dates.map(day => `<option value="${escapeHtml(day)}">${escapeHtml(day)}</option>`).join("");
+    $("dailyHistoryStatus").textContent = `${dates.length} 個完整交易日 · ${data.storage?.durable ? "私有雲端保存" : "尚未持久化"}`;
+    if (dates.length) await loadDailyHistoryDay();
+    else $("dailyHistoryPanel").textContent = "每日分析歷史尚未建立；新排程將按交易日保存，不改寫原始決策卡。";
+  } catch (err) { $("dailyHistoryPanel").textContent = `每日紀錄暫不可用：${err.message}`; }
+}
+
+async function loadDailyHistoryDay() {
+  const day = $("dailyHistoryDate")?.value;
+  if (!day) return;
+  try {
+  const data = await readJson(await fetch(`/api/daily-history?date=${encodeURIComponent(day)}`, {cache: "no-store"}));
+  if ($("dailyHistoryDate").value !== day) return;
+  const state = data.state || data;
+  const rows = asArray(state.evaluations);
+  $("dailyHistoryPanel").innerHTML = `<p style="font-size:12px;">資料日 ${escapeHtml(state.as_of || day)}｜${rows.length} 檔｜重算 ${escapeHtml(state.generated_at || "—")}</p>`
+    + `<div style="overflow:auto;max-height:360px;"><table><thead><tr><th>股票</th><th>收盤</th><th>當日判定</th><th>估值位階</th><th>趨勢</th></tr></thead><tbody>`
+    + rows.map(row => `<tr><td>${escapeHtml(row.symbol)} ${escapeHtml(row.name || "")}</td><td>${row.price == null ? "—" : Number(row.price).toFixed(2)}</td><td>${escapeHtml(row.decision || "—")}</td><td>${row.valuation_pct == null ? "—" : "P" + Number(row.valuation_pct).toFixed(1)}</td><td>${escapeHtml(row.trend || "—")}</td></tr>`).join("") + "</tbody></table></div>";
+  } catch (err) {
+    if ($("dailyHistoryDate")?.value === day) $("dailyHistoryPanel").textContent = `每日紀錄讀取失敗：${err.message}`;
+  }
 }
 
 async function refreshDailyLivePrices() {
@@ -2338,9 +2444,7 @@ function setupLedgerFilters() {
 // 使用者持股（策略實驗室輸入、localStorage 同源共享）→ 首頁卡片標記 💼
 function heldSymbolSet() {
   try {
-    const raw = localStorage.getItem(POSITION_STORAGE_KEY) || "";
-    return new Set(raw.split(/[,\n]/).map(x => x.trim()).filter(Boolean)
-      .map(item => item.split("@")[0].split(":")[0].trim().toUpperCase()));
+    return new Set(effectiveHoldings().map(item => item.symbol));
   } catch (err) { return new Set(); }
 }
 let _heldSet = null;
@@ -2359,18 +2463,20 @@ function currentDecisionKind(signal) {
   const action = String(cur.action || "").toLowerCase();
   const decision = String(cur.decision || "");
   if (action.includes("avoid") || cur.quality_pass === false || /排除|賣出檢查/.test(decision)) return "avoid";
+  if (/等待|高檔|高風險|資料不足/.test(decision)) return "watch";
   if (action.includes("hold")) return "hold";
   if (action.includes("accumulate") || action.includes("buy_zone") || action.includes("buy")) return "accumulate";
   return "watch";
 }
 
 function updateLedgerFilterCounts(valueSignals) {
+  const currentItems = asArray(dailyValueState?.evaluations);
   const counts = {
     all: valueSignals.length,
-    accumulate: valueSignals.filter(s => currentDecisionKind(s) === "accumulate").length,
-    watch: valueSignals.filter(s => currentDecisionKind(s) === "watch").length,
-    holdings: valueSignals.filter(s => _heldSet.has((s.symbol || "").toUpperCase())).length,
-    avoid: valueSignals.filter(s => currentDecisionKind(s) === "avoid").length
+    accumulate: currentItems.filter(s => currentDecisionKind(s) === "accumulate").length,
+    watch: currentItems.filter(s => currentDecisionKind(s) === "watch").length,
+    holdings: _heldSet.size,
+    avoid: currentItems.filter(s => currentDecisionKind(s) === "avoid").length
   };
   document.querySelectorAll(".ledger-filter").forEach(btn => {
     const label = btn.dataset.label;
@@ -2388,6 +2494,16 @@ function renderLedger(filterType) {
   const isValueAgent = (s) => s.agent_id === "claude-value" || s.agent_id === "claude-etf-subtrack";
   const valueSignals = ledgerSignals.filter(isValueAgent);
   updateLedgerFilterCounts(valueSignals);
+
+  if (filterType !== "all" && dailyValueState) {
+    const rows = asArray(dailyValueState.evaluations).filter(item => filterType === "holdings"
+      ? _heldSet.has(item.symbol) : currentDecisionKind(item) === filterType);
+    const missing = filterType === "holdings" ? [..._heldSet].filter(symbol => !rows.some(item => item.symbol === symbol)) : [];
+    grid.innerHTML = rows.map(item => `<article class="candidate"><strong>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}${heldBadge(item.symbol)}</strong><p>${escapeHtml(item.decision || "—")}｜正式收盤 ${item.price == null ? "—" : Number(item.price).toFixed(2)}</p><p style="font-size:12px;color:var(--muted);">資料日 ${escapeHtml(item.as_of || "—")}｜${escapeHtml(item.trend || "—")}｜${escapeHtml(item.valuation_zone || "—")}</p>${renderFundamentalWarnings(item)}${provenanceLine(item)}</article>`).join("")
+      + missing.map(symbol => `<article class="candidate"><strong>${escapeHtml(symbol)}</strong><p>持股尚無同日母池評估，完整持股分析見上方。</p></article>`).join("")
+      || "<p>目前沒有符合條件的當日評估。</p>";
+    return;
+  }
 
   let filtered = [];
   if (filterType === "all") {
@@ -2594,24 +2710,123 @@ function parsePositionsRaw(raw) {
   return (raw || "").split(/[,\n]/).map(x => x.trim()).filter(Boolean).map(item => {
     const [symPart, costPart] = item.split("@");
     const [symbol, shares] = symPart.split(":");
-    return { symbol: (symbol || "").trim().toUpperCase(), shares: Number(shares || 0), cost: Number(costPart || 0) };
+    return { symbol: normalizePositionSymbol(symbol), shares: Number(shares || 0), cost: Number(costPart || 0) };
   }).filter(p => isValidSymbol(p.symbol) && Number.isFinite(p.shares) && Number.isFinite(p.cost));
+}
+
+function normalizePositionSymbol(value) {
+  const symbol = String(value || "").trim().toUpperCase();
+  if (!/^\d{4,6}[A-Z]?$/.test(symbol)) return symbol;
+  const known = asArray(dailyValueState?.evaluations).find(item => item.symbol?.split(".")[0] === symbol);
+  return known?.symbol || symbol;
+}
+
+function validatePositionsRaw(raw) {
+  if (!String(raw || "").trim()) return [];
+  const entries = String(raw).split(/[,\n]/).map(x => x.trim()).filter(Boolean);
+  const items = parsePositionsRaw(raw);
+  const seen = new Set();
+  if (items.length !== entries.length) throw new Error("持股格式有誤，請使用 代號:股數@成本");
+  for (const item of items) {
+    if (/^\d{4,6}[A-Z]?$/.test(item.symbol)) throw new Error(`${item.symbol} 尚無市場對照，請加 .TW（上市）或 .TWO（上櫃）`);
+    if (!(item.shares > 0) || !(item.cost > 0)) throw new Error(`${item.symbol} 股數及成本須大於零`);
+    if (seen.has(item.symbol)) throw new Error(`${item.symbol} 重複，請合併股數與加權成本`);
+    seen.add(item.symbol);
+  }
+  return items;
+}
+
+async function loadBrokerInventory() {
+  const panel = $("brokerPositionPanel"), token = positionSyncToken();
+  const generation = ++brokerSyncGeneration;
+  if (!panel) return;
+  brokerInventory = null;
+  if ($("brokerPositionAdopt")) $("brokerPositionAdopt").disabled = true;
+  if (!token) {
+    panel.textContent = "請先連接私有同步，才可讀取永豐庫存。";
+    _heldSet = null;
+    renderMyHoldings();
+    return;
+  }
+  panel.textContent = "讀取永豐盤後庫存…";
+  try {
+    const res = await fetch("/api/broker-positions", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
+    const data = await readJson(res);
+    if (generation !== brokerSyncGeneration || token !== positionSyncToken()) return;
+    const rows = asArray(data.positions);
+    const stale = data.status !== "ok" || data.storage?.durable !== true;
+    brokerInventory = stale ? null : data;
+    const date = data.as_of || data.updated_at || data.fetched_at || "未取得";
+    panel.innerHTML = `<p style="font-size:12px;">來源：永豐券商庫存｜更新 ${escapeHtml(date)}｜${rows.length} 檔${stale ? "｜尚未成功驗證，禁止採用" : "｜唯讀，不會自動改寫手動清單"}</p>`
+      + (data.error ? `<p style="color:#b91c1c;">庫存讀取未完成：${escapeHtml(data.error)}。行情權限不等於帳務權限，需確認永豐 API 帳務授權。</p>` : "")
+      + rows.map(row => `<div style="font-size:12px; padding:3px 0;">${escapeHtml(row.symbol)}｜${Number(row.shares)} 股｜平均成本 ${Number(row.cost).toFixed(2)}</div>`).join("");
+    panel.innerHTML += `<p>${brokerPositionsEnabled ? "已啟用永豐庫存合併；手動輸入僅代表其他券商持股。" : "尚未啟用合併，現有手動持股維持原樣。"}</p>`;
+    if ($("brokerPositionAdopt")) $("brokerPositionAdopt").disabled = stale;
+    _heldSet = null;
+    renderMyHoldings();
+    if (ledgerSignals.length) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
+  } catch (err) {
+    if (generation === brokerSyncGeneration && token === positionSyncToken()) panel.textContent = `未能取得券商庫存：${err.message}；手動持股未變。`;
+  }
+  finally {
+    if (generation !== brokerSyncGeneration || token !== positionSyncToken()) return;
+    _heldSet = null;
+    renderMyHoldings();
+    if (ledgerSignals.length) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
+  }
+}
+
+async function adoptBrokerInventory() {
+  if (!brokerInventory) return;
+  if (brokerPositionsEnabled) {
+    $("brokerPositionPanel").textContent = "永豐合併已啟用；最新庫存已套用，其他券商手動持股不變。";
+    return;
+  }
+  const broker = asArray(brokerInventory.positions);
+  const manual = validatePositionsRaw($("homePositionInput")?.value || "");
+  const codes = new Set(broker.map(p => p.symbol));
+  const overlaps = manual.filter(p => codes.has(p.symbol));
+  const message = overlaps.length
+    ? `有 ${overlaps.length} 檔代號重複：將以永豐股數／成本取代同代號手動紀錄，其他代號保留。若同代號也在其他券商持有，請取消並先核對合計股數。確認採用？`
+    : "採用永豐庫存並保留所有其他券商手動標的？";
+  if (!window.confirm(message)) return;
+  const others = manual.filter(p => !codes.has(p.symbol));
+  const saved = await saveCloudPositions(others, true);
+  if (saved) applyCloudPositions(others, true);
+}
+
+function effectiveHoldings() {
+  const manual = parsePositionsRaw(localStorage.getItem(POSITION_STORAGE_KEY) || "");
+  if (!brokerPositionsEnabled || !brokerInventory) return manual;
+  const sums = new Map();
+  for (const row of [...manual, ...asArray(brokerInventory.positions)]) {
+    const previous = sums.get(row.symbol) || {shares: 0, amount: 0};
+    previous.shares += Number(row.shares);
+    previous.amount += Number(row.shares) * Number(row.cost);
+    sums.set(row.symbol, previous);
+  }
+  return [...sums].map(([symbol, total]) => ({symbol, shares: total.shares, cost: total.amount / total.shares}));
 }
 
 async function renderMyHoldings() {
   const panel = $("myHoldingsPanel");
   const status = $("myHoldingsStatus");
   if (!panel) return;
+  const requestVersion = ++holdingsRenderVersion;
   const raw = localStorage.getItem(POSITION_STORAGE_KEY) || "";
   const input = $("homePositionInput");
   if (input && !input.value) input.value = raw;
-  const pos = parsePositionsRaw(raw);
+  const pos = effectiveHoldings();
   if (!pos.length) {
-    if (status) status.textContent = "尚未輸入";
+    if (status) status.textContent = brokerPositionsEnabled && !brokerInventory ? "永豐庫存未驗證" : "尚未輸入";
     panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔損益、持股建議與可稽核的 Exit Score 獲利保護提醒。</p>`;
     return;
   }
-  if (status) status.textContent = `${pos.length} 檔`;
+  if (status) status.textContent = `${pos.length} 檔 · ${brokerPositionsEnabled ? brokerInventory ? "永豐＋其他券商" : "永豐庫存未驗證，僅列手動持股" : "手動清單"}`;
+  if (brokerPositionsEnabled && !brokerInventory) {
+    panel.textContent = "永豐庫存尚未成功驗證，整體持股分析暫停；其他券商手動持股仍保留。請先讀取有效庫存快照。";
+    return;
+  }
   panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">分析中…</p>`;
   let valueActions = {};
   let sellTiming = {};
@@ -2624,6 +2839,7 @@ async function renderMyHoldings() {
     postPositions("/api/value-portfolio"),
     postPositions("/api/sell-timing"),
   ]);
+  if (requestVersion !== holdingsRenderVersion) return;
   if (portfolioResult.status === "fulfilled") {
     asArray(portfolioResult.value.actions).forEach(a => { valueActions[a.symbol] = a; });
   } else {

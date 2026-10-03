@@ -6,12 +6,14 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from pathlib import Path
 
 from company.model import durable_document
@@ -33,8 +35,10 @@ def _utc_now() -> str:
 def normalize_positions(raw: object) -> list[dict]:
     if not isinstance(raw, list):
         raise ValueError("positions must be a list")
+    if len(raw) > MAX_POSITIONS:
+        raise ValueError("too many positions")
     normalized: dict[str, dict] = {}
-    for item in raw[:MAX_POSITIONS]:
+    for item in raw:
         if not isinstance(item, dict):
             raise ValueError("each position must be an object")
         symbol = str(item.get("symbol") or "").strip().upper()
@@ -43,9 +47,9 @@ def normalize_positions(raw: object) -> list[dict]:
         try:
             shares = float(item.get("shares") or 0)
             cost = float(item.get("cost") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise ValueError(f"invalid shares/cost for {symbol}")
-        if shares <= 0 or cost <= 0:
+        if not math.isfinite(shares) or not math.isfinite(cost) or shares <= 0 or cost <= 0:
             raise ValueError(f"shares and cost must be positive for {symbol}")
         normalized[symbol] = {"symbol": symbol, "shares": shares, "cost": cost}
     return list(normalized.values())
@@ -173,11 +177,15 @@ def is_authorized(authorization: str | None) -> bool:
 
 def _document(raw: object) -> dict:
     source = raw if isinstance(raw, dict) else {}
+    broker_enabled = source.get("broker_enabled", False)
+    if not isinstance(broker_enabled, bool):
+        raise ValueError("broker_enabled must be a boolean")
     return {
         "schema_version": 1,
         "version": max(0, int(source.get("version") or 0)),
         "updated_at": source.get("updated_at"),
         "positions": normalize_positions(source.get("positions") or []),
+        "broker_enabled": broker_enabled,
     }
 
 
@@ -186,7 +194,10 @@ def load_positions(prefer_remote: bool = True) -> tuple[dict, dict]:
     return _document(doc), storage
 
 
-def save_positions(raw_positions: object, expected_version: int | None = None) -> tuple[dict, dict]:
+def save_positions(raw_positions: object, expected_version: int | None = None,
+                   broker_enabled: bool | None = None) -> tuple[dict, dict]:
+    if broker_enabled is not None and not isinstance(broker_enabled, bool):
+        raise ValueError("broker_enabled must be a boolean")
     positions = normalize_positions(raw_positions)
     config = durable_document._config()
     current_doc = None
@@ -208,6 +219,7 @@ def save_positions(raw_positions: object, expected_version: int | None = None) -
         "version": current["version"] + 1,
         "updated_at": _utc_now(),
         "positions": positions,
+        "broker_enabled": current["broker_enabled"] if broker_enabled is None else broker_enabled,
     }
     body = json.dumps(doc, ensure_ascii=False, indent=2)
     LOCAL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -246,3 +258,92 @@ def save_positions(raw_positions: object, expected_version: int | None = None) -
     except Exception as exc:
         result["error"] = f"remote_write_{type(exc).__name__}"
     return doc, result
+
+
+def resolve_portfolio(document: dict, broker_snapshot: dict | None,
+                      broker_status: dict | None, *, now: datetime | None = None) -> dict:
+    """Resolve effective inventory without writing either source document.
+
+    document.positions is ONLY the user's manual, other-broker inventory.
+    Once opted in, unavailable/stale broker data suppresses the entire effective
+    portfolio, not just its broker portion. Callers must check status before use.
+    """
+    from company.data import broker_positions as inventory
+    from company.model.daily_history import latest_completed_market_date
+
+    doc = _document(document)
+    manual = doc["positions"]
+    result = {"status": "ok", "positions": manual, "manual_positions": manual,
+              "broker_enabled": doc["broker_enabled"], "broker_status": None,
+              "source": "manual", "version": doc["version"]}
+    if not doc["broker_enabled"]:
+        return result
+    status = broker_status if isinstance(broker_status, dict) else {}
+    storage = status.get("storage") if isinstance(status.get("storage"), dict) else status
+    code = status.get("error_code")
+    safe_status = {"last_attempt_ok": status.get("last_attempt_ok") is True,
+                   "stale": status.get("stale") is not False,
+                   "durable": storage.get("durable") is True,
+                   "error_code": code if code in inventory.ERROR_CODES else None}
+    result.update(positions=[], status="unavailable", source="manual+shioaji", broker_status=safe_status)
+
+    def unavailable(code):
+        safe_status.update(stale=True, error_code=code)
+        return result
+
+    if not safe_status["durable"]:
+        return unavailable("BROKER_STORAGE_UNAVAILABLE")
+    if not safe_status["last_attempt_ok"] or safe_status["stale"] or code:
+        return unavailable(safe_status["error_code"] or "BROKER_INVENTORY_UNAVAILABLE")
+    if (not isinstance(broker_snapshot, dict) or broker_snapshot.get("status", "ok") != "ok"
+            or broker_snapshot.get("source") != "shioaji"
+            or broker_snapshot.get("simulation") is not False
+            or broker_snapshot.get("unit") != "Share"):
+        return unavailable("BROKER_INVALID_SNAPSHOT")
+    taipei = timezone(timedelta(hours=8))
+    current = (now or datetime.now(timezone.utc)).astimezone(taipei)
+    try:
+        stamp = broker_snapshot.get("fetched_at") or broker_snapshot.get("as_of")
+        fetched = datetime.fromisoformat(stamp)
+        if fetched.tzinfo is None:
+            raise ValueError
+        fetched = fetched.astimezone(taipei)
+    except (TypeError, ValueError):
+        return unavailable("BROKER_INVALID_SNAPSHOT")
+    if fetched > current:
+        return unavailable("BROKER_SNAPSHOT_FUTURE")
+    try:
+        expected = latest_completed_market_date(current)
+        lower_bound = datetime.fromisoformat(expected).replace(hour=14, tzinfo=taipei)
+    except Exception:
+        return unavailable("BROKER_CALENDAR_UNAVAILABLE")
+    safe_status["expected_completed_date"] = expected
+    if fetched < lower_bound:
+        code = "BROKER_SNAPSHOT_NOT_POST_CLOSE" if fetched.date() == lower_bound.date() else "BROKER_SNAPSHOT_STALE"
+        return unavailable(code)
+    rows = broker_snapshot.get("positions")
+    if not isinstance(rows, list) or len(rows) > inventory.MAX_ROWS:
+        return unavailable("BROKER_INVALID_SNAPSHOT")
+    try:
+        broker_rows, seen = [], set()
+        for row in rows:
+            normalized = normalize_positions([row])[0]
+            if (normalized["symbol"] in seen or not normalized["shares"].is_integer()
+                    or not re.fullmatch(r"[0-9]{4,6}[A-Z]?\.(TW|TWO)", normalized["symbol"])):
+                raise ValueError
+            seen.add(normalized["symbol"])
+            broker_rows.append(normalized)
+        totals = {}
+        for row in manual + broker_rows:
+            shares, cost = totals.get(row["symbol"], (Decimal(0), Decimal(0)))
+            quantity, price = Decimal(str(row["shares"])), Decimal(str(row["cost"]))
+            totals[row["symbol"]] = (shares + quantity, cost + quantity * price)
+        combined = [{"symbol": symbol, "shares": float(shares), "cost": float(cost / shares)}
+                    for symbol, (shares, cost) in sorted(totals.items())]
+        if any(not math.isfinite(row["shares"]) or not math.isfinite(row["cost"]) for row in combined):
+            raise ValueError
+    except (ValueError, TypeError, OverflowError):
+        return unavailable("BROKER_INVALID_SNAPSHOT")
+    result.update(status="ok", positions=combined)
+    safe_status.update(as_of=fetched.isoformat(), stale=False, error_code=None)
+    return result

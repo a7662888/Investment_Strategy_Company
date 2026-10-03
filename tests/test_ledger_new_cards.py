@@ -85,7 +85,8 @@ class TestMarketContextLoader(unittest.TestCase):
         document = {"trade_date": "2026-09-22", "snapshots": {"1513.TW": {
             "vwap": 166.49, "close_vs_vwap_pct": -0.29, "volume_ratio": 1.04,
             "spread_pct": 0.3, "tick_pressure": "sell", "source": "Shioaji snapshots",
-            "open": 1, "high": 2, "low": 3, "close": 4, "ts": 5}}}
+            "open": 1, "high": 2, "low": 3, "close": 4, "ts": 5,
+            "trade_date": "2026-09-22", "timestamp_status": "valid"}}}
         with patch("company.model.durable_document.load_document", return_value=(document, {})):
             context = rescreen.market_context()["1513.TW"]
         # 帳本體積曾因過大被覆蓋，欄位要挑過，不整包塞進去
@@ -93,6 +94,19 @@ class TestMarketContextLoader(unittest.TestCase):
         self.assertNotIn("open", context)
         self.assertEqual(context["volume_ratio"], 1.04)
         self.assertEqual(context["trade_date"], "2026-09-22")
+        self.assertEqual(context["timestamp_status"], "valid")
+
+    def test_unverified_or_mismatched_rows_are_not_relabelled(self) -> None:
+        day = "2026-09-22"
+        document = {"trade_date": day, "snapshots": {
+            "valid": {"trade_date": day, "timestamp_status": "valid"},
+            "old": {"trade_date": "2026-09-21", "timestamp_status": "valid"},
+            "legacy": {"volume_ratio": 1.2},
+            **{status: {"trade_date": day, "timestamp_status": status}
+               for status in ("invalid", "future", "stale")},
+        }}
+        with patch("company.model.durable_document.load_document", return_value=(document, {})):
+            self.assertEqual(set(rescreen.market_context()), {"valid"})
 
     def test_missing_snapshot_does_not_block_freezing(self) -> None:
         with patch("company.model.durable_document.load_document", return_value=(None, {})):

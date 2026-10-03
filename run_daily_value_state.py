@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from company.data.value_fundamentals import load_fundamentals, refresh_pool, save_fundamentals
 from company.model.current_state import load_current_state, save_current_state
+from company.model.daily_history import record_daily_history
 from company.model.value_daily import build_daily_state
 from company.screener.value_rescreen import latest_official_close_date, rescreen_all
 
@@ -61,18 +62,21 @@ def main() -> int:
         "storage": fundamentals_saved,
     }
     saved = save_current_state(state)
+    state_ok = saved.get("local_saved") and (saved.get("durable") or not saved.get("remote_error"))
+    fundamentals_ok = fundamentals_saved.get("local_saved") and (
+        fundamentals_saved.get("durable") or not fundamentals_saved.get("remote_error")
+    )
+    history = (record_daily_history(state, symbols) if state_ok and fundamentals_ok else
+               {"ok": False, "status": "error", "error": "current_analysis_storage_failed"})
     print(json.dumps({
         "as_of": state["as_of"], "coverage": state["coverage"],
         "top_picks": [p["symbol"] for p in state["top_picks"]],
         "waiting": [p["symbol"] for p in state["waiting_list"]],
         "etf_candidates": [p["symbol"] for p in state["etf_candidates"]], "storage": saved,
         "fundamentals": state["fundamentals"],
+        "history": history,
     }, ensure_ascii=False, indent=2))
-    state_ok = saved.get("local_saved") and (saved.get("durable") or not saved.get("remote_error"))
-    fundamentals_ok = fundamentals_saved.get("local_saved") and (
-        fundamentals_saved.get("durable") or not fundamentals_saved.get("remote_error")
-    )
-    return 0 if state_ok and fundamentals_ok else 1
+    return 0 if state_ok and fundamentals_ok and history.get("ok") else 1
 
 
 if __name__ == "__main__":

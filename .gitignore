@@ -29,3 +29,11 @@ data/email_log.json
 # Shioaji 盤後快照（執行期資料，體積會累積）
 data/shioaji/
 data/shioaji_snapshot.json
+
+# Private broker inventory and daily market analysis runtime documents
+data/broker_positions.json
+data/broker_positions_status.json
+data/daily_history/
+data/daily_history_index.json
+data/market_scanners.json
+data/market_scanners/

@@ -13,6 +13,13 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 
 ---
 
+## 2026-10-03 · Codex · 每日分析與私有庫存同源修復（PR 驗收）
+
+- 做了什麼：已閱讀最新交接後，依業主「永豐庫存＋保留其他券商手動持股」修復來源分離；新增唯讀庫存、每日完整分析留存、盤後排行與逐筆時間驗證。每日流程順序為行情、重算、凍結改變判定、更新 outcomes；不改寫歷史訊號。
+- 工程驗收：使用 branch/PR，不直接推 main；測試與 CI 通過後才部署。匿名庫存禁止讀取；私有資料、SDK 原始訊息、憑證及帳號不進公開 repo。
+- 給 Claude／Antigravity／OpenCode：請維持 manual positions 只代表其他券商的來源分離，禁止把券商快照再複製進手動清單。連續法人買賣與權值成分未接入，不得宣稱已完成。排行仍為 shadow 研究資訊，無預測提升保證。
+- 驗證進度與帳務權限待辦：見協作目錄 `work/codex/site_repair_2026-10-03_checklist.md`；真实 signed 帳戶是否可讀須以本輪唯讀 workflow 結果為準。
+
 ## 2026-06-23 · Claude · Decision Ledger 永久化已接通並線上驗證
 
 - 做了什麼:
@@ -582,3 +589,14 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 - 觀察到遠端提交:`Add shared agent resources`、`Prepare Render deployment`、`Add Render deploy button`。
 - 推測 Codex/Antigravity 正在把輕量 `app.py` 接上 Render(雲端、電腦關機也在)。
 - Claude 這邊配合:策略庫相依與 root stdlib 分開,不影響 Render build。
+
+## 2026-10-03 · Codex → 方法 Claude · 重篩日期、量價存證與 durable 閘門修正
+
+- 工作分支：`fix/daily-ledger-holdings-20261003`。業主已確認本輪 source ownership；尚未 commit、部署或執行真實凍卡。
+- `run_value_rescreen.py::market_context()` 僅採明確 `timestamp_status=valid` 且逐檔日期等於整包日期的 rows；附入新 signal 前再驗證該日期等於分析 cutoff。缺日期／狀態、過期或未來量價脈絡不重新標日、不補寫既有 signal。
+- 新 signal 的 cutoff 必須等於台北交易日曆的最新已完成交易日，且不得早於前一張 signal；違反者跳過並回傳非零。星期六以星期五正式收盤為準。
+- CI 或已設定私有 durable store 時，僅本機存成功不足以回傳成功；remote failure 或 invalid signal payload 均回傳非零。
+- 方法契約維持 action 改變才新增 signal；context、價格或 model version 補充本身不觸發歷史卡重凍。未改 immutable signals／outcomes 或其他券商手動持股資料。
+- 已更新 `tests/test_ledger_new_cards.py` 的明確逐檔日期／valid fixture 與拒絕無效 rows 測試；新增 `tests/test_value_rescreen_guards.py`。
+- 已驗證：`python -B -m pytest -q -p no:cacheprovider tests` → **296 passed、93 subtests passed**；相關 `git diff --check` 通過。`timedelta` 使用正常 import，沒有 `__import__`。
+- 給方法 Claude：請以以上存證與日期契約接續審查；本輪測試不代表正式私有儲存、排程或部署已完成線上驗收。

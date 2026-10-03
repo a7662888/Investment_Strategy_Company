@@ -896,7 +896,16 @@ def get_data_status() -> dict:
         except ValueError:
             stale_alerts.append("價格快取日期格式無法解析")
     else:
-        stale_alerts.append("目前沒有可驗證日期的價格快取；線上請以provider timestamp為準")
+        # Render reads the durable current-state, not desktop CSV caches.
+        latest_date = None
+
+    from company.model.current_state import load_current_state
+    state, state_storage = load_current_state()
+    freshness = current_state_freshness(state)
+    if freshness["status"] != "current":
+        stale_alerts.append(freshness["message"])
+    if state and not state_storage.get("durable"):
+        stale_alerts.append("每日分析未從私有持久化來源讀取，請檢查儲存連線")
 
     try:
         from company.model.ledger import ledger_summary
@@ -925,11 +934,35 @@ def get_data_status() -> dict:
         "capabilities": {"exit_engine_shadow": True, "automatic_trading": False},
         "cache_files_count": len(cache_files),
         "latest_cache_date": latest_date,
+        "daily_analysis": {**freshness, "storage": state_storage,
+                           "coverage": (state or {}).get("coverage", {})},
         "providers": providers,
         "ledger": ledger,
         "stale_alerts": stale_alerts,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+def current_state_freshness(state: dict | None, now: datetime | None = None) -> dict:
+    from company.data.market_calendar import is_trading_day
+    local = (now or datetime.now(timezone.utc)).astimezone(timezone(timedelta(hours=8)))
+    completed = local
+    if (local.hour, local.minute) < (14, 0):
+        completed -= timedelta(days=1)
+    for _ in range(20):
+        if is_trading_day(completed):
+            break
+        completed -= timedelta(days=1)
+    expected = completed.date().isoformat()
+    as_of = (state or {}).get("as_of")
+    coverage = (state or {}).get("coverage") or {}
+    complete = ((state or {}).get("market_data_complete") is not False
+                and not coverage.get("price_stale"))
+    current = bool(as_of and as_of == expected and complete)
+    return {"status": "current" if current else "stale", "as_of": as_of,
+            "expected_completed_date": expected, "generated_at": (state or {}).get("generated_at"),
+            "message": "最新完整交易日資料" if current else
+            f"每日分析未完整追平交易日 {expected}（目前 {as_of or '尚未產生'}）"}
 
 
 _DURABLE_PROBE: dict = {"at": 0.0, "ok": None, "error": None, "running": False}
@@ -2939,7 +2972,7 @@ def load_market_snapshots() -> dict[str, dict]:
     if not document:
         return {}
     trade_date = document.get("trade_date")
-    return {symbol: {**item, "trade_date": trade_date}
+    return {symbol: {**item, "trade_date": item.get("trade_date", trade_date)}
             for symbol, item in (document.get("snapshots") or {}).items()}
 
 
@@ -3012,7 +3045,8 @@ def annotate_entry_evidence(state: dict) -> dict:
     for key in ("top_picks", "waiting_list", "etf_candidates"):
         items = state.get(key) or []
         annotated[key] = [
-            {**item, "entry_evidence": grade_entry(item, snapshots.get(item.get("symbol")))}
+            {**item, "entry_evidence": grade_entry(item, snapshots.get(item.get("symbol")))
+             if (snapshots.get(item.get("symbol")) or {}).get("trade_date") == item.get("as_of") else None}
             for item in items
         ]
     annotated["market_evidence_date"] = next(
@@ -3323,6 +3357,51 @@ class Handler(SimpleHTTPRequestHandler):
                     document, storage = load_positions()
                     self.send_json({**document, "storage": storage})
                 return
+            if parsed.path == "/api/broker-positions":
+                from company.model.positions import expected_sync_token, is_authorized
+                if not positions_sync_enabled() or expected_sync_token() is None:
+                    self.send_json({"error": "positions sync is not configured"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                elif not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                else:
+                    from company.data.broker_positions import load_broker_positions
+                    snapshot, status = load_broker_positions()
+                    from company.model.positions import resolve_portfolio
+                    resolved = resolve_portfolio({"positions": [], "broker_enabled": True}, snapshot, status)
+                    safe_status = resolved.get("broker_status") or {}
+                    self.send_json({"positions": (snapshot or {}).get("positions", []),
+                                    "as_of": (snapshot or {}).get("as_of"),
+                                    "status": resolved["status"],
+                                    "error": safe_status.get("error_code"),
+                                    "freshness": safe_status,
+                                    "last_attempt_at": status.get("last_attempt_at"),
+                                    "storage": status.get("storage", {})})
+                return
+            if parsed.path == "/api/daily-history":
+                from company.model.daily_history import load_history_index, load_history_day
+                day = query.get("date", [""])[0]
+                valid_day = True
+                if day:
+                    try:
+                        valid_day = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", day))
+                        datetime.strptime(day, "%Y-%m-%d")
+                    except ValueError:
+                        valid_day = False
+                if not valid_day:
+                    self.send_json({"error": "invalid date"}, HTTPStatus.BAD_REQUEST)
+                    return
+                document, storage = load_history_day(day) if day else load_history_index()
+                self.send_json({**(document or {}), "storage": storage})
+                return
+            if parsed.path == "/api/market-research":
+                from company.model.current_state import load_current_state
+                from company.model.durable_document import load_document
+                from company.model.market_research import build_market_research
+                state, storage = load_current_state()
+                scanners, _ = load_document(PROJECT / "data/market_scanners.json", "market/scanners/latest.json")
+                self.send_json({**build_market_research(state or {}, load_market_snapshots(), scanners),
+                                "freshness": current_state_freshness(state), "storage": storage})
+                return
             if parsed.path == "/api/daily-refresh":
                 # 前端每次載入呼叫一次；只在「該跑且今日尚未跑」時才真的觸發。
                 query = urllib.parse.parse_qs(parsed.query or "")
@@ -3351,7 +3430,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if state is None:
                     self.send_json({"error": "每日價值狀態尚未產生", "storage": storage}, HTTPStatus.SERVICE_UNAVAILABLE)
                 else:
-                    self.send_json({**annotate_entry_evidence(state), "storage": storage})
+                    self.send_json({**annotate_entry_evidence(state), "storage": storage,
+                                    "freshness": current_state_freshness(state)})
                 return
             if parsed.path == "/api/mother-pool":
                 payload = load_mother_pool_status()
@@ -3528,7 +3608,12 @@ class Handler(SimpleHTTPRequestHandler):
                 body = self.read_body()
                 expected_version = body.get("version")
                 try:
-                    document, storage = save_positions(body.get("positions") or [], expected_version)
+                    broker_enabled = body.get("broker_enabled")
+                    if broker_enabled is not None and not isinstance(broker_enabled, bool):
+                        self.send_json({"error": "invalid broker_enabled"}, HTTPStatus.BAD_REQUEST)
+                        return
+                    document, storage = save_positions(body.get("positions") or [], expected_version,
+                                                       broker_enabled=broker_enabled)
                 except PositionConflict as exc:
                     self.send_json({"error": str(exc), "conflict": True}, HTTPStatus.CONFLICT)
                     return

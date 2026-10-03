@@ -509,6 +509,9 @@ input[type="range"] {
     align-items: flex-start !important;
     flex-wrap: wrap;
   }
+  #ledgerGrid { grid-template-columns: minmax(0, 1fr) !important; }
+  #ledgerStats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  #brokerPositionAdopt { max-width: 100%; white-space: normal; }
 }
 
 /* ── Ledger Card Styles ──────────────────────────────────────── */
