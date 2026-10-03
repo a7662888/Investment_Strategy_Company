@@ -69,6 +69,16 @@ class BrokerAdapterTests(unittest.TestCase):
     def test_empty_inventory_is_explicit_success(self):
         self.assertEqual(fetch(api([]))["positions"], [])
 
+    def test_sdk_without_public_mode_attribute_requires_constructor_attestation(self):
+        client = api()
+        del client.simulation
+        with self.assertRaisesRegex(broker.BrokerPositionsError, "PRODUCTION_REQUIRED"):
+            fetch(client)
+        self.assertEqual(fetch(client, production_confirmed=True)["unit"], "Share")
+        client.simulation = True
+        with self.assertRaisesRegex(broker.BrokerPositionsError, "PRODUCTION_REQUIRED"):
+            fetch(client, production_confirmed=True)
+
     def test_auto_selection_requires_exactly_one_signed_stock_account(self):
         selected = account()
         client = api(accounts=[account(account_type="F"), account(account_id="unsigned", signed=False), selected])
