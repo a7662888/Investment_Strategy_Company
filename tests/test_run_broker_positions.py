@@ -98,7 +98,8 @@ class BrokerRunnerTests(unittest.TestCase):
              patch.object(runner.importlib, "import_module", return_value=sdk), \
              patch.object(broker, "fetch_broker_positions", return_value={"positions": []}) as fetch:
             runner._fetch()
-        fetch.assert_called_once_with(fake_api, broker_id="", account_id="", share_unit="top-level-share")
+        fetch.assert_called_once_with(fake_api, broker_id="", account_id="", share_unit="top-level-share",
+                                      production_confirmed=True)
 
     def test_sdk_stdout_stderr_suppressed_and_log_path_restored(self):
         with patch.dict(os.environ, {"SJ_LOG_PATH": "original"}), contextlib.redirect_stdout(io.StringIO()) as stdout, contextlib.redirect_stderr(io.StringIO()) as stderr:
