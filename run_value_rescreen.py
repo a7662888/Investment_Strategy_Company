@@ -15,12 +15,15 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from company.model import ledger  # noqa: E402
+from company.model import durable_document  # noqa: E402
+from company.model.daily_history import latest_completed_market_date  # noqa: E402
 from company.data.value_fundamentals import load_fundamentals  # noqa: E402
 from company.screener.value_rescreen import rescreen_all  # noqa: E402
 
@@ -76,7 +79,7 @@ def qualitative(result: dict, old: dict | None) -> list[dict]:
     return carried
 
 
-def market_context() -> dict[str, dict]:
+def market_context(now: datetime | None = None) -> dict[str, dict]:
     """凍結當下的量價脈絡（永豐盤後快照）。
 
     只保留少數幾個可解釋的欄位，不整包塞進帳本：帳本體積曾在 2026-07-09
@@ -94,11 +97,22 @@ def market_context() -> dict[str, dict]:
     if not document:
         return {}
     trade_date = document.get("trade_date")
+    now = (now or datetime.now(timezone.utc)).astimezone(timezone(timedelta(hours=8)))
+    today = now.date().isoformat()
+    try:
+        if not isinstance(trade_date, str) or datetime.fromisoformat(trade_date).date().isoformat() != trade_date:
+            return {}
+    except ValueError:
+        return {}
+    if trade_date > today or (trade_date == today and now.hour < 14):
+        return {}
     keep = ("vwap", "close_vs_vwap_pct", "volume_ratio", "spread_pct", "tick_pressure")
     return {
-        symbol: {**{k: row.get(k) for k in keep}, "trade_date": trade_date,
+        symbol: {**{k: row.get(k) for k in keep}, "trade_date": row["trade_date"],
+                 "timestamp_status": "valid",
                  "source": row.get("source")}
         for symbol, row in (document.get("snapshots") or {}).items()
+        if row.get("trade_date") == trade_date and row.get("timestamp_status") == "valid"
     }
 
 
@@ -123,6 +137,13 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
+    require_durable = (os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
+                       or os.environ.get("REQUIRE_DURABLE_LEDGER") == "1"
+                       or durable_document._config() is not None)
+    if require_durable and not args.dry_run and durable_document._config() is None:
+        print("Durable ledger storage is required but not configured.", file=sys.stderr)
+        return 1
+
     cards = current_cards()
     if not cards:
         print("找不到現行價值卡，先執行初始凍結。", file=sys.stderr)
@@ -141,6 +162,11 @@ def main() -> int:
     # 帳本的意義是「凍結同一條決策鏈當時的判斷」，資料源分叉會讓它記錄一個
     # 現行引擎根本不會做出的決定，整個 shadow 驗證因此失去意義。
     results = rescreen_all(symbols, fundamentals=_current_fundamentals())
+    try:
+        expected_cutoff = latest_completed_market_date(datetime.now(timezone.utc))
+    except Exception as exc:
+        print(f"Completed trading date unavailable: {type(exc).__name__}", file=sys.stderr)
+        return 1
     contexts = market_context()
     changed, unchanged, errors = [], [], []
     signals = []
@@ -155,6 +181,13 @@ def main() -> int:
         # 資料不全時「維持現狀」而非改判定——否則一次 API 限流就會把 accumulate 誤降為 watch
         if r.get("data_incomplete"):
             skipped.append(f"{sym}({r['data_incomplete']})")
+            continue
+        cutoff = r.get("as_of")
+        if (old or {}).get("data_cutoff") and cutoff and cutoff < old["data_cutoff"]:
+            errors.append(f"{sym}: cutoff_regression")
+            continue
+        if cutoff != expected_cutoff:
+            errors.append(f"{sym}: cutoff_not_latest_completed")
             continue
         old_action = (old or {}).get("action", "")
         new_action = r.get("action", "")
@@ -192,6 +225,8 @@ def main() -> int:
         })
 
         context = contexts.get(sym) or {}
+        if context.get("trade_date") != cutoff or context.get("timestamp_status") != "valid":
+            context = {}
         if context.get("volume_ratio") is not None or context.get("close_vs_vwap_pct") is not None:
             # 明示不參與判定，避免日後被誤讀成凍結理由之一。
             ev.append({
@@ -225,14 +260,15 @@ def main() -> int:
         print(f"■ 取數失敗 {len(errors)} 檔：{'; '.join(errors)}")
 
     if not signals:
-        print("\n無須更新帳本（所有判定維持不變）。")
-        return 0
+        print("\n無須更新帳本。")
+        return 1 if errors else 0
     if args.dry_run:
         print(f"\n[dry-run] 將凍結 {len(signals)} 張新卡，未寫入。")
-        return 0
+        return 1 if errors else 0
     res = ledger.freeze_signals(signals)
     print("\nfreeze:", json.dumps(res, ensure_ascii=False))
-    return 0 if res.get("durable") or res.get("local_saved") else 1
+    saved = res.get("durable") if require_durable else (res.get("durable") or res.get("local_saved"))
+    return 0 if saved and not res.get("invalid") and not errors else 1
 
 
 if __name__ == "__main__":

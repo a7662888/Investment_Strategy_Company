@@ -15,7 +15,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from company.model.durable_document import save_document
-from company.model.positions import load_positions
+from company.model.positions import load_positions, resolve_portfolio
+from company.data.broker_positions import load_broker_positions
 
 BASE = os.environ.get("SITE_BASE", "https://investment-strategy-company.onrender.com")
 POSITION_SYNC_PREFIX = "sync:"
@@ -46,16 +47,47 @@ def synced_positions(sync_token):
     if int(doc.get("version") or 0) <= 0:
         raise RuntimeError("private positions have not been initialized")
     positions = doc.get("positions")
+    resolved = None
+    if doc.get("broker_enabled") is True:
+        if doc.get("storage", {}).get("durable") is not True:
+            raise RuntimeError("broker-enabled API portfolio is unavailable")
+        broker_req = urllib.request.Request(BASE + "/api/broker-positions", method="GET", headers={
+            "Accept": "application/json", "Authorization": f"Bearer {sync_token}",
+            "User-Agent": "daily-email-broker-positions"})
+        with urllib.request.urlopen(broker_req, timeout=45) as response:
+            snapshot = json.loads(response.read().decode("utf-8"))
+        status = {"last_attempt_ok": snapshot.get("status") == "ok",
+                  "stale": snapshot.get("status") != "ok", "error_code": snapshot.get("error"),
+                  "storage": snapshot.get("storage", {})}
+        snapshot = {**snapshot, "source": "shioaji", "simulation": False, "unit": "Share"}
+        resolved = resolve_portfolio(doc, snapshot, status)
+        if resolved["status"] != "ok":
+            raise RuntimeError("broker-enabled API portfolio is unavailable")
+        positions = resolved["positions"]
     if not isinstance(positions, list):
         raise RuntimeError("private positions response is invalid")
     return positions, {
         "source": "positions-api", "version": int(doc.get("version") or 0),
         "updated_at": doc.get("updated_at"),
+        "broker_enabled": doc.get("broker_enabled", False),
+        "broker_status": resolved["broker_status"] if resolved else None,
     }
 
 def resolve_positions_with_meta():
     """Use the durable private portfolio first; legacy secrets are fallback only."""
     position_doc, position_storage = load_positions()
+    if position_doc.get("broker_enabled") is True:
+        if position_storage.get("durable") is not True or position_doc.get("version", 0) <= 0:
+            raise RuntimeError("broker-enabled manual portfolio is not durable")
+        snapshot, status = load_broker_positions()
+        resolved = resolve_portfolio(position_doc, snapshot, status)
+        if resolved["status"] != "ok":
+            raise RuntimeError("broker inventory unavailable: " + str(resolved["broker_status"]["error_code"]))
+        return resolved["positions"], {
+            "source": "manual+shioaji", "version": position_doc.get("version"),
+            "updated_at": position_doc.get("updated_at"), "broker_enabled": True,
+            "broker_status": resolved["broker_status"],
+        }
     if position_storage.get("source") in ("github", "local") and position_doc.get("version", 0) > 0:
         return position_doc.get("positions", []), {
             "source": position_storage.get("source"), "version": position_doc.get("version"),

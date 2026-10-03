@@ -55,6 +55,41 @@ jobs:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
         run: python run_daily_value_state.py
 
+      - name: Read broker inventory (never replace manual portfolio)
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        continue-on-error: true
+        run: python run_broker_positions.py --fetch
+
+      - name: Save post-close market scanners (research only)
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        continue-on-error: true
+        run: python run_market_scanners.py
+
+      - name: Freeze changed decisions after fresh analysis
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python run_value_rescreen.py
+
+      - name: Update outcomes after fresh decisions
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        run: python run_ledger_outcomes.py
+
       - name: Send fresh, auditable daily digest
         env:
           EMAIL_ADDRESS: ${{ secrets.EMAIL_ADDRESS }}

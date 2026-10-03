@@ -129,14 +129,25 @@ def _shioaji_closes() -> dict[str, dict]:
     if not document:
         return {}
     trade_date = document.get("trade_date")
-    if not trade_date:
+    if not isinstance(trade_date, str):
+        return {}
+    try:
+        if datetime.fromisoformat(trade_date).date().isoformat() != trade_date:
+            return {}
+    except ValueError:
         return {}
     taipei_now = datetime.now(timezone(timedelta(hours=8)))
-    if trade_date == taipei_now.date().isoformat() and taipei_now.hour < 14:
+    today = taipei_now.date().isoformat()
+    if trade_date > today or (trade_date == today and taipei_now.hour < 14):
         return {}
 
     output: dict[str, dict] = {}
     for symbol, row in (document.get("snapshots") or {}).items():
+        if row.get("timestamp_status") in ("invalid", "future", "stale"):
+            continue
+        # Legacy rows lack a date; newer rows must agree with the batch label.
+        if "trade_date" in row and row["trade_date"] != trade_date:
+            continue
         close = _number(row.get("close"))
         if close is not None and close > 0:
             output[symbol] = {"date": trade_date, "close": close, "source": "Shioaji snapshots"}

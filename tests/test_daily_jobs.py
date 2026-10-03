@@ -210,7 +210,7 @@ class TestShioajiCloseOfRecord(unittest.TestCase):
         return {"trade_date": trade_date,
                 "snapshots": {"2330.TW": {"close": 2460.0}, "1513.TW": {"close": 166.0}}}
 
-    def _closes(self, trade_date, hour):
+    def _closes(self, trade_date, hour, rows=None):
         import company.screener.value_rescreen as rescreen
         from datetime import datetime as real_datetime, timedelta as td, timezone as tz
 
@@ -221,8 +221,11 @@ class TestShioajiCloseOfRecord(unittest.TestCase):
 
         with patch.object(rescreen, "load_document", create=True):
             pass
+        document = self._doc(trade_date)
+        if rows is not None:
+            document["snapshots"] = rows
         with patch("company.model.durable_document.load_document",
-                   return_value=(self._doc(trade_date), {})):
+                   return_value=(document, {})):
             with patch.object(rescreen, "datetime", FrozenNow):
                 return rescreen._shioaji_closes()
 
@@ -237,6 +240,37 @@ class TestShioajiCloseOfRecord(unittest.TestCase):
 
     def test_previous_session_is_always_acceptable(self) -> None:
         self.assertIn("2330.TW", self._closes("2026-09-19", hour=11))
+
+    def test_future_batch_is_rejected_even_for_legacy_rows(self) -> None:
+        self.assertEqual(self._closes("2026-09-23", hour=19), {})
+
+    def test_invalid_batch_date_is_rejected(self) -> None:
+        for day in (None, "", "2026-09-22T00:00:00", "2026-09-31"):
+            with self.subTest(day=day):
+                self.assertEqual(self._closes(day, hour=19), {})
+
+    def test_bad_row_timestamp_status_is_rejected(self) -> None:
+        for status in ("invalid", "future", "stale"):
+            with self.subTest(status=status):
+                rows = {"2330.TW": {"close": 2460.0, "trade_date": "2026-09-22",
+                                    "timestamp_status": status}}
+                self.assertEqual(self._closes("2026-09-22", hour=19, rows=rows), {})
+
+    def test_per_row_date_cannot_be_relabelled_with_batch_date(self) -> None:
+        rows = {"2330.TW": {"close": 2460.0, "trade_date": "2026-09-21", "timestamp_status": "valid"},
+                "1513.TW": {"close": 166.0, "trade_date": "2026-09-22", "timestamp_status": "valid"}}
+        closes = self._closes("2026-09-22", hour=19, rows=rows)
+        self.assertNotIn("2330.TW", closes)
+        self.assertEqual(closes["1513.TW"]["date"], "2026-09-22")
+
+    def test_explicit_null_row_date_is_not_a_legacy_missing_date(self) -> None:
+        rows = {"2330.TW": {"close": 2460.0, "trade_date": None}}
+        self.assertEqual(self._closes("2026-09-22", hour=19, rows=rows), {})
+
+    def test_valid_row_is_accepted_at_1400_but_not_before(self) -> None:
+        rows = {"2330.TW": {"close": 2460.0, "trade_date": "2026-09-22", "timestamp_status": "valid"}}
+        self.assertEqual(self._closes("2026-09-22", hour=13, rows=rows), {})
+        self.assertIn("2330.TW", self._closes("2026-09-22", hour=14, rows=rows))
 
     def test_missing_document_falls_back_quietly(self) -> None:
         import company.screener.value_rescreen as rescreen

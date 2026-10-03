@@ -64,5 +64,5 @@ def test_cloud_sync_reports_load_save_and_conflict_states_clearly():
 
     assert "已從雲端載入" in source
     assert "已更新雲端" in source
-    assert "雲端已有較新版本，已載入最新資料；請確認後再儲存" in source
+    assert "雲端已有較新版本，未覆蓋目前草稿" in source
     assert "不會靜默覆蓋較新的雲端資料" in html

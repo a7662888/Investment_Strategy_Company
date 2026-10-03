@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 # 模擬環境同樣回傳真實行情（實測與 Yahoo／TWSE 三方一致），
 # 但正式環境才是長期該用的；金鑰未勾「正式環境」時以此退路維持可用。
@@ -85,7 +85,25 @@ def _tick_pressure(tick_type: object) -> str | None:
     return None
 
 
-def normalize_snapshot(snapshot: object, symbol: str) -> dict:
+def snapshot_timestamp(ts: object, *, now: datetime | None = None,
+                       expected_date: str | None = None) -> dict:
+    """Validate epoch nanoseconds; retain the per-contract date, never a batch max."""
+    now = now or datetime.now(timezone.utc)
+    try:
+        if isinstance(ts, bool) or not isinstance(ts, int) or ts <= 0:
+            raise ValueError("invalid timestamp")
+        stamp = datetime.fromtimestamp(ts / 1_000_000_000, timezone.utc)
+    except (ValueError, TypeError, OverflowError, OSError):
+        return {"ts": None, "trade_date": None, "timestamp_status": "invalid"}
+    if stamp > now:
+        return {"ts": None, "trade_date": None, "timestamp_status": "future"}
+    day = stamp.astimezone(timezone(timedelta(hours=8))).date().isoformat()
+    status = "stale" if expected_date and day != expected_date else "valid"
+    return {"ts": ts if status == "valid" else None, "trade_date": day, "timestamp_status": status}
+
+
+def normalize_snapshot(snapshot: object, symbol: str, *, now: datetime | None = None,
+                       expected_date: str | None = None) -> dict:
     """把 Shioaji snapshot 轉成本系統欄位，並保留微結構欄位。"""
     def value(name):
         return getattr(snapshot, name, None)
@@ -114,12 +132,13 @@ def normalize_snapshot(snapshot: object, symbol: str) -> dict:
         "change_price": value("change_price"),
         "change_rate": value("change_rate"),
         "total_volume": value("total_volume"),
+        "total_amount": value("total_amount"),
         "volume_ratio": value("volume_ratio"),
         "bid": bid,
         "ask": ask,
         "spread_pct": spread_pct,
         "tick_pressure": _tick_pressure(value("tick_type")),
-        "ts": value("ts"),
+        **snapshot_timestamp(value("ts"), now=now, expected_date=expected_date),
         "source": "Shioaji snapshots",
     }
 

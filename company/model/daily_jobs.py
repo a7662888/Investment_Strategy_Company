@@ -37,14 +37,9 @@ PREMARKET_JOB = "premarket_brief"
 # 稍晚補跑仍然有效——隔夜海外收盤是既成事實，不會因為台股已開盤而改變。
 PREMARKET_FROM_MINUTES = 6 * 60
 
-# 盤後重評要做兩件事，分別由既有的兩個 workflow 承擔：
-#   email-daily.yml   → run_daily_value_state.py，重算「今日優質股與進場時機」
-#   value-rescreen.yml→ run_value_rescreen.py，母池重篩並在判定改變時凍新帳本卡
-# 本來想合併成一支不寄信的 daily-refresh.yml，但現用 PAT 無 workflow scope
-# （push 被 GitHub 拒絕），無法新增工作流檔；改為觸發既有兩支。
-# 影響：安全網啟動時會多寄一封每日摘要——而那正是當日排程漏掉的東西，
-# 因此語意上可接受；若日後 token 補上 workflow scope，可改回單一無寄信流程。
-POSTCLOSE_WORKFLOWS = ("email-daily.yml", "value-rescreen.yml")
+# The daily workflow orders snapshot, current-state, rescreen and outcomes.
+# Dispatching a second rescreen would race its fresh inputs.
+POSTCLOSE_WORKFLOWS = ("email-daily.yml",)
 
 # 單一 Render 實例，行程內鎖即足夠；實例重啟後以產物日期重新判斷，不會重複做完的事。
 _LOCK = threading.Lock()
