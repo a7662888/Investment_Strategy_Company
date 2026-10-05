@@ -14,10 +14,18 @@ def nanoseconds(text):
 
 class SnapshotNormalizerTests(unittest.TestCase):
     def test_turnover_is_total_amount_not_last_tick_amount(self):
-        snap = SimpleNamespace(close=100, average_price=99, amount=300,
+        snap = SimpleNamespace(close=100, average_price=99, amount=300, volume=3,
+                               total_volume=1234, yesterday_volume=1000,
+                               buy_price=99.5, buy_volume=12,
+                               sell_price=100.0, sell_volume=8,
                                total_amount=987654321, ts=nanoseconds("2026-10-02T13:30:00+08:00"))
         result = normalize_snapshot(snap, "1111.TW", now=NOW, expected_date="2026-10-02")
         self.assertEqual(result["total_amount"], 987654321)
+        self.assertEqual(result["last_amount"], 300)
+        self.assertEqual(result["last_volume"], 3)
+        self.assertEqual(result["yesterday_volume"], 1000)
+        self.assertEqual(result["bid_volume"], 12)
+        self.assertEqual(result["ask_volume"], 8)
         self.assertNotIn("amount", result)
         self.assertEqual(result["trade_date"], "2026-10-02")
         self.assertEqual(result["timestamp_status"], "valid")

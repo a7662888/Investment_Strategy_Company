@@ -3,9 +3,10 @@
 
 **使用政策（務必遵守）**：官方[使用限制]明列違規樣態為「盤中反覆輪詢 snapshots
 當作即時報價」，罰則是行情查詢回傳空值，反覆違規則 IP／ID 停權。
-本模組只在**盤後批次**執行一次：`snapshots()` 一次可取 500 檔，母池 100 檔
-只需 1 次查詢（實測 0.05 秒），距 10 秒 50 次的額度極遠。
-網站的盤中即時報價仍走 TWSE MIS（證交所官方即時源，無此限制）。
+本模組預設在**盤後批次**執行一次；也允許業主明確觸發單次盤中研究快照。
+`snapshots()` 一次可取 500 檔，母池 100 檔只需 1 次查詢（實測 0.05 秒）。
+網站不會因開頁而呼叫永豐，也不會排程盤中輪詢；較新的盤中價仍可由 TWSE MIS
+覆蓋。若未來需要連續即時資料，必須另建官方 `subscribe()` 推播服務。
 
 **為什麼值得接**：
 1. 同一來源同時提供當日與歷史，消除「Yahoo 與 TWSE OpenAPI 發布時間不同步」
@@ -131,11 +132,17 @@ def normalize_snapshot(snapshot: object, symbol: str, *, now: datetime | None = 
         "close_vs_vwap_pct": vwap_gap,
         "change_price": value("change_price"),
         "change_rate": value("change_rate"),
+        "change_type": str(value("change_type")) if value("change_type") is not None else None,
+        "last_volume": value("volume"),
         "total_volume": value("total_volume"),
+        "last_amount": value("amount"),
         "total_amount": value("total_amount"),
+        "yesterday_volume": value("yesterday_volume"),
         "volume_ratio": value("volume_ratio"),
         "bid": bid,
+        "bid_volume": value("buy_volume"),
         "ask": ask,
+        "ask_volume": value("sell_volume"),
         "spread_pct": spread_pct,
         "tick_pressure": _tick_pressure(value("tick_type")),
         **snapshot_timestamp(value("ts"), now=now, expected_date=expected_date),
@@ -148,7 +155,10 @@ def fetch_snapshots(api, symbols: list[str]) -> tuple[dict[str, dict], list[str]
     contracts, missing, by_code = [], [], {}
     for symbol in symbols:
         code = symbol.split(".")[0]
-        contract = api.Contracts.Stocks.get(code)
+        # `api.Contracts` 已 deprecated，而且部分合法代號會在分類字典 lookup 時
+        # 靜默回傳 None。官方通用 resolver 可同時處理上市／上櫃商品。
+        resolver = getattr(getattr(api, "contracts", None), "get", None)
+        contract = resolver(code) if callable(resolver) else api.Contracts.Stocks.get(code)
         if contract is None:
             missing.append(symbol)
             continue
@@ -168,17 +178,19 @@ def fetch_snapshots(api, symbols: list[str]) -> tuple[dict[str, dict], list[str]
 
 
 def build_document(snapshots: dict[str, dict], missing: list[str],
-                   simulation: bool, trade_date: str | None = None) -> dict:
+                   simulation: bool, trade_date: str | None = None,
+                   mode: str = "postclose") -> dict:
     return {
         "schema_version": 1,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "trade_date": trade_date,
+        "mode": mode,
         "simulation": bool(simulation),
         "count": len(snapshots),
         "missing": missing,
         "snapshots": snapshots,
         "policy": (
-            "盤後批次取一次；不得在盤中反覆輪詢 snapshots 當即時報價"
-            "（官方使用限制之違規樣態，罰則至 IP／ID 停權）。"
+            "盤後批次或業主明確觸發的盤中單次快照；網站不直接呼叫，且不得"
+            "反覆輪詢 snapshots 當即時報價（官方使用限制之違規樣態，罰則至 IP／ID 停權）。"
         ),
     }

@@ -88,6 +88,20 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
             "action": item.get("action"),
             "live_price": live,
             "quote_source": quote.get("source"),
+            "quote_time": quote.get("regularMarketTime"),
+            # Explicit whitelist: public market fields only.  This must never
+            # carry account ids, positions or credentials from broker payloads.
+            "market_context": {
+                key: (quote.get("marketContext") or {}).get(key)
+                for key in (
+                    "source", "timestamp", "tradeDate", "ageSeconds", "vwap",
+                    "closeVsVwapPct", "lastVolume", "totalVolume", "lastAmount",
+                    "totalAmount", "yesterdayVolume", "volumeRatio", "bidPrice",
+                    "bidVolume", "askPrice", "askVolume", "spreadPct",
+                    "tickPressure", "validatedForRanking",
+                )
+                if (quote.get("marketContext") or {}).get(key) is not None
+            },
             "close_price": item.get("price"),
             "entry_low": round(low, 2),
             "entry_high": round(high, 2),
@@ -123,8 +137,9 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
         },
         "items": items,
         "method": (
-            "盤中快訊 v1：品質硬篩、估值位階與買進區沿用盤後 value engine 輸出，"
-            "本層只做「即時價 × 既有買進區」的位置換算與排序，不新增判斷來源。"
+            "盤中快訊 v2：品質硬篩、估值位階與買進區沿用盤後 value engine 輸出；"
+            "永豐量價欄位僅作有時間戳的市場脈絡，本層只做「即時價 × 既有買進區」"
+            "的位置換算與排序，不新增判斷來源。"
         ),
         "disclaimer": (
             "盤中價未定案，本區為研究用 provisional 資訊；不寫入 Decision Ledger，"

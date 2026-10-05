@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""盤後以 Shioaji 取一次母池快照，寫入私有資料庫。
+"""以 Shioaji 取一次母池快照，寫入私有資料庫。
 
-只在 GitHub Actions 批次環境執行；網站本體不安裝 shioaji，維持零依賴。
+預設為盤後定稿；`SHIOAJI_SNAPSHOT_MODE=intraday` 僅供業主明確觸發的單次
+盤中研究快照，絕不由網站開頁或定時輪詢。網站本體不安裝 shioaji，維持零依賴。
 一次查詢即可涵蓋整個母池（snapshots 單次上限 500 檔），遠低於 10 秒 50 次的
 額度，不觸及「盤中反覆輪詢」的違規樣態。
 """
@@ -43,6 +44,9 @@ def pool_symbols() -> list[str]:
 
 def main() -> int:
     symbols = pool_symbols()
+    mode = (os.environ.get("SHIOAJI_SNAPSHOT_MODE") or "postclose").strip().lower()
+    if mode not in {"postclose", "intraday"}:
+        raise RuntimeError("SHIOAJI_SNAPSHOT_MODE must be postclose or intraday")
     api, simulation = connect_best_effort()
     if simulation:
         print("[warn] 金鑰無正式環境權限，改用模擬環境（行情為真實資料，但建議補勾權限）",
@@ -55,14 +59,14 @@ def main() -> int:
         except Exception:  # noqa: BLE001 - 登出失敗不影響已取得的資料
             pass
 
-    document = build_document(snapshots, missing, simulation, _trade_date(snapshots))
+    document = build_document(snapshots, missing, simulation, _trade_date(snapshots), mode=mode)
     trade_date = document["trade_date"]
 
     # 每日各存一份不可變的當日檔：量價訊號是否真的有預測力，必須靠累積的歷史
     # 用既有 outcome 框架驗證。只留「最新一份」等於永遠無法回測，這個決定
     # 要在第一天就做對——資料錯過就補不回來了。
     dated_storage = None
-    if trade_date:
+    if trade_date and mode == "postclose":
         dated_storage = save_document(
             document, LOCAL_DIR / f"{trade_date}.json", f"{REMOTE_DIR}/{trade_date}.json",
             f"chore(market): shioaji snapshot {trade_date}",
@@ -73,7 +77,7 @@ def main() -> int:
 
     print(json.dumps({
         "trade_date": trade_date, "count": document["count"],
-        "missing": missing, "simulation": simulation,
+        "missing": missing, "simulation": simulation, "mode": mode,
         "latest_storage": storage, "dated_storage": dated_storage,
     }, ensure_ascii=False, indent=2))
     return 0 if storage.get("local_saved") else 1
