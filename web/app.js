@@ -2159,6 +2159,7 @@ async function loadIntradayFlash(marketOpenNow = false) {
           ${item.monthly_revenue_yoy != null ? `月營收 YoY <strong>${Number(item.monthly_revenue_yoy) >= 0 ? "+" : ""}${Number(item.monthly_revenue_yoy).toFixed(1)}%</strong><br>` : ""}
           <span style="color:var(--muted);">${escapeHtml(item.decision || "")}</span>
         </div>
+        ${renderBrokerMarketContext(item.market_context, true)}
       </div>`).join("")
     + `</div>`;
 }
@@ -2195,6 +2196,31 @@ const BALANCE_LABEL = {
   firm: ["收在均價之上", "#0f766e"],
   soft: ["收在均價之下", "#b45309"],
 };
+
+function renderBrokerMarketContext(c, compact = false) {
+  if (!c || typeof c !== "object" || !Object.keys(c).length) return "";
+  const stamp = c.timestamp
+    ? new Intl.DateTimeFormat("zh-TW", {timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false})
+      .format(new Date(Number(c.timestamp) * 1000))
+    : "—";
+  const bidAsk = c.bidPrice != null || c.askPrice != null
+    ? `買 ${c.bidPrice == null ? "—" : Number(c.bidPrice).toFixed(2)}×${c.bidVolume == null ? "—" : Number(c.bidVolume).toLocaleString()}`
+      + `／賣 ${c.askPrice == null ? "—" : Number(c.askPrice).toFixed(2)}×${c.askVolume == null ? "—" : Number(c.askVolume).toLocaleString()}`
+    : null;
+  const metrics = [
+    c.vwap != null ? `均價 ${Number(c.vwap).toFixed(2)}` : null,
+    c.volumeRatio != null ? `量比 ${Number(c.volumeRatio).toFixed(2)}` : null,
+    c.totalVolume != null ? `成交 ${Number(c.totalVolume).toLocaleString()} 張` : null,
+    c.yesterdayVolume != null ? `昨量 ${Number(c.yesterdayVolume).toLocaleString()} 張` : null,
+    bidAsk,
+    c.spreadPct != null ? `價差 ${Number(c.spreadPct).toFixed(3)}%` : null,
+    !compact && c.totalAmount != null ? `成交值 ${(Number(c.totalAmount) / 1e8).toFixed(2)} 億` : null,
+  ].filter(Boolean);
+  if (!metrics.length) return "";
+  return `<div style="font-size:11.5px;color:#475569;margin-top:4px;line-height:1.55;">`
+    + `📡 永豐單次快照 ${escapeHtml(c.tradeDate || "")} ${escapeHtml(stamp)}｜${escapeHtml(metrics.join("｜"))}`
+    + `<br><span style="color:var(--muted);">已快取、非輪詢；量價脈絡尚未進入選股排序。</span></div>`;
+}
 
 function renderEntryEvidence(e) {
   if (!e) return "";
@@ -2236,7 +2262,7 @@ function renderDailyValuePanel() {
           .format(new Date(Number(live.regularMarketTime) * 1000))
         : "";
       const liveLine = dailyLiveMarketSession && live
-        ? `<p style="font-size:12px;color:#1d4ed8;margin:4px 0 0;">🔄 盤中參考 ${Number(live.regularMarketPrice).toFixed(2)}${liveTime ? `（${liveTime}）` : ""} · ${escapeHtml(live.source || "盤中報價")}；決策仍採正式收盤</p>`
+        ? `<p style="font-size:12px;color:#1d4ed8;margin:4px 0 0;">🔄 盤中參考 ${Number(live.regularMarketPrice).toFixed(2)}${liveTime ? `（${liveTime}）` : ""} · ${escapeHtml(live.source || "盤中報價")}；決策仍採正式收盤</p>${renderBrokerMarketContext(live.marketContext, true)}`
         : "";
       return `<article class="candidate" style="margin-bottom:8px;">
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">

@@ -35,7 +35,7 @@
         <div><strong>選股宇宙</strong><br>母池 100 檔 → 有完整季報者進品質覆蓋池 → 每日估值與時機排序</div>
         <div><strong>Action 光譜</strong><br>accumulate → watch → hold → avoid，附 entry_range 與 invalidation</div>
         <div><strong>三大支柱</strong><br>商業品質 · 估值百分位 · 價格時機；景氣股改用 PBR＋ROE 週期，避免低 PE 陷阱</div>
-        <div><strong>資料來源</strong><br>twstock 盤後日線 + Yahoo Finance · 離線計算 · 無 LLM 在線污染</div>
+        <div><strong>資料來源</strong><br>永豐 Shioaji 單次快照優先（量價脈絡）＋ TWSE／TPEx 盤中價＋ Yahoo 備援 · 無 LLM 在線污染</div>
         <div><strong>持久化</strong><br>每筆決策寫入 <code>decision_ledger.jsonl</code>，GitHub 遠端同步</div>
         <div><strong>單一決策責任</strong><br>只輸出 value-engine 最終動作；其他模型僅能提供可追溯的補充證據或反方風險</div>
         <div><strong>持倉 Exit Engine</strong><br>估值、基本面、趨勢、盈餘品質與集中度合計 100 分；缺資料降級，shadow 驗證前不自動下單</div>

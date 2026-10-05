@@ -597,15 +597,148 @@ def merge_live_quote_into_history(symbol: str, rows: list[dict]) -> list[dict]:
     return rows
 
 
+SHIOAJI_INTRADAY_MAX_AGE_SECONDS = 15 * 60
+SHIOAJI_COMPLETED_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+
+
+def _shioaji_market_context(snapshot: dict, *, now: datetime | None = None) -> dict | None:
+    """Convert the durable broker snapshot to public, non-account market context.
+
+    The snapshot file contains market data only.  Account ids, positions and API
+    credentials never enter this response.  During market hours a cached snapshot
+    is considered a primary price only for a short window; an older same-day row
+    may still be shown as timestamped context beside a newer TWSE MIS price.
+    """
+    if not isinstance(snapshot, dict) or snapshot.get("timestamp_status") != "valid":
+        return None
+    try:
+        epoch = int(snapshot.get("ts")) / 1_000_000_000
+        stamp = datetime.fromtimestamp(epoch, timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    moment = now or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    age = (moment.astimezone(timezone.utc) - stamp).total_seconds()
+    if age < -5:
+        return None
+    return {
+        "source": "永豐 Shioaji 單次快照",
+        "timestamp": int(epoch),
+        "tradeDate": snapshot.get("trade_date"),
+        "ageSeconds": max(0, round(age)),
+        "vwap": parse_float(snapshot.get("vwap")),
+        "closeVsVwapPct": parse_float(snapshot.get("close_vs_vwap_pct")),
+        "lastVolume": parse_float(snapshot.get("last_volume")),
+        "totalVolume": parse_float(snapshot.get("total_volume")),
+        "lastAmount": parse_float(snapshot.get("last_amount")),
+        "totalAmount": parse_float(snapshot.get("total_amount")),
+        "yesterdayVolume": parse_float(snapshot.get("yesterday_volume")),
+        "volumeRatio": parse_float(snapshot.get("volume_ratio")),
+        "bidPrice": parse_float(snapshot.get("bid")),
+        "bidVolume": parse_float(snapshot.get("bid_volume")),
+        "askPrice": parse_float(snapshot.get("ask")),
+        "askVolume": parse_float(snapshot.get("ask_volume")),
+        "spreadPct": parse_float(snapshot.get("spread_pct")),
+        "tickPressure": snapshot.get("tick_pressure"),
+        "validatedForRanking": False,
+    }
+
+
+def _shioaji_primary_quote(symbol: str, snapshot: dict, *, market_open: bool,
+                            now: datetime | None = None) -> dict | None:
+    context = _shioaji_market_context(snapshot, now=now)
+    close = parse_float(snapshot.get("close")) if context else None
+    if context is None or close is None:
+        return None
+    local_stamp = datetime.fromtimestamp(context["timestamp"], timezone(timedelta(hours=8)))
+    age = context["ageSeconds"]
+    if market_open:
+        if age > SHIOAJI_INTRADAY_MAX_AGE_SECONDS:
+            return None
+        status = "永豐單次快照（15 分鐘內；已快取，非輪詢）"
+    else:
+        # Same-day snapshots taken before the close are incomplete and must not
+        # become the official close once the market session has ended.
+        now_local = (now or datetime.now(timezone.utc)).astimezone(timezone(timedelta(hours=8)))
+        if age > SHIOAJI_COMPLETED_MAX_AGE_SECONDS:
+            return None
+        if local_stamp.date() == now_local.date() and (local_stamp.hour, local_stamp.minute) < (13, 30):
+            return None
+        status = "永豐盤後快照（已快取）"
+    code = symbol.split(".")[0]
+    return {
+        "symbol": symbol,
+        "shortName": NAME_MAP.get(code, symbol),
+        "regularMarketPrice": close,
+        "regularMarketChangePercent": parse_float(snapshot.get("change_rate")) or 0.0,
+        "regularMarketTime": context["timestamp"],
+        "marketDate": snapshot.get("trade_date"),
+        "marketTime": local_stamp.time().isoformat(timespec="seconds"),
+        "open": parse_float(snapshot.get("open")),
+        "dayHigh": parse_float(snapshot.get("high")),
+        "dayLow": parse_float(snapshot.get("low")),
+        "volume": parse_float(snapshot.get("total_volume")),
+        "source": "永豐 Shioaji",
+        "realtimeStatus": status,
+        "marketContext": context,
+    }
+
+
+def _attach_shioaji_context(quote: dict, snapshot: dict | None,
+                             *, now: datetime | None = None) -> dict:
+    context = _shioaji_market_context(snapshot or {}, now=now)
+    if context is None:
+        return quote
+    quote_date = iso_from_tw_date(quote.get("marketDate")) or quote.get("marketDate")
+    if quote_date != context.get("tradeDate"):
+        return quote
+    enriched = dict(quote)
+    enriched["marketContext"] = context
+    for key, value in {
+        "averagePrice": context.get("vwap"),
+        "volumeRatio": context.get("volumeRatio"),
+        "yesterdayVolume": context.get("yesterdayVolume"),
+        "bidPrice": context.get("bidPrice"),
+        "bidVolume": context.get("bidVolume"),
+        "askPrice": context.get("askPrice"),
+        "askVolume": context.get("askVolume"),
+        "spreadPct": context.get("spreadPct"),
+        "totalAmount": context.get("totalAmount"),
+    }.items():
+        if value is not None:
+            enriched[key] = value
+    if enriched.get("source") != "永豐 Shioaji":
+        enriched["realtimeStatus"] = (
+            f"{enriched.get('realtimeStatus') or '盤中報價'}；附永豐 {context['tradeDate']} 單次量價快照"
+        )
+    return enriched
+
+
 def fetch_quote(symbols: list[str]) -> dict:
     symbols = list(dict.fromkeys(
         symbol.strip().upper() for symbol in symbols
         if re.fullmatch(r"[A-Z0-9^.-]{1,20}", symbol.strip().upper())
     ))[:30]
     by_symbol: dict[str, dict] = {}
+    market_open = is_tw_market_session()
+    now = datetime.now(timezone.utc)
+    market_snapshots = load_market_snapshots()
+    shioaji_primary = 0
+    for symbol in symbols:
+        item = _shioaji_primary_quote(
+            symbol, market_snapshots.get(symbol) or {}, market_open=market_open, now=now,
+        )
+        if item:
+            by_symbol[symbol] = item
+            shioaji_primary += 1
+    record_provider_status(
+        "shioaji_snapshot_cache", "ok" if market_snapshots else "empty",
+        time.perf_counter(), rows=len(market_snapshots),
+    )
     started = time.perf_counter()
     try:
-        items = fetch_twse_mis_quotes(symbols)
+        items = fetch_twse_mis_quotes([symbol for symbol in symbols if symbol not in by_symbol])
         for item in items:
             by_symbol[item["symbol"]] = item
         record_provider_status("twse_mis", "ok" if items else "empty", started, rows=len(items))
@@ -613,7 +746,6 @@ def fetch_quote(symbols: list[str]) -> dict:
         record_provider_status("twse_mis", "failed", started, error=f"{type(exc).__name__}: {exc}")
 
     missing = [symbol for symbol in symbols if symbol not in by_symbol]
-    market_open = is_tw_market_session()
     if missing and not market_open:
         for item in fetch_official_daily_quotes(missing):
             by_symbol[item["symbol"]] = item
@@ -659,13 +791,18 @@ def fetch_quote(symbols: list[str]) -> dict:
     if missing:
         record_provider_status("yahoo_daily", "ok" if daily_count else "empty", started, rows=daily_count)
 
+    enriched = {
+        symbol: _attach_shioaji_context(item, market_snapshots.get(symbol), now=now)
+        for symbol, item in by_symbol.items()
+    }
     return {
-        "quoteResponse": {"result": [by_symbol[symbol] for symbol in symbols if symbol in by_symbol]},
+        "quoteResponse": {"result": [enriched[symbol] for symbol in symbols if symbol in enriched]},
         "marketSession": market_open,
         "fetchedAt": datetime.now(timezone.utc).isoformat(),
+        "shioajiPrimaryCount": shioaji_primary,
         "quotePolicy": (
-            "During market: TWSE/TPEx MIS, Yahoo 1m, official daily close, Yahoo fallbacks. "
-            "Outside market: TWSE/TPEx MIS, official daily close, Yahoo fallbacks."
+            "永豐 Shioaji 單次快照（盤中僅採 15 分鐘內快取）→ TWSE/TPEx MIS → "
+            "官方盤後資料 → Yahoo 備援；較舊的同日永豐資料只補均價、量比、昨量與買賣價量。"
         ),
     }
 
@@ -2954,6 +3091,8 @@ def cached_ohlc(symbol: str) -> list[dict]:
 
 _SHIOAJI_SNAPSHOT_LOCAL = PROJECT / "data" / "shioaji_snapshot.json"
 _SHIOAJI_SNAPSHOT_REMOTE = os.environ.get("SHIOAJI_SNAPSHOT_PATH", "market/shioaji_snapshot.json")
+_SHIOAJI_SNAPSHOT_CACHE: dict = {"at": 0.0, "rows": {}, "loaded": False}
+_SHIOAJI_SNAPSHOT_TTL = 60.0
 
 
 def load_market_snapshots() -> dict[str, dict]:
@@ -2962,18 +3101,26 @@ def load_market_snapshots() -> dict[str, dict]:
     網站本身不安裝 shioaji：資料由 Actions 批次寫入私有資料庫，這裡只讀。
     讀不到就回空字典——量價證據是加分項，缺了不該讓賣出時機整個失效。
     """
+    now = time.time()
+    cached = _SHIOAJI_SNAPSHOT_CACHE
+    if cached.get("loaded") and now - float(cached.get("at") or 0) < _SHIOAJI_SNAPSHOT_TTL:
+        return {symbol: dict(item) for symbol, item in cached["rows"].items()}
     try:
         from company.model.durable_document import load_document
 
         document, _ = load_document(_SHIOAJI_SNAPSHOT_LOCAL, _SHIOAJI_SNAPSHOT_REMOTE)
     except Exception as exc:  # noqa: BLE001
         print(f"[sell-timing] market snapshot unavailable: {exc}")
+        _SHIOAJI_SNAPSHOT_CACHE.update(at=now, rows={}, loaded=True)
         return {}
     if not document:
+        _SHIOAJI_SNAPSHOT_CACHE.update(at=now, rows={}, loaded=True)
         return {}
     trade_date = document.get("trade_date")
-    return {symbol: {**item, "trade_date": item.get("trade_date", trade_date)}
+    rows = {symbol: {**item, "trade_date": item.get("trade_date", trade_date)}
             for symbol, item in (document.get("snapshots") or {}).items()}
+    _SHIOAJI_SNAPSHOT_CACHE.update(at=now, rows=rows, loaded=True)
+    return {symbol: dict(item) for symbol, item in rows.items()}
 
 
 _PREMARKET_LOCAL = PROJECT / "data" / "premarket_brief.json"

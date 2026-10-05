@@ -5,9 +5,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Read-only account diagnosis or inventory/rankings refresh
+        description: Read-only account diagnosis, inventory/rankings refresh, or one market snapshot
         type: choice
-        options: [refresh, diagnose]
+        options: [market, refresh, diagnose]
         default: refresh
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
           SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
         run: python run_broker_positions.py --diagnose
       - name: Read private broker inventory
-        if: inputs.mode != 'diagnose'
+        if: inputs.mode == 'refresh'
         continue-on-error: true
         env:
           SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
@@ -44,7 +44,7 @@ jobs:
           GITHUB_DATA_BRANCH: main
         run: python run_broker_positions.py --fetch
       - name: Read last completed session rankings
-        if: inputs.mode != 'diagnose'
+        if: inputs.mode == 'refresh'
         env:
           SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
           SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
@@ -52,3 +52,13 @@ jobs:
           GITHUB_DATA_REPO: a7662888/investment-strategy-data
           GITHUB_DATA_BRANCH: main
         run: python run_market_scanners.py
+      - name: Save one broker market snapshot (no polling, no account data)
+        if: inputs.mode == 'market'
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+          SHIOAJI_SNAPSHOT_MODE: intraday
+        run: python run_shioaji_snapshot.py
