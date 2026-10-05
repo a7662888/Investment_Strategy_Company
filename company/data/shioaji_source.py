@@ -88,8 +88,17 @@ def _tick_pressure(tick_type: object) -> str | None:
 
 def snapshot_timestamp(ts: object, *, now: datetime | None = None,
                        expected_date: str | None = None) -> dict:
-    """Validate epoch nanoseconds; retain the per-contract date, never a batch max."""
+    """Validate nanoseconds; retain the per-contract date, never a batch max.
+
+    Shioaji 1.7.7 production stock snapshots may encode Taipei wall-clock time in
+    an integer that looks like a UTC epoch.  That puts a 14:30 Taipei snapshot
+    eight hours into the future if decoded as strict UTC.  Correct only this
+    unambiguous case: strict UTC is future, while interpreting the same wall
+    clock as Asia/Taipei is not.  Genuinely future timestamps stay rejected.
+    """
     now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
     try:
         if isinstance(ts, bool) or not isinstance(ts, int) or ts <= 0:
             raise ValueError("invalid timestamp")
@@ -97,7 +106,13 @@ def snapshot_timestamp(ts: object, *, now: datetime | None = None,
     except (ValueError, TypeError, OverflowError, OSError):
         return {"ts": None, "trade_date": None, "timestamp_status": "invalid"}
     if stamp > now:
-        return {"ts": None, "trade_date": None, "timestamp_status": "future"}
+        taipei = timezone(timedelta(hours=8))
+        wall_clock = stamp.replace(tzinfo=taipei).astimezone(timezone.utc)
+        if wall_clock <= now:
+            stamp = wall_clock
+            ts = int(stamp.timestamp() * 1_000_000_000)
+        else:
+            return {"ts": None, "trade_date": None, "timestamp_status": "future"}
     day = stamp.astimezone(timezone(timedelta(hours=8))).date().isoformat()
     status = "stale" if expected_date and day != expected_date else "valid"
     return {"ts": ts if status == "valid" else None, "trade_date": day, "timestamp_status": status}

@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from company.data.shioaji_source import normalize_snapshot, snapshot_timestamp
@@ -54,6 +54,15 @@ class SnapshotNormalizerTests(unittest.TestCase):
         result = snapshot_timestamp(nanoseconds("2026-10-05T13:30:00+08:00"), now=NOW)
         self.assertEqual(result["timestamp_status"], "future")
         self.assertIsNone(result["ts"])
+
+    def test_shioaji_taipei_wall_clock_integer_is_normalized(self):
+        # SDK 1.7.7 production example: 14:30 Taipei is encoded as though 14:30 UTC.
+        raw = int(datetime.fromisoformat("2026-10-02T14:30:00+00:00").timestamp()) * 1_000_000_000
+        result = snapshot_timestamp(raw, now=NOW, expected_date="2026-10-02")
+        self.assertEqual(result["timestamp_status"], "valid")
+        self.assertEqual(result["trade_date"], "2026-10-02")
+        corrected = datetime.fromtimestamp(result["ts"] / 1_000_000_000, timezone.utc)
+        self.assertEqual(corrected.isoformat(), "2026-10-02T06:30:00+00:00")
 
     def test_nanoseconds_are_converted_to_taipei_not_utc_date(self):
         result = snapshot_timestamp(nanoseconds("2026-10-01T23:00:00+00:00"), now=NOW)

@@ -43,21 +43,26 @@ def pool_symbols() -> list[str]:
 
 
 def main() -> int:
+    from run_broker_positions import _quiet_sdk
+
     symbols = pool_symbols()
     mode = (os.environ.get("SHIOAJI_SNAPSHOT_MODE") or "postclose").strip().lower()
     if mode not in {"postclose", "intraday"}:
         raise RuntimeError("SHIOAJI_SNAPSHOT_MODE must be postclose or intraday")
-    api, simulation = connect_best_effort()
+    # SDK native logs contain connection identifiers.  They are diagnostic data,
+    # not public build output, so suppress them exactly as the broker-inventory job does.
+    with _quiet_sdk():
+        api, simulation = connect_best_effort()
+        try:
+            snapshots, missing = fetch_snapshots(api, symbols)
+        finally:
+            try:
+                api.logout()
+            except Exception:  # noqa: BLE001 - 登出失敗不影響已取得的資料
+                pass
     if simulation:
         print("[warn] 金鑰無正式環境權限，改用模擬環境（行情為真實資料，但建議補勾權限）",
               file=sys.stderr)
-    try:
-        snapshots, missing = fetch_snapshots(api, symbols)
-    finally:
-        try:
-            api.logout()
-        except Exception:  # noqa: BLE001 - 登出失敗不影響已取得的資料
-            pass
 
     document = build_document(snapshots, missing, simulation, _trade_date(snapshots), mode=mode)
     trade_date = document["trade_date"]
