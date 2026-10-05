@@ -89,8 +89,19 @@ def _symbol(api, code) -> str:
     contracts = getattr(api, "contracts", None)
     if contracts is None:
         contracts = getattr(api, "Contracts", None)
+    # Shioaji's documented public lookup is ``api.contracts.get(code)``.
+    # Some SDK catalog builds do not expose every security through
+    # ``contracts.Stocks.get`` even though the generic lookup resolves it.
+    contract = None
+    lookup = getattr(contracts, "get", None)
+    if callable(lookup):
+        try:
+            contract = lookup(code)
+        except Exception:
+            contract = None
     stocks = getattr(contracts, "Stocks", None)
-    contract = stocks.get(code) if stocks is not None else None
+    if contract is None and stocks is not None:
+        contract = stocks.get(code)
     if contract is None or _value(contract, "code") != code:
         raise BrokerPositionsError("UNKNOWN_CONTRACT")
     suffix = {"TSE": ".TW", "OTC": ".TWO"}.get(_enum(_value(contract, "exchange")))

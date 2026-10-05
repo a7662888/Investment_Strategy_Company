@@ -138,6 +138,17 @@ class BrokerAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(broker.BrokerPositionsError, "UNSUPPORTED_EXCHANGE"):
             fetch(client)
 
+    def test_uses_documented_generic_contract_lookup_before_stock_catalog(self):
+        client = api()
+        contract = SimpleNamespace(code="1234", exchange="TSE")
+        client.contracts = SimpleNamespace(
+            get=Mock(return_value=contract),
+            Stocks={},
+        )
+        result = fetch(client)
+        client.contracts.get.assert_called_once_with("1234")
+        self.assertEqual(result["positions"], [{"symbol": "1234.TW", "shares": 3, "cost": 10.0}])
+
     def test_no_response_or_oversized_response_rejected(self):
         for value in (None, {}, "error", [row()] * (broker.MAX_ROWS + 1)):
             client = api()

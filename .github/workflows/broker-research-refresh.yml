@@ -2,7 +2,13 @@ name: Broker Research Refresh
 
 # Owner-requested read-only repair/bootstrap; scheduled updates remain in email-daily.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only account diagnosis or inventory/rankings refresh
+        type: choice
+        options: [refresh, diagnose]
+        default: refresh
 
 permissions:
   contents: read
@@ -21,7 +27,14 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install --quiet shioaji
+      - name: Read account metadata only (no inventory or storage writes)
+        if: inputs.mode == 'diagnose'
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+        run: python run_broker_positions.py --diagnose
       - name: Read private broker inventory
+        if: inputs.mode != 'diagnose'
         continue-on-error: true
         env:
           SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
@@ -31,6 +44,7 @@ jobs:
           GITHUB_DATA_BRANCH: main
         run: python run_broker_positions.py --fetch
       - name: Read last completed session rankings
+        if: inputs.mode != 'diagnose'
         env:
           SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
           SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
