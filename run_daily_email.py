@@ -176,6 +176,39 @@ def archive_daily_analysis(context, position_meta):
     return audit_id, saved
 
 
+def etf_screen_html(screen=..., position_symbols=()) -> str:
+    """ETF 研究候選的新進／退出與停扣檢查（含使用者持有的 ETF）。資料不可用時回空字串。"""
+    try:
+        from company.model.durable_document import load_document
+        from company.model.etf_screen import holding_checks
+
+        if screen is ...:
+            screen, _ = load_document(ROOT / "data" / "etf" / "screen_latest.json", "etf/screen_latest.json")
+        if not screen:
+            return ""
+        history, _ = load_document(ROOT / "data" / "etf" / "metrics_history.json", "etf/metrics_history.json")
+        held = [str(s).split(".")[0] for s in position_symbols if str(s).startswith("00")]
+        flags = {c["code"]: c.get("flags") or [] for c in screen.get("stop_checks") or []}
+        flags.update(holding_checks(screen, history or {}, held))
+    except Exception as exc:  # noqa: BLE001 - 這段失敗不能讓整封 Email 失敗
+        print(f"[email] ETF screen unavailable: {type(exc).__name__}")
+        return ""
+    names = {c["code"]: c.get("name", "") for c in screen.get("candidates") or []}
+    lines = []
+    if screen.get("new_entries"):
+        lines.append("<li><b>新進研究候選</b>：" + "、".join(f"{c} {names.get(c, '')}" for c in screen["new_entries"]) + "</li>")
+    if screen.get("exits"):
+        lines.append("<li><b>不再符合研究候選</b>：" + "、".join(screen["exits"]) + "</li>")
+    warned = {code: f for code, f in flags.items() if f}
+    for code, items in warned.items():
+        tag = "（持有）" if code in held else ""
+        lines.append(f"<li><b>建議檢查是否停扣 {code}{tag}</b>：{'；'.join(items)}</li>")
+    if not lines:
+        lines.append(f"<li>研究候選 {len(screen.get('candidates') or [])} 檔，名單與停扣檢查無變化。</li>")
+    return (f"<h3>🧺 ETF 研究候選與停扣檢查（{screen.get('trade_date', '')}）</h3><ul>{''.join(lines)}</ul>"
+            f"<p style='font-size:12px;color:#777'>{screen.get('disclaimer', '')}</p>")
+
+
 def build_html(positions, context=None, position_meta=None, audit_id=None):
     today = datetime.now(TAIPEI).date().isoformat()
     context = context or fetch_daily_context(positions)
@@ -307,6 +340,8 @@ def build_html(positions, context=None, position_meta=None, audit_id=None):
         for s in daily_etfs)
     etf_block = (f'<h3>🧺 ETF 子池狀態</h3><ul>{etf_html}</ul>' if etf_html else
                  '<h3>🧺 ETF 子池狀態</h3><p style="color:#777">ETF資料暫時無法取得。</p>')
+    etf_block += etf_screen_html(context.get("etf_screen", ...) if isinstance(context, dict) else ...,
+                                 [p["symbol"] for p in positions])
     avoid_html = "、".join(f"{s.get('name','')}{s.get('symbol','')}" for s in avoid) or "無"
     if agg:
         cells = ""

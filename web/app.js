@@ -1299,6 +1299,51 @@ loadDataFreshness();
 loadDailyValueState();
 loadDecisionLedger();
 runDailyJobs();
+loadEtfScreen();
+
+async function loadEtfScreen() {
+  const section = $("etfScreenSection"), panel = $("etfScreenPanel"), status = $("etfScreenStatus");
+  if (!section || !panel) return;
+  let d;
+  try {
+    const res = await fetch("/api/etf/screen", {cache: "no-store"});
+    if (!res.ok) { section.style.display = "none"; return; }
+    d = await res.json();
+  } catch (err) { section.style.display = "none"; return; }
+  section.style.display = "";
+  const cov = d.coverage || {};
+  if (status) status.textContent = `${d.trade_date || "—"} · 候選 ${asArray(d.candidates).length} 檔 · 成交值歷史 ${cov.amount_history_days || 0} 日`;
+  const num = (v, digits = 1) => v == null ? "—" : Number(v).toFixed(digits);
+  const byCode = Object.fromEntries(asArray(d.candidates).map(c => [c.code, c]));
+  const nameOf = code => byCode[code] ? `${code} ${byCode[code].name || ""}` : code;
+  const changes = (asArray(d.new_entries).length || asArray(d.exits).length)
+    ? `<p style="font-size:12.5px;margin:0 0 8px;">相較 ${escapeHtml(d.compared_with || "前次")}：`
+      + (asArray(d.new_entries).length ? `<b style="color:#137333;">新進研究候選</b> ${escapeHtml(asArray(d.new_entries).map(nameOf).join("、"))}　` : "")
+      + (asArray(d.exits).length ? `<b style="color:#b45309;">不再符合</b> ${escapeHtml(asArray(d.exits).join("、"))}` : "")
+      + `</p>`
+    : `<p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">${d.compared_with ? `相較 ${escapeHtml(d.compared_with)} 名單沒有變化。` : "首次篩選，之後每日盤後比較新進與退出。"}</p>`;
+  const checks = asArray(d.stop_checks).map(c => `<div style="padding:5px 0;border-top:1px dashed #ddd6fe;font-size:12.5px;">
+      <b>${escapeHtml(c.code)} ${escapeHtml(c.name || "")}</b>
+      <span style="color:var(--muted);">｜規模 ${num(c.aum_billion_twd, 0)} 億｜折溢價 ${num(c.premium_pct, 2)}%</span>
+      ${asArray(c.flags).length ? `<div style="color:#b91c1c;">⚠ 建議檢查是否停扣：${escapeHtml(asArray(c.flags).join("；"))}</div>`
+        : `<span style="color:#137333;">｜未觸發停扣檢查</span>`}
+      ${c.meets_candidate_criteria ? "" : `<div style="color:#b45309;">目前不符合研究候選條件</div>`}
+    </div>`).join("");
+  const groups = {};
+  asArray(d.candidates).forEach(c => (groups[c.category || "其他"] ||= []).push(c));
+  const table = Object.entries(groups).map(([cat, rows]) => `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">${escapeHtml(cat)}（${rows.length}）</summary>
+      <div style="overflow:auto;"><table><thead><tr><th>代號／名稱</th><th>規模（億）</th><th>20 日均成交值（億）</th><th>受益人數</th><th>上市年資</th><th>折溢價</th><th>費用</th></tr></thead><tbody>`
+      + rows.map(c => `<tr><td>${escapeHtml(c.code)} ${escapeHtml(c.name || "")}${c.in_subpool ? "（子軌）" : ""}${asArray(d.new_entries).includes(c.code) ? " 🆕" : ""}</td>
+        <td>${num(c.aum_billion_twd, 0)}</td><td>${num(c.avg_amount_billion_twd, 2)}${c.amount_days ? `（${c.amount_days} 日）` : ""}</td>
+        <td>${c.holders == null ? "—" : Number(c.holders).toLocaleString()}</td><td>${num(c.years_listed)}</td>
+        <td>${num(c.premium_pct, 2)}%</td><td>${escapeHtml(c.fee_status || "")}</td></tr>`).join("")
+      + `</tbody></table></div></details>`).join("");
+  panel.innerHTML = `${changes}
+    ${checks ? `<h3 style="font-size:14px;margin:8px 0 2px;">ETF 子軌停扣檢查</h3>${checks}` : ""}
+    <h3 style="font-size:14px;margin:12px 0 2px;">研究候選（依類別，類別內依受益人數）</h3>${table}
+    <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.6;">${escapeHtml(d.method || "")}<br>${escapeHtml(d.disclaimer || "")}
+      資料來源：${escapeHtml(Object.values(d.sources || {}).join("；"))}。</p>`;
+}
 
 async function loadUniverse() {
   try {
@@ -2227,6 +2272,8 @@ async function loadIntradayFlash(marketOpenNow = false) {
             盤中參考 <strong>${item.live_price != null ? Number(item.live_price).toFixed(2) : "—"}</strong>
             ${item.close_price != null ? `（前收 ${Number(item.close_price).toFixed(2)}）` : ""}<br>
             ${etfMaText(item.ma240, item.ma240_deviation_pct, item.ma240_band)}<br>
+            ${item.premium_pct != null ? `預估淨值 ${item.inav != null ? Number(item.inav).toFixed(2) : "—"}｜折溢價 ${Number(item.premium_pct) > 0 ? "+" : ""}${Number(item.premium_pct).toFixed(2)}%<br>` : ""}
+            ${item.premium_note ? `<span style="color:#b91c1c;font-weight:600;">⚠ ${escapeHtml(item.premium_note)}</span><br>` : ""}
             <span style="color:var(--muted);">${escapeHtml(item.decision || "")}</span>
           </div>
         </div>`).join("")

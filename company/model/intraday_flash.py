@@ -90,8 +90,21 @@ def _position(live: float | None, low: float, high: float) -> tuple[str, float |
     return "高於買進區，不追價", gap
 
 
+PREMIUM_ALERT_PCT = 1.0
+
+
+def premium_note(premium: float | None) -> str | None:
+    if premium is None:
+        return None
+    if premium > PREMIUM_ALERT_PCT:
+        return f"溢價 {premium:.2f}%：成交價高於預估淨值"
+    if premium < -PREMIUM_ALERT_PCT:
+        return f"折價 {abs(premium):.2f}%：成交價低於預估淨值"
+    return None
+
+
 def build_flash(state: dict, quotes: dict, now: datetime | None = None,
-                market_open: bool = True) -> dict:
+                market_open: bool = True, etf_nav: dict | None = None) -> dict:
     """產生盤中快訊文件。quotes 為 {symbol: quote} 的即時報價。"""
     from company.model.daily_jobs import taipei_now
 
@@ -152,6 +165,7 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
         live = quote.get("regularMarketPrice")
         live = round(float(live), 2) if live is not None else None
         deviation, band = etf_ma_position(live, item)
+        nav = (etf_nav or {}).get(str(symbol).split(".")[0]) or {}
         etf_items.append({
             "symbol": symbol,
             "name": item.get("name"),
@@ -164,6 +178,10 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
             "ma240": item.get("ma240"),
             "ma240_deviation_pct": deviation,
             "ma240_band": band,
+            "inav": nav.get("inav"),
+            "premium_pct": nav.get("premium_pct"),
+            "premium_time": nav.get("time"),
+            "premium_note": premium_note(nav.get("premium_pct")),
         })
     # 乖離由低到高：低於年線者排前面，但這只是閱讀順序，不是加碼訊號。
     etf_items.sort(key=lambda i: (i["ma240_deviation_pct"] is None, i["ma240_deviation_pct"] or 0))
@@ -188,7 +206,7 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
         "etf_items": etf_items,
         "etf_method": (
             "ETF 子軌 etf_dca v1：定期定額，不依盤中價位擇時；年線（240 日）乖離僅供參考，"
-            "不調整投入金額。未含即時淨值與折溢價。"
+            "不調整投入金額。預估淨值與折溢價來自證交所 MIS（發行人提供），|折溢價| > 1% 時提示。"
         ),
         "method": (
             "盤中快訊 v2：品質硬篩、估值位階與買進區沿用盤後 value engine 輸出；"
