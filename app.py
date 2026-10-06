@@ -3362,9 +3362,11 @@ def daily_refresh_status(trigger: bool = True) -> dict:
         jobs.finish(jobs.POSTCLOSE_JOB, today, ok, json.dumps(results, ensure_ascii=False))
         triggered["postclose_rescreen"] = {"workflows": results, "all_dispatched": ok}
 
-    if trigger and intraday_due and jobs.claim(jobs.INTRADAY_JOB, today):
-        jobs.run_in_background(jobs.INTRADAY_JOB, today, generate_intraday_flash)
-        triggered["intraday_flash"] = {"started": True}
+    intraday_slot = jobs.intraday_slot(now)
+    if trigger and intraday_due and jobs.claim(jobs.INTRADAY_JOB, intraday_slot,
+                                               stale_after_seconds=jobs.intraday_refresh_minutes() * 60):
+        jobs.run_in_background(jobs.INTRADAY_JOB, intraday_slot, generate_intraday_flash)
+        triggered["intraday_flash"] = {"started": True, "slot": intraday_slot}
 
     # 盤前簡報只打幾支 Yahoo 與 RSS，夠輕可就地產生，不必等 workflow 權限。
     if trigger and premarket_due and jobs.claim(jobs.PREMARKET_JOB, today):
@@ -3399,7 +3401,8 @@ def daily_refresh_status(trigger: bool = True) -> dict:
         "triggered": triggered,
         "policy": (
             "盤後母池重評每個交易日限一次（14:00 後，交由 GitHub Actions 執行）；"
-            "盤中研究快訊每個交易日限一次（09:00–13:30），為 provisional 不寫入決策帳本。"
+            f"盤中研究快訊於 09:00–13:30 每 {jobs.intraday_refresh_minutes()} 分鐘重算一次，"
+            "為 provisional 不寫入決策帳本。"
         ),
     }
 

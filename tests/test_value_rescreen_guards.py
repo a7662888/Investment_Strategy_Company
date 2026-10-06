@@ -124,6 +124,25 @@ class RescreenFreezeGuards(unittest.TestCase):
         rc, _ = self.invoke(stored={"durable": True, "invalid": [{"index": 0, "error": "test"}]})
         self.assertEqual(rc, 1)
 
+    def test_isolated_symbol_failure_is_partial_and_still_freezes_the_rest(self):
+        rows = [result(symbol=f"{2000 + i}.TW") for i in range(10)] + [result(symbol="1476.TW", as_of="2026-10-01")]
+        rc, freeze = self.invoke(rows)
+        self.assertEqual(rc, rescreen.EXIT_PARTIAL)
+        frozen = {signal["symbol"] for signal in freeze.call_args.args[0]}
+        self.assertNotIn("1476.TW", frozen)
+        self.assertEqual(len(frozen), 10)
+
+    def test_widespread_failure_stays_fatal(self):
+        rows = [result(symbol=f"{2000 + i}.TW") for i in range(8)] + [
+            result(symbol=f"{3000 + i}.TW", as_of="2026-10-01") for i in range(3)]
+        rc, _ = self.invoke(rows)
+        self.assertEqual(rc, 1)
+
+    def test_partial_failure_cannot_mask_a_failed_freeze(self):
+        rows = [result(symbol=f"{2000 + i}.TW") for i in range(10)] + [result(symbol="1476.TW", as_of="2026-10-01")]
+        rc, _ = self.invoke(rows, stored={"durable": False, "local_saved": True}, configured=True)
+        self.assertEqual(rc, 1)
+
     def test_dry_run_never_writes(self):
         rc, freeze = self.invoke(dry_run=True)
         self.assertEqual(rc, 0)

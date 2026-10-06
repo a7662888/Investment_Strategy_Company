@@ -259,16 +259,35 @@ def main() -> int:
     if errors:
         print(f"■ 取數失敗 {len(errors)} 檔：{'; '.join(errors)}")
 
+    error_code = _error_exit_code(len(errors), len(results))
     if not signals:
         print("\n無須更新帳本。")
-        return 1 if errors else 0
+        return error_code
     if args.dry_run:
         print(f"\n[dry-run] 將凍結 {len(signals)} 張新卡，未寫入。")
-        return 1 if errors else 0
+        return error_code
     res = ledger.freeze_signals(signals)
     print("\nfreeze:", json.dumps(res, ensure_ascii=False))
     saved = res.get("durable") if require_durable else (res.get("durable") or res.get("local_saved"))
-    return 0 if saved and not res.get("invalid") and not errors else 1
+    if not saved or res.get("invalid"):
+        return 1
+    return error_code
+
+
+# 部分取數失敗：失敗的檔沿用舊卡、其餘已正常處理。與「整批不可信」分開回報，
+# 讓 workflow 能繼續跑結果更新與每日 Email——實測 2026-10-06 僅 1476 一檔
+# cutoff_not_latest_completed，就讓帳本結果與 Email 兩步驟整天沒跑。
+EXIT_PARTIAL = 2
+PARTIAL_ERROR_RATIO = 0.10
+
+
+def _error_exit_code(error_count: int, total: int) -> int:
+    if not error_count:
+        return 0
+    if total > error_count and error_count <= max(1, int(total * PARTIAL_ERROR_RATIO)):
+        print(f"::warning::部分取數失敗 {error_count}/{total} 檔，失敗者維持原判定。")
+        return EXIT_PARTIAL
+    return 1
 
 
 if __name__ == "__main__":
