@@ -2019,6 +2019,11 @@ const REGIME_STYLE = {
   neutral: ["#3730a3", "隔夜平穩"],
 };
 
+function etfMaText(ma, deviation, band) {
+  if (ma == null || deviation == null) return escapeHtml(band || "年線資料不足");
+  return `年線 ${Number(ma).toFixed(2)}，乖離 ${Number(deviation) > 0 ? "+" : ""}${Number(deviation).toFixed(1)}%（${escapeHtml(band || "")}）`;
+}
+
 function renderActiveEtfDigest(digest) {
   const items = asArray(digest?.items).filter(item => item.comparison_status === "comparable");
   if (!items.length) return "";
@@ -2075,11 +2080,10 @@ async function loadPremarketBrief() {
   const etfRows = asArray(d.etf_watch).map(e => `<div style="padding:4px 0;border-top:1px dashed #c7d2fe;">
       <b>${escapeHtml(String(e.symbol).split(".")[0])} ${escapeHtml(e.name || "")}</b>
       <span style="color:var(--muted);">｜${escapeHtml(e.decision || "")}</span>
-      <span style="color:#475569;">｜收盤 ${e.price != null ? Number(e.price).toFixed(2) : "—"}，買進區 ${asArray(e.entry_range).map(v => Number(v).toFixed(2)).join("–")}
-        ${e.gap_to_range_pct != null ? `（距上緣 ${e.gap_to_range_pct > 0 ? "+" : ""}${Number(e.gap_to_range_pct).toFixed(1)}%）` : ""}</span>
+      <span style="color:#475569;">｜收盤 ${e.price != null ? Number(e.price).toFixed(2) : "—"}｜${etfMaText(e.ma240, e.ma240_deviation_pct, e.ma240_band)}</span>
     </div>`).join("");
   const etfBlock = etfRows ? `<div style="font-size:12.5px;margin-top:10px;">
-      <div style="font-weight:700;color:#3730a3;">ETF 子軌（盤後判定）</div>${etfRows}</div>` : "";
+      <div style="font-weight:700;color:#3730a3;">ETF 子軌（定期定額，年線僅供參考）</div>${etfRows}</div>` : "";
   const activeBlock = renderActiveEtfDigest(d.active_etf);
 
   const news = asArray(d.market_news).map(n =>
@@ -2213,17 +2217,16 @@ async function loadIntradayFlash(marketOpenNow = false) {
         ${renderBrokerMarketContext(item.market_context, true)}
       </div>`).join("")
     + `</div>`
-    + (etfItems.length ? `<h3 style="font-size:14px;color:#92400e;margin:14px 0 6px;">ETF 子軌</h3>
+    + (etfItems.length ? `<h3 style="font-size:14px;color:#92400e;margin:14px 0 6px;">ETF 子軌（定期定額）</h3>
       <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px;">`
       + etfItems.map(item => `
         <div style="background:#fff; border:1px solid #fcd34d; border-radius:8px; padding:10px 12px;">
-          <div style="font-size:11px; color:${tone(item.position)}; font-weight:700;">${escapeHtml(item.position || "")}</div>
+          <div style="font-size:11px; color:#475569; font-weight:700;">${escapeHtml(item.ma240_band || "")}</div>
           <h3 style="margin:4px 0 6px; font-size:16px;">${escapeHtml(String(item.symbol).split(".")[0])} ${escapeHtml(item.name || "")}</h3>
           <div style="font-size:13px; line-height:1.65; color:#334155;">
             盤中參考 <strong>${item.live_price != null ? Number(item.live_price).toFixed(2) : "—"}</strong>
             ${item.close_price != null ? `（前收 ${Number(item.close_price).toFixed(2)}）` : ""}<br>
-            買進區：<strong>${Number(item.entry_low).toFixed(2)}–${Number(item.entry_high).toFixed(2)}</strong>
-            ${item.gap_to_chase_pct != null ? `（距上緣 ${item.gap_to_chase_pct > 0 ? "+" : ""}${Number(item.gap_to_chase_pct).toFixed(1)}%）` : ""}<br>
+            ${etfMaText(item.ma240, item.ma240_deviation_pct, item.ma240_band)}<br>
             <span style="color:var(--muted);">${escapeHtml(item.decision || "")}</span>
           </div>
         </div>`).join("")
@@ -2335,7 +2338,7 @@ function renderDailyValuePanel() {
         <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}</span><span style="color:#0f766e;">${escapeHtml(item.decision)}</span>
       </strong>
       <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}${item.is_etf
-        ? (asArray(item.entry_range).length === 2 ? `｜買進區 ${asArray(item.entry_range).map(v => Number(v).toFixed(2)).join("–")}` : "")
+        ? (item.dca ? `｜${etfMaText(item.ma240, item.ma240_deviation_pct, item.ma240_band)}` : "")
         : `｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}`}${highDistance}</p>
       <p style="font-size:12px;color:var(--muted);margin:0;">${escapeHtml(asArray(item.reasons).slice(0, 2).join("；") || "—")}</p>
       ${liveLine}
@@ -2355,7 +2358,7 @@ function renderDailyValuePanel() {
       ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">今天沒有同時通過品質、估值與止跌條件的標的；保留現金也是結果。</p>`}
       ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}
       ${etfs.length ? `<h3 style="font-size:14px;margin:14px 0 4px;">ETF 子軌（${etfs.length}）</h3>
-        <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">ETF 不過個股品質硬篩；判定依近一年還原權值價位階，買進區為第 20–40 百分位。指數型 ETF 在多頭期間會長時間落在高位階。更多 ETF 見 <a href="/etf.html">ETF 研究室</a>。</p>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">ETF 子軌採定期定額：每月固定投入，不依價位擇時；年線乖離只當市場位置參考。回測（2008–2026）顯示舊的百分位擇時規則落後定期定額，年線加權投入也未勝出。更多 ETF 見 <a href="/etf.html">ETF 研究室</a>。</p>
         ${etfs.map(card).join("")}` : ""}`;
     renderMyHoldings();
 }

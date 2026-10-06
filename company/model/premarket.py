@@ -65,23 +65,21 @@ def build_watchlist(state: dict, news_by_symbol: dict[str, list[dict]] | None = 
 
 
 def build_etf_watch(state: dict) -> list[dict]:
-    """ETF 子軌帶進盤前：盤後判定＋收盤相對買進區的位置。不改判定、不排序。"""
-    from company.model.intraday_flash import _entry_bounds, _position, select_etf_candidates
+    """ETF 子軌帶進盤前：盤後判定（定期定額）＋收盤相對年線。不改判定、不排序。"""
+    from company.model.intraday_flash import etf_ma_position, select_etf_candidates
 
     rows = []
     for item in select_etf_candidates(state):
-        low, high = _entry_bounds(item)
         close = item.get("price")
-        position, gap = _position(float(close) if close is not None else None, low, high)
+        deviation, band = etf_ma_position(close, item)
         rows.append({
             "symbol": item.get("symbol"),
             "name": item.get("name"),
             "decision": item.get("decision"),
             "price": close,
-            "entry_range": [round(low, 2), round(high, 2)],
-            "valuation_pct": item.get("valuation_pct"),
-            "position": position.replace("無即時報價", "無收盤價"),
-            "gap_to_range_pct": round(gap, 2) if gap is not None else None,
+            "ma240": item.get("ma240"),
+            "ma240_deviation_pct": deviation,
+            "ma240_band": band.replace("無即時報價", "無收盤價"),
             "entry_evidence": item.get("entry_evidence"),
         })
     return rows

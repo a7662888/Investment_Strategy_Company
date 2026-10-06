@@ -38,6 +38,9 @@ def _current_fundamentals() -> dict:
 
 VALUE_AGENTS = ("claude-value", "claude-etf-subtrack")
 MV = "tw_value_method v2.2 / weekly-rescreen"
+# ETF 子軌 2026-10-07 起改為定期定額（回測見 docs/etf_dca_backtest_20261007.md）。
+ETF_MV = "etf_dca v1 / weekly-rescreen"
+ETF_INVALIDATION = "單一 ETF 配置超過 40%、基金規模持續萎縮或追蹤指數方法變更"
 
 
 def _rank(e: dict) -> tuple[str, str]:
@@ -239,11 +242,12 @@ def main() -> int:
         signals.append({
             "market_context": context,
             "agent_id": (old or {}).get("agent_id") or ("claude-etf-subtrack" if r.get("is_etf") else "claude-value"),
-            "model_version": MV, "symbol": sym, "name": r.get("name"),
+            "model_version": ETF_MV if r.get("is_etf") else MV, "symbol": sym, "name": r.get("name"),
             "data_cutoff": r["as_of"], "action": new_action, "horizon": "120D",
             "reference_price": price, "entry_range": new_er,
             "stop_loss": None, "target": (old or {}).get("target"),
-            "invalidation": (old or {}).get("invalidation") or "品質硬篩條件轉負 或 估值回到自身歷史高位",
+            "invalidation": (ETF_INVALIDATION if r.get("is_etf") else
+                             (old or {}).get("invalidation") or "品質硬篩條件轉負 或 估值回到自身歷史高位"),
             "grade": (old or {}).get("grade"), "evidence": ev,
             "market_risk": (old or {}).get("market_risk") or "",
             "data_quality": {"valuation": "high", "fundamentals": "medium",

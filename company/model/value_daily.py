@@ -56,7 +56,15 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     if chase_risk:
         score -= 20.0
     action = result.get("action")
-    if result.get("error") or result.get("data_incomplete") or pct is None:
+    is_dca_etf = bool(result.get("is_etf") and result.get("dca"))
+    if is_dca_etf:
+        # ETF 子軌改為定期定額：沒有估值百分位，位置只用年線乖離描述。
+        valuation_zone = result.get("ma240_band") or "年線資料不足"
+    if result.get("error") or result.get("data_incomplete"):
+        decision = "資料不足"
+    elif is_dca_etf:
+        decision = "定期定額"
+    elif pct is None:
         decision = "資料不足"
     elif not quality_pass or action == "avoid":
         decision = "排除／賣出檢查"
@@ -90,6 +98,8 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
         "price_pct_252": result.get("price_pct_252"), "chase_risk": chase_risk,
         "rank_score": round(score, 2), "reasons": list(result.get("reasons") or []),
         "failed": list(result.get("failed") or []), "is_etf": bool(result.get("is_etf")),
+        "dca": is_dca_etf, "ma240": result.get("ma240"),
+        "ma240_deviation_pct": result.get("ma240_deviation_pct"), "ma240_band": result.get("ma240_band"),
         "fundamental_trend": result.get("fundamental_trend") or {},
         # 逐項來源時間戳需一併帶到前端；_daily_item 是白名單式輸出，未列即遺失。
         "data_provenance": result.get("data_provenance") or {},
@@ -148,7 +158,8 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
         "evaluations": items,
         "method": (
             "tw_value_method v2.3：母池→季度品質硬篩→近3年估值百分位"
-            "→20/60日趨勢＋高檔追價閘門；持倉另用100分Exit Engine，缺值降級且不自動下單"
+            "→20/60日趨勢＋高檔追價閘門；持倉另用100分Exit Engine，缺值降級且不自動下單。"
+            "ETF 子軌 etf_dca v1：定期定額，年線乖離僅供參考"
         ),
     }
 
@@ -184,6 +195,11 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
             if weight is not None and weight > 0.40:
                 action = "配置過高，減碼再平衡檢查"
                 reasons.append(f"此 ETF 約占目前輸入持股 {weight * 100:.1f}%，超過單一標的 40% 風控線")
+            elif item.get("dca"):
+                action = "定期定額續扣"
+                reasons.append("ETF 採定期定額，不依價位擇時加碼或停扣；只在配置失衡時再平衡")
+                if item.get("ma240_deviation_pct") is not None:
+                    reasons.append(f"年線乖離 {float(item['ma240_deviation_pct']):+.1f}%（{item.get('ma240_band')}），僅供參考")
             elif item.get("valuation_pct") is not None and item["valuation_pct"] <= 40 and item.get("trend") != "下跌趨勢":
                 action = "可小額分批追加"
                 reasons.append("ETF 位階偏低且趨勢未惡化；仍須遵守資產配置上限")
