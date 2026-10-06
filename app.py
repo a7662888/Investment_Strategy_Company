@@ -3334,8 +3334,18 @@ def generate_intraday_flash() -> str:
         for quote in (payload.get("quoteResponse") or {}).get("result", []):
             quotes[quote["symbol"]] = quote
 
+    # ETF 預估淨值與折溢價：一次讀取 MIS 全部 ETF，失敗不影響快訊本身。
+    etf_nav: dict[str, dict] = {}
+    try:
+        from company.data.etf_market import MIS_URL, _get_json, parse_mis
+
+        etf_nav = parse_mis(_get_json(MIS_URL, timeout=15))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[flash] ETF NAV unavailable: {exc}")
+
     moment = taipei_now()
-    document = build_flash(state, quotes, now=moment, market_open=in_market_session(moment))
+    document = build_flash(state, quotes, now=moment, market_open=in_market_session(moment),
+                           etf_nav=etf_nav)
     saved = save_document(
         document, _FLASH_LOCAL, _FLASH_REMOTE,
         f"chore(flash): intraday research note {document['date']}",
@@ -3483,6 +3493,15 @@ class Handler(SimpleHTTPRequestHandler):
                         self.send_json(etf_research.quotes(query.get('codes', [''])[0], fetch_quote))
                     elif parsed.path == '/api/etf/holdings':
                         self.send_json(etf_research.holdings(query.get('code', [''])[0].upper()))
+                    elif parsed.path == '/api/etf/screen':
+                        from company.model.durable_document import load_document
+                        doc, storage = load_document(PROJECT / "data" / "etf" / "screen_latest.json",
+                                                     "etf/screen_latest.json")
+                        if doc is None:
+                            self.send_json({"error": "ETF 篩選尚未產生（每日盤後批次）", "storage": storage},
+                                           HTTPStatus.NOT_FOUND)
+                        else:
+                            self.send_json({**doc, "storage": storage})
                     else:
                         self.send_json({'error': 'unknown ETF research endpoint'}, HTTPStatus.NOT_FOUND)
                 except ValueError as exc:

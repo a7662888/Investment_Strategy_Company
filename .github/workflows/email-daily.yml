@@ -55,6 +55,18 @@ jobs:
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
         run: python run_daily_value_state.py
 
+      # ETF 規模／資金流／折溢價（證交所 MIS）＋同日成交值與價差（永豐快照）→
+      # 研究候選與停扣檢查。失敗不得擋住每日 Email。
+      - name: ETF metrics and research screen
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        continue-on-error: true
+        run: python run_etf_metrics.py
+
       - name: Read broker inventory (never replace manual portfolio)
         env:
           SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}

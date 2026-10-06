@@ -128,6 +128,15 @@
       <div id="dailyValuePanel"><p style="color:var(--muted); font-size:13px;">正在讀取每日選股結果…</p></div>
     </section>
 
+    <!-- ETF 研究候選與停扣檢查：每日盤後批次（run_etf_metrics.py） -->
+    <section class="panel" id="etfScreenSection" style="border:2px solid #7c3aed; background:rgba(124,58,237,0.02); display:none;">
+      <div class="sectionHead">
+        <h2 style="color:#6d28d9; margin:0; display:flex; align-items:center; gap:8px;"><span>🧺</span> ETF 研究候選與停扣檢查</h2>
+        <span id="etfScreenStatus" class="pill" style="font-size:12px;">載入中…</span>
+      </div>
+      <div id="etfScreenPanel"></div>
+    </section>
+
     <section class="panel">
       <div class="sectionHead"><h2>每日分析紀錄</h2><span id="dailyHistoryStatus" class="pill">載入中</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">
