@@ -1,0 +1,83 @@
+{
+  "00985D": {
+    "management_fee": "- 淨資產價值於新臺幣100億元(含)以下: 0.55%;- 淨資產價值於100億元~200億元(含) : 0.50%;- 淨資產價值於超過新臺幣200億元 : 0.45%",
+    "custody_fee": "- 新台幣300億元(含)以下 :0.12%/年;- 新台幣300億(不含)以上：0.08%/年",
+    "distribution": "每月",
+    "fee_source": "https://www.tpex.org.tw/www/zh-tw/ETF/detail?type=active&code=00985D&response=json",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  },
+  "00411A": {
+    "management_fee": "100億元(含)以下1.4%；逾100億元部分1.2%",
+    "custody_fee": "0.155%",
+    "distribution": "每年",
+    "fee_source": "https://www.tpex.org.tw/www/zh-tw/ETF/detail?type=active&code=00411A&response=json",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  },
+  "00986D": {
+    "management_fee": "最高為0.70%",
+    "custody_fee": "最高為0.100%",
+    "distribution": "每月底",
+    "fee_source": "https://www.fhtrust.com.tw/api/fundList?ec001=3",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  },
+  "00987D": {
+    "management_fee": "200億元(含)以下0.8%；逾200億元部分0.7%",
+    "custody_fee": "200億元(含)以下0.1%；逾200億元部分0.08%",
+    "distribution": "每季",
+    "fee_source": "https://www.tpex.org.tw/www/zh-tw/ETF/detail?type=active&code=00987D&response=json",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  },
+  "00980D": {
+    "management_fee": "新台幣300億元(含)以下 :0.65%/年;新台幣300億(不含)以上：0.60%/年",
+    "custody_fee": "新台幣300億元(含)以下 :0.12%/年;新台幣300億(不含)以上：0.08%/年",
+    "distribution": "每月",
+    "fee_source": "https://www.tpex.org.tw/www/zh-tw/ETF/detail?type=active&code=00980D&response=json",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  },
+  "00998A": {
+    "management_fee": "最高為1.20%",
+    "custody_fee": "最高為0.140%",
+    "distribution": "每年2、5、8、11月底",
+    "fee_source": "https://www.fhtrust.com.tw/api/fundList?ec001=3",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  },
+  "00981D": {
+    "management_fee": "基金規模新臺幣100億(含)以下：0.75%；新臺幣100億(不含)-200億(含)：0.70%；新臺幣200億(不含)以上：0.65%",
+    "custody_fee": "基金規模新臺幣100億(含)以下：0.10%；新臺幣100億(不含)-200億(含)：0.08%；新臺幣200億(不含)以上：0.06%",
+    "distribution": "每月",
+    "fee_source": "https://www.tpex.org.tw/www/zh-tw/ETF/detail?type=active&code=00981D&response=json",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  },
+  "00409A": {
+    "management_fee": "最高為1.40%",
+    "custody_fee": "最高為0.140%",
+    "distribution": "基金成立日起屆滿60日後，預計以10月底為評價日",
+    "fee_source": "https://www.fhtrust.com.tw/api/fundList?ec001=3",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  },
+  "00991A": {
+    "management_fee": "最高為1.00%",
+    "custody_fee": "最高為0.040%",
+    "distribution": "每年6、12月底",
+    "fee_source": "https://www.fhtrust.com.tw/api/fundList?ec001=3",
+    "fee_as_of": null,
+    "fee_fetched_at": "2026-10-06T21:03:52+08:00",
+    "fee_status": "官方商品規格原文快照，未提供資料基準日；非實際總費用率"
+  }
+}

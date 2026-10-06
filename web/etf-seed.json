@@ -1,0 +1,1096 @@
+{
+  "version": 1,
+  "video": {
+    "url": "https://www.youtube.com/watch?v=olg_JkfFUDU",
+    "title": "超高配息很開心但三件事情不能忘記",
+    "duration_seconds": 1359,
+    "transcript_status": "unavailable_youtube_http_403",
+    "chapters": [
+      {
+        "at": "00:00",
+        "topic": "00913績效與成分結構"
+      },
+      {
+        "at": "05:00",
+        "topic": "主動ETF績效比較"
+      },
+      {
+        "at": "07:43",
+        "topic": "六大台50績效追蹤"
+      },
+      {
+        "at": "11:40",
+        "topic": "配息提醒"
+      },
+      {
+        "at": "16:00",
+        "topic": "0050與ETF人氣"
+      },
+      {
+        "at": "20:05",
+        "topic": "新掛牌ETF"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "title": "台股國民ETF人氣榜(2026年10月)",
+      "as_of": "2026-10-02",
+      "status": "使用者提供之柴鼠圖表，數值為轉錄而非官方重算"
+    },
+    {
+      "title": "台股國際ETF人氣榜(2026年10月)",
+      "as_of": "2026-10-02",
+      "status": "使用者提供之柴鼠圖表，數值為轉錄而非官方重算"
+    },
+    {
+      "title": "國民債券ETF人氣榜(2026年10月)",
+      "as_of": "2026-10-02",
+      "status": "使用者提供之柴鼠圖表，數值為轉錄而非官方重算"
+    },
+    {
+      "title": "台股國民ETF績效榜(2026年9月)",
+      "as_of": "2026-09-30",
+      "status": "使用者提供之柴鼠圖表，數值為轉錄而非官方重算"
+    },
+    {
+      "title": "ETF 2026年10月除息1001",
+      "as_of": "2026-10-01",
+      "status": "使用者提供之柴鼠圖表，數值為轉錄而非官方重算"
+    }
+  ],
+  "rows": [
+    {
+      "code": "0050",
+      "name": "元大台灣50",
+      "market": "tw",
+      "popularity_rank": 1,
+      "aum_billion_twd": 2505.2799999999997,
+      "holders": 3557229,
+      "holders_month_change": 13398,
+      "tsmc_weight_pct": 56.3,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 73.25,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00878",
+      "name": "國泰永續高股息",
+      "market": "tw",
+      "popularity_rank": 2,
+      "aum_billion_twd": 657.1800000000001,
+      "holders": 1681374,
+      "holders_month_change": 9761,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 70.38,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "0056",
+      "name": "元大高股息",
+      "market": "tw",
+      "popularity_rank": 3,
+      "aum_billion_twd": 808.95,
+      "holders": 1678875,
+      "holders_month_change": 14837,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 63.81,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": {
+        "cash_per_unit": 1.72,
+        "ex_date": "2026-10-22",
+        "payment_date": "2026-11-11",
+        "simple_annualized_pct": 12.1,
+        "trailing_cash_yield_pct": 8.68
+      }
+    },
+    {
+      "code": "00919",
+      "name": "群益台灣精選高息",
+      "market": "tw",
+      "popularity_rank": 4,
+      "aum_billion_twd": 608.6,
+      "holders": 1484028,
+      "holders_month_change": 108734,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 55.18,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00981A",
+      "name": "主動統一台股增長",
+      "market": "tw",
+      "popularity_rank": 5,
+      "aum_billion_twd": 292.85,
+      "holders": 931551,
+      "holders_month_change": -51545,
+      "tsmc_weight_pct": 9.8,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 90.48,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "009816",
+      "name": "凱基台灣TOP50",
+      "market": "tw",
+      "popularity_rank": 6,
+      "aum_billion_twd": 202.94,
+      "holders": 929404,
+      "holders_month_change": 13124,
+      "tsmc_weight_pct": 40.5,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 64.9,
+        "as_of": "2026-09-30",
+        "start_date": "listing_date",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00403A",
+      "name": "主動統一升級50",
+      "market": "tw",
+      "popularity_rank": 7,
+      "aum_billion_twd": 146.29000000000002,
+      "holders": 816720,
+      "holders_month_change": -153242,
+      "tsmc_weight_pct": 13.2,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 7.9,
+        "as_of": "2026-09-30",
+        "start_date": "listing_date",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "006208",
+      "name": "富邦台50",
+      "market": "tw",
+      "popularity_rank": 8,
+      "aum_billion_twd": 480.98,
+      "holders": 712535,
+      "holders_month_change": -1227,
+      "tsmc_weight_pct": 56.3,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 73.92,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00929",
+      "name": "復華台灣科技優息",
+      "market": "tw",
+      "popularity_rank": 9,
+      "aum_billion_twd": 158.41,
+      "holders": 460115,
+      "holders_month_change": 16367,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 73.33,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": {
+        "cash_per_unit": 0.38,
+        "ex_date": "2026-10-21",
+        "payment_date": "2026-11-16",
+        "simple_annualized_pct": 15.41,
+        "trailing_cash_yield_pct": 8.55
+      }
+    },
+    {
+      "code": "0052",
+      "name": "富邦科技",
+      "market": "tw",
+      "popularity_rank": 10,
+      "aum_billion_twd": 167.81,
+      "holders": 453219,
+      "holders_month_change": -7757,
+      "tsmc_weight_pct": 62.8,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 75.9,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00881",
+      "name": "國泰台灣科技龍頭",
+      "market": "tw",
+      "popularity_rank": 11,
+      "aum_billion_twd": 157.44,
+      "holders": 403686,
+      "holders_month_change": -3486,
+      "tsmc_weight_pct": 38.2,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 82.25,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00918",
+      "name": "大華優利高填息30",
+      "market": "tw",
+      "popularity_rank": 12,
+      "aum_billion_twd": 160.70999999999998,
+      "holders": 383350,
+      "holders_month_change": 114396,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 65.94,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00991A",
+      "name": "主動復華未來50",
+      "market": "tw",
+      "popularity_rank": 13,
+      "aum_billion_twd": 80.58,
+      "holders": 326145,
+      "holders_month_change": -13166,
+      "tsmc_weight_pct": 13.0,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 79.27,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00940",
+      "name": "元大台灣價值高息",
+      "market": "tw",
+      "popularity_rank": 14,
+      "aum_billion_twd": 66.97999999999999,
+      "holders": 310893,
+      "holders_month_change": -7857,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 46.33,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": {
+        "cash_per_unit": 0.055,
+        "ex_date": "2026-10-07",
+        "payment_date": "2026-11-02",
+        "simple_annualized_pct": 5.01,
+        "trailing_cash_yield_pct": 4.32
+      }
+    },
+    {
+      "code": "00713",
+      "name": "元大台灣高息低波",
+      "market": "tw",
+      "popularity_rank": 15,
+      "aum_billion_twd": 107.72,
+      "holders": 271093,
+      "holders_month_change": 1399,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 30.62,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00406A",
+      "name": "主動中信台灣收益",
+      "market": "tw",
+      "popularity_rank": 16,
+      "aum_billion_twd": 63.05,
+      "holders": 221095,
+      "holders_month_change": 128274,
+      "tsmc_weight_pct": 9.4,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 1.76,
+        "as_of": "2026-09-30",
+        "start_date": "listing_date",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": {
+        "cash_per_unit": 0.138,
+        "ex_date": "2026-10-05",
+        "payment_date": "2026-11-02",
+        "simple_annualized_pct": 16.56,
+        "trailing_cash_yield_pct": 16.16
+      }
+    },
+    {
+      "code": "00891",
+      "name": "中信關鍵半導體",
+      "market": "tw",
+      "popularity_rank": 17,
+      "aum_billion_twd": 70.49,
+      "holders": 189749,
+      "holders_month_change": -2864,
+      "tsmc_weight_pct": 39.0,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 105.81,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00922",
+      "name": "國泰台灣領袖50",
+      "market": "tw",
+      "popularity_rank": 18,
+      "aum_billion_twd": 98.69,
+      "holders": 188254,
+      "holders_month_change": 150,
+      "tsmc_weight_pct": 40.6,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 76.25,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": {
+        "cash_per_unit": 2.11,
+        "ex_date": "2026-10-19",
+        "payment_date": "2026-11-12",
+        "simple_annualized_pct": 9.58,
+        "trailing_cash_yield_pct": 9.35
+      }
+    },
+    {
+      "code": "00982A",
+      "name": "主動群益台灣強棒",
+      "market": "tw",
+      "popularity_rank": 19,
+      "aum_billion_twd": 51.81,
+      "holders": 176502,
+      "holders_month_change": -6687,
+      "tsmc_weight_pct": 8.7,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 69.25,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": null
+    },
+    {
+      "code": "00992A",
+      "name": "主動群益科技創新",
+      "market": "tw",
+      "popularity_rank": 20,
+      "aum_billion_twd": 43.21,
+      "holders": 173876,
+      "holders_month_change": -7858,
+      "tsmc_weight_pct": 6.5,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "performance": {
+        "return_pct": 84.95,
+        "as_of": "2026-09-30",
+        "start_date": "2025-12-31",
+        "basis": "圖表收盤價變動加期間現金配息，非含息再投資；上市未滿一年不得年化",
+        "verification": "reported_user_chart"
+      },
+      "dividend": {
+        "cash_per_unit": 0.85,
+        "ex_date": "2026-10-19",
+        "payment_date": "2026-11-13",
+        "simple_annualized_pct": 17.88,
+        "trailing_cash_yield_pct": 13.88
+      }
+    },
+    {
+      "code": "00988A",
+      "name": "主動統一全球創新",
+      "market": "global",
+      "popularity_rank": 1,
+      "aum_billion_twd": 53.58,
+      "holders": 225913,
+      "holders_month_change": -12543,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00830",
+      "name": "國泰費城半導體",
+      "market": "global",
+      "popularity_rank": 2,
+      "aum_billion_twd": 78.86,
+      "holders": 177851,
+      "holders_month_change": -1686,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00712",
+      "name": "復華富時不動產",
+      "market": "global",
+      "popularity_rank": 3,
+      "aum_billion_twd": 46.35,
+      "holders": 149459,
+      "holders_month_change": 13632,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00990A",
+      "name": "主動元大AI新經濟",
+      "market": "global",
+      "popularity_rank": 4,
+      "aum_billion_twd": 38.38,
+      "holders": 119077,
+      "holders_month_change": -5103,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00646",
+      "name": "元大S&P500",
+      "market": "global",
+      "popularity_rank": 5,
+      "aum_billion_twd": 49.72,
+      "holders": 114872,
+      "holders_month_change": 3243,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00662",
+      "name": "富邦NASDAQ",
+      "market": "global",
+      "popularity_rank": 6,
+      "aum_billion_twd": 116.47,
+      "holders": 111526,
+      "holders_month_change": 2911,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00882",
+      "name": "中信中國高股息",
+      "market": "global",
+      "popularity_rank": 7,
+      "aum_billion_twd": 29.55,
+      "holders": 82832,
+      "holders_month_change": -663,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00757",
+      "name": "統一FANG+",
+      "market": "global",
+      "popularity_rank": 8,
+      "aum_billion_twd": 38.230000000000004,
+      "holders": 67459,
+      "holders_month_change": -1304,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00997A",
+      "name": "主動群益美國增長",
+      "market": "global",
+      "popularity_rank": 9,
+      "aum_billion_twd": 13.01,
+      "holders": 65292,
+      "holders_month_change": -4819,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "009826",
+      "name": "貝萊德世界股票",
+      "market": "global",
+      "popularity_rank": 10,
+      "aum_billion_twd": 8.540000000000001,
+      "holders": 62114,
+      "holders_month_change": 7428,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "009828",
+      "name": "中信台日韓PCB",
+      "market": "global",
+      "popularity_rank": 11,
+      "aum_billion_twd": 8.49,
+      "holders": 56735,
+      "holders_month_change": 56735,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00893",
+      "name": "國泰智能電動車",
+      "market": "global",
+      "popularity_rank": 12,
+      "aum_billion_twd": 16.259999999999998,
+      "holders": 56048,
+      "holders_month_change": -1225,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "009821",
+      "name": "野村林上關鍵資源",
+      "market": "global",
+      "popularity_rank": 13,
+      "aum_billion_twd": 7.18,
+      "holders": 55738,
+      "holders_month_change": -97,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00924",
+      "name": "復華S&P500成長",
+      "market": "global",
+      "popularity_rank": 14,
+      "aum_billion_twd": 14.7,
+      "holders": 54875,
+      "holders_month_change": 371,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "009805",
+      "name": "台新美國電力基建",
+      "market": "global",
+      "popularity_rank": 15,
+      "aum_billion_twd": 9.2,
+      "holders": 54596,
+      "holders_month_change": 2,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": {
+        "cash_per_unit": 0.3,
+        "ex_date": "2026-10-16",
+        "payment_date": "2026-11-13",
+        "simple_annualized_pct": 8.03,
+        "trailing_cash_yield_pct": 5.35
+      }
+    },
+    {
+      "code": "009819",
+      "name": "中信數據及電力",
+      "market": "global",
+      "popularity_rank": 16,
+      "aum_billion_twd": 5.84,
+      "holders": 51098,
+      "holders_month_change": -878,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00885",
+      "name": "富邦越南",
+      "market": "global",
+      "popularity_rank": 17,
+      "aum_billion_twd": 10.5,
+      "holders": 48138,
+      "holders_month_change": -1008,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00941",
+      "name": "中信上游半導體",
+      "market": "global",
+      "popularity_rank": 18,
+      "aum_billion_twd": 1.94,
+      "holders": 46509,
+      "holders_month_change": -1282,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00409A",
+      "name": "主動復華全球50",
+      "market": "global",
+      "popularity_rank": 19,
+      "aum_billion_twd": 15.530000000000001,
+      "holders": 45845,
+      "holders_month_change": 45845,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "009824",
+      "name": "群益美國科技巨頭",
+      "market": "global",
+      "popularity_rank": 20,
+      "aum_billion_twd": 5.0,
+      "holders": 43522,
+      "holders_month_change": -5070,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00679B",
+      "name": "元大美債20年",
+      "market": "bond",
+      "popularity_rank": 1,
+      "aum_billion_twd": 535.5,
+      "holders": 232860,
+      "holders_month_change": -1852,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00937B",
+      "name": "群益ESG投等債20+",
+      "market": "bond",
+      "popularity_rank": 2,
+      "aum_billion_twd": 236.26,
+      "holders": 211248,
+      "holders_month_change": -1914,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00687B",
+      "name": "國泰20年美債",
+      "market": "bond",
+      "popularity_rank": 3,
+      "aum_billion_twd": 209.9,
+      "holders": 151884,
+      "holders_month_change": -1346,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00933B",
+      "name": "國泰10Y+金融債",
+      "market": "bond",
+      "popularity_rank": 4,
+      "aum_billion_twd": 102.08,
+      "holders": 78013,
+      "holders_month_change": -663,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00720B",
+      "name": "元大投資級公司債",
+      "market": "bond",
+      "popularity_rank": 5,
+      "aum_billion_twd": 175.19,
+      "holders": 77412,
+      "holders_month_change": -979,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00751B",
+      "name": "元大AAA至A公司債",
+      "market": "bond",
+      "popularity_rank": 6,
+      "aum_billion_twd": 155.19,
+      "holders": 67150,
+      "holders_month_change": -102,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00953B",
+      "name": "群益優選非投等債",
+      "market": "bond",
+      "popularity_rank": 7,
+      "aum_billion_twd": 44.980000000000004,
+      "holders": 52822,
+      "holders_month_change": 3133,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00725B",
+      "name": "國泰投資級公司債",
+      "market": "bond",
+      "popularity_rank": 8,
+      "aum_billion_twd": 152.55,
+      "holders": 41143,
+      "holders_month_change": -367,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00772B",
+      "name": "中信高評級公司債",
+      "market": "bond",
+      "popularity_rank": 9,
+      "aum_billion_twd": 106.44000000000001,
+      "holders": 40444,
+      "holders_month_change": -440,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00795B",
+      "name": "中信美國公債20年",
+      "market": "bond",
+      "popularity_rank": 10,
+      "aum_billion_twd": 37.96,
+      "holders": 37143,
+      "holders_month_change": -422,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00931B",
+      "name": "統一美債20年",
+      "market": "bond",
+      "popularity_rank": 11,
+      "aum_billion_twd": 27.97,
+      "holders": 33574,
+      "holders_month_change": -343,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00948B",
+      "name": "中信優息投資級債",
+      "market": "bond",
+      "popularity_rank": 12,
+      "aum_billion_twd": 37.44,
+      "holders": 26544,
+      "holders_month_change": -413,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00945B",
+      "name": "凱基美國非投等債",
+      "market": "bond",
+      "popularity_rank": 13,
+      "aum_billion_twd": 12.01,
+      "holders": 18651,
+      "holders_month_change": 21,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00981B",
+      "name": "第一金優選非投債",
+      "market": "bond",
+      "popularity_rank": 14,
+      "aum_billion_twd": 14.2,
+      "holders": 16688,
+      "holders_month_change": 516,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00984D",
+      "name": "主動聯博全球非投",
+      "market": "bond",
+      "popularity_rank": 15,
+      "aum_billion_twd": 11.879999999999999,
+      "holders": 15718,
+      "holders_month_change": 2530,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00857B",
+      "name": "永豐20年美公債",
+      "market": "bond",
+      "popularity_rank": 16,
+      "aum_billion_twd": 12.790000000000001,
+      "holders": 15636,
+      "holders_month_change": -226,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00719B",
+      "name": "元大美債1-3",
+      "market": "bond",
+      "popularity_rank": 17,
+      "aum_billion_twd": 9.959999999999999,
+      "holders": 15055,
+      "holders_month_change": 655,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00722B",
+      "name": "群益投資級電信債",
+      "market": "bond",
+      "popularity_rank": 18,
+      "aum_billion_twd": 48.21,
+      "holders": 13493,
+      "holders_month_change": -47,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00950B",
+      "name": "凱基A級公司債",
+      "market": "bond",
+      "popularity_rank": 19,
+      "aum_billion_twd": 53.9,
+      "holders": 12098,
+      "holders_month_change": -215,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00696B",
+      "name": "富邦美債20年",
+      "market": "bond",
+      "popularity_rank": 20,
+      "aum_billion_twd": 16.86,
+      "holders": 10951,
+      "holders_month_change": 5,
+      "tsmc_weight_pct": null,
+      "ranking_as_of": "2026-10-02",
+      "ranking_status": "reported_user_chart",
+      "dividend": null
+    },
+    {
+      "code": "00985A",
+      "dividend": {
+        "cash_per_unit": 2.15,
+        "ex_date": "2026-10-19",
+        "payment_date": "2026-11-13",
+        "simple_annualized_pct": 18.06,
+        "trailing_cash_yield_pct": 18.06
+      }
+    },
+    {
+      "code": "00400A",
+      "dividend": {
+        "cash_per_unit": 0.12,
+        "ex_date": "2026-10-08",
+        "payment_date": "2026-11-05",
+        "simple_annualized_pct": 9.23,
+        "trailing_cash_yield_pct": 9.23
+      }
+    },
+    {
+      "code": "00401A",
+      "dividend": {
+        "cash_per_unit": 0.131,
+        "ex_date": "2026-10-15",
+        "payment_date": "2026-11-05",
+        "simple_annualized_pct": 11.02,
+        "trailing_cash_yield_pct": 10.58
+      }
+    },
+    {
+      "code": "00984A",
+      "dividend": {
+        "cash_per_unit": 0.473,
+        "ex_date": "2026-10-19",
+        "payment_date": "2026-11-13",
+        "simple_annualized_pct": 12.07,
+        "trailing_cash_yield_pct": 8.44
+      }
+    },
+    {
+      "code": "00995A",
+      "dividend": {
+        "cash_per_unit": 0.5,
+        "ex_date": "2026-10-19",
+        "payment_date": "2026-11-13",
+        "simple_annualized_pct": 11.18,
+        "trailing_cash_yield_pct": 11.18
+      }
+    },
+    {
+      "code": "00996A",
+      "dividend": {
+        "cash_per_unit": 0.73,
+        "ex_date": "2026-10-19",
+        "payment_date": "2026-11-16",
+        "simple_annualized_pct": 19.92,
+        "trailing_cash_yield_pct": 19.92
+      }
+    },
+    {
+      "code": "00408A",
+      "dividend": {
+        "cash_per_unit": 0.21,
+        "ex_date": "2026-10-21",
+        "payment_date": "2026-11-13",
+        "simple_annualized_pct": 7.96,
+        "trailing_cash_yield_pct": 7.96
+      }
+    }
+  ]
+}

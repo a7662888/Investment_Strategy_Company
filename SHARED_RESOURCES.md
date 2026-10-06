@@ -1,5 +1,14 @@
 # Shared Resources
 
+## ETF research candidate — 2026-10-06 (Codex)
+
+- Candidate branch: `codex/etf-research-20261006`; no commit/push/deployment yet.
+- Public module: `etf_research.py`; UI `/etf.html`; GET endpoints `/api/etf/catalog`, `/api/etf/quotes?codes=...` (at most 20 whitelisted ETF codes), `/api/etf/holdings?code=...`.
+- Public-only fallback snapshots: `web/etf-*.json` (fund specs, aggregate TDCC counts, issuer portfolios). Never use these files for personal positions or broker inventory.
+- Current runtime refresh: basics/holdings 30 minutes, TDCC six hours, quotes 60 seconds; reads are triggered by the visible page/API, not an unattended cloud schedule. Official historical endpoints supply previous holdings.
+- Sources: TWSE `t187ap47_L`, TPEx `/api/etfFilter` + active product list, TDCC `1-5` class 17; issuer holdings from Ezmoney, FH, AB and Yuanta. Exact URLs and date interpretation: `D:\secondbrain\協作工程\20260623_Stock\work\codex\etf-20261006\official-sources.md`.
+- User-confirmed 2026-10-06 requirement: reuse Shioaji public market snapshots and Yahoo Finance; `.TWO` for OTC Yahoo products, while retaining canonical logical symbols in the existing app.
+
 Canonical shared resource file for Antigravity, Claude Code, and Codex working on this app.
 
 協作守則見 [`COLLABORATION.md`](COLLABORATION.md);三方非同步留言/交接見 [`AGENT_LOG.md`](AGENT_LOG.md)。

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="追蹤台股、海外與債券ETF受益人排行、基本資料及主動式ETF官方持股異動。">
+  <title>ETF 研究室 · 一人投資策略公司</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/etf.css">
+  <script src="/etf.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#rankings">跳至 ETF 排行</a>
+  <header class="site-header"><a class="brand" href="/">一人投資策略公司 <span>RESEARCH</span></a><nav aria-label="主要導覽"><a href="/">價值大腦</a><a href="#rankings">人氣排行</a><a href="#active">主動持股</a></nav></header>
+  <main>
+    <section class="hero">
+      <div><p class="eyebrow">ETF RESEARCH / 持續追蹤</p><h1>選擇 ETF，<br>先看懂它。</h1><p class="hero-copy">從受益人排行找到研究入口，從完整持股看清配置。台股、海外、債券與主動策略，各有一套需要核對的問題。</p><div class="hero-links"><a href="#rankings" class="primary">探索前 20 大 <span aria-hidden="true">↗</span></a><a href="#guides">找我的研究方向 →</a></div></div>
+      <aside class="hero-note"><span class="note-icon" aria-hidden="true">◎</span><p class="eyebrow">人氣之外，多看一步</p><h2>配息 ≠ 總報酬<br>持股異動 ≠ 成交紀錄</h2><p>分類名單是研究候選；費用、含息績效與風險仍須比較。資料缺口保留 NA，讓每個數字都有來處。</p></aside>
+    </section>
+    <div class="stats" aria-label="資料概況"><div><span>受益人資料基準日</span><strong id="rankingDate">載入中</strong></div><div><span>收錄 ETF</span><strong id="catalogCount">—</strong></div><div><span>主動 ETF 官方持股串接</span><strong id="activeCoverage">—</strong></div><div><span>行情更新</span><strong>每 60 秒</strong><small>頁面可見時；依來源可能延遲</small></div></div>
+    <p id="pageStatus" class="status" role="status" aria-live="polite">正在讀取官方基本資料與集保週資料…</p>
+
+    <section id="rankings" class="section">
+      <div class="section-heading"><div><p class="eyebrow">01 / POPULARITY</p><h2>三類 ETF 前 20 大</h2></div><button id="refreshCatalog" type="button">更新排行與基本資料 ↻</button></div>
+      <p id="rankingBasis" class="intro">受益人數採集保週資料；人氣不代表預期報酬或投資適合度。</p>
+      <div class="tabs" role="tablist" aria-label="ETF 市場"><button id="tabTw" type="button" role="tab" aria-selected="true" aria-controls="rankingPanel" data-market="tw">台股 ETF</button><button id="tabGlobal" type="button" role="tab" aria-selected="false" aria-controls="rankingPanel" data-market="global" tabindex="-1">海外 ETF</button><button id="tabBond" type="button" role="tab" aria-selected="false" aria-controls="rankingPanel" data-market="bond" tabindex="-1">債券 ETF</button></div>
+      <div id="rankingPanel" role="tabpanel" aria-labelledby="tabTw" class="panel"><p class="table-hint">← 左右滑動，查看行情與來源 →</p><div class="table-scroll" tabindex="0" aria-label="ETF 排行表，可左右捲動"><table><caption class="visually-hidden">依同一期受益人數排列的各類前 20 大 ETF</caption><thead><tr><th scope="col">排名</th><th scope="col">ETF / 研究類別</th><th scope="col" class="numeric">受益人數</th><th scope="col" class="numeric">市價（元）</th><th scope="col" class="numeric">漲跌幅</th><th scope="col">行情時間 / 來源</th></tr></thead><tbody id="rankingRows"></tbody></table></div><p id="quoteStatus" class="panel-foot" aria-live="polite">行情尚未取得。</p></div>
+      <div id="fundDetail" class="detail panel" aria-live="polite"><p>點選 ETF 名稱，查看基本資料、圖表績效與配息資訊。</p></div>
+      <p id="scopeNote" class="fineprint"></p>
+    </section>
+
+    <section id="guides" class="section"><div class="section-heading"><div><p class="eyebrow">02 / RESEARCH DIRECTIONS</p><h2>依目的，建立候選名單</h2></div><span class="badge">研究候選 · 非買賣判定</span></div><p class="intro">先選需求，再比較風險。候選取同類已取得受益人資料的 ETF，不以短期報酬冠軍推論未來。</p><div id="guideCards" class="guide-grid"></div></section>
+
+    <section id="active" class="section"><div class="section-heading"><div><p class="eyebrow">03 / ACTIVE PORTFOLIOS</p><h2>主動 ETF：配置如何改變？</h2></div><span class="badge">官方快照 · 每 30 分鐘重讀</span></div><p class="intro">逐項核對完整已揭露部位、權重與數量變化。申贖與公司行動也會改變股數，沒有逐筆交易資料就無法宣稱實際買賣比例。</p><div class="holdings-controls"><label for="activeSelect">選擇主動 ETF</label><select id="activeSelect"><option value="">載入中…</option></select><button id="refreshHoldings" type="button">更新持股 ↻</button></div><div id="holdingsStatus" class="status" role="status" aria-live="polite">請選擇主動 ETF。</div><div id="holdingsPanel"></div></section>
+
+    <section id="sources" class="section sources"><div class="section-heading"><div><p class="eyebrow">04 / EVIDENCE & LIMITS</p><h2>來源與判讀邊界</h2></div></div><div class="source-grid"><div><h3>公開資料來源</h3><ul id="sourceList"></ul><p class="fineprint">受益人基準日、基金持股基準日、PCF 適用日、行情時間及本頁取得時間分開標示。未提供公告日的來源顯示 NA。</p></div><div><h3>影片與使用者圖表</h3><div id="videoSource"></div><ul id="chartSources"></ul><p class="fineprint">使用者圖表為歷史轉錄值；尚未官方重算的績效、規模與配息資料保留明確標記，不取代即時資訊。</p></div></div><p id="disclosure" class="disclosure"></p></section>
+  </main>
+  <footer><span>一人投資策略公司 / ETF 研究室</span><a href="/">返回價值大腦 ↗</a></footer>
+</body>
+</html>

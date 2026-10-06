@@ -715,7 +715,17 @@ def _attach_shioaji_context(quote: dict, snapshot: dict | None,
     return enriched
 
 
-def fetch_quote(symbols: list[str]) -> dict:
+def fetch_quote(symbols: list[str], *, yahoo_symbol_map: dict[str, str] | None = None) -> dict:
+    yahoo_map = yahoo_symbol_map or {}
+    def mapped_yahoo(fetcher, requested):
+        reverse = {yahoo_map.get(symbol, symbol): symbol for symbol in requested}
+        results = fetcher(list(reverse))
+        for item in results:
+            provider_symbol = item.get('symbol')
+            if provider_symbol in reverse:
+                item['symbol'] = reverse[provider_symbol]
+                item['providerSymbol'] = provider_symbol
+        return results
     symbols = list(dict.fromkeys(
         symbol.strip().upper() for symbol in symbols
         if re.fullmatch(r"[A-Z0-9^.-]{1,20}", symbol.strip().upper())
@@ -754,7 +764,7 @@ def fetch_quote(symbols: list[str]) -> dict:
     if missing:
         started = time.perf_counter()
         try:
-            items = fetch_yahoo_intraday_quotes(missing)
+            items = mapped_yahoo(fetch_yahoo_intraday_quotes, missing)
             for item in items:
                 by_symbol[item["symbol"]] = item
             record_provider_status("yahoo_intraday", "ok" if items else "empty", started, rows=len(items))
@@ -770,7 +780,7 @@ def fetch_quote(symbols: list[str]) -> dict:
     if missing:
         started = time.perf_counter()
         try:
-            items = fetch_yahoo_quotes(missing)
+            items = mapped_yahoo(fetch_yahoo_quotes, missing)
             for item in items:
                 by_symbol[item["symbol"]] = item
             record_provider_status("yahoo_quote", "ok" if items else "empty", started, rows=len(items))
@@ -782,8 +792,10 @@ def fetch_quote(symbols: list[str]) -> dict:
     started = time.perf_counter()
     for symbol in missing:
         try:
-            item = fetch_history_quote(symbol)
+            item = fetch_history_quote(yahoo_map.get(symbol, symbol))
             if item:
+                item['providerSymbol'] = yahoo_map.get(symbol, symbol)
+                item['symbol'] = symbol
                 by_symbol[symbol] = item
                 daily_count += 1
         except Exception:
@@ -3449,6 +3461,20 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         query = urllib.parse.parse_qs(parsed.query)
         try:
+            if parsed.path.startswith('/api/etf/'):
+                import etf_research
+                try:
+                    if parsed.path == '/api/etf/catalog':
+                        self.send_json(etf_research.catalog())
+                    elif parsed.path == '/api/etf/quotes':
+                        self.send_json(etf_research.quotes(query.get('codes', [''])[0], fetch_quote))
+                    elif parsed.path == '/api/etf/holdings':
+                        self.send_json(etf_research.holdings(query.get('code', [''])[0].upper()))
+                    else:
+                        self.send_json({'error': 'unknown ETF research endpoint'}, HTTPStatus.NOT_FOUND)
+                except ValueError as exc:
+                    self.send_json({'error': str(exc)}, HTTPStatus.BAD_REQUEST)
+                return
             if parsed.path in self.RETIRED_GET_ENDPOINTS:
                 self.send_json(
                     {
