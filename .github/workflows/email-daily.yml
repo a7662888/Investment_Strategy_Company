@@ -81,7 +81,10 @@ jobs:
           GITHUB_DATA_REPO: a7662888/investment-strategy-data
           GITHUB_DATA_BRANCH: main
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
-        run: python run_value_rescreen.py
+        # exit 2 = 少數檔取數失敗（沿用舊卡），其餘正常；不擋後續結果更新與 Email。
+        run: |
+          rc=0; python run_value_rescreen.py || rc=$?
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then exit "$rc"; fi
 
       - name: Update outcomes after fresh decisions
         env:

@@ -2071,6 +2071,9 @@ async function loadPremarketBrief() {
   if (note) note.textContent = `${d.discipline || ""} ${d.disclaimer || ""}`;
 }
 
+const DAILY_JOBS_INTERVAL_MS = 5 * 60 * 1000;
+let dailyJobsTimer = null;
+
 async function runDailyJobs() {
   try {
     const data = await readJson(await fetch("/api/daily-refresh"));
@@ -2091,9 +2094,21 @@ async function runDailyJobs() {
     if (triggered.intraday_flash || flashJob.running) {
       setTimeout(() => loadIntradayFlash(data.market_open === true), 12000);
     }
+    // 盤中快訊在伺服器端每 15 分鐘重算；頁面開著時定期回來，才看得到新版本，
+    // 也讓「有人在看」本身成為盤中更新的觸發來源。
+    clearTimeout(dailyJobsTimer);
+    if (data.market_open === true) dailyJobsTimer = setTimeout(rerunDailyJobsWhenVisible, DAILY_JOBS_INTERVAL_MS);
   } catch (err) {
     console.warn("daily jobs check failed:", err);
   }
+}
+
+function rerunDailyJobsWhenVisible() {
+  if (document.hidden) {
+    dailyJobsTimer = setTimeout(rerunDailyJobsWhenVisible, 60000);
+    return;
+  }
+  runDailyJobs();
 }
 
 function setDailyJobNote(message, isError = false) {
@@ -2132,8 +2147,12 @@ async function loadIntradayFlash(marketOpenNow = false) {
   const note = $("intradayFlashNote");
   if (note) {
     const basis = data.basis || {};
+    const generated = data.generated_at_taipei ? new Date(data.generated_at_taipei) : null;
+    const generatedText = generated && !Number.isNaN(generated.getTime())
+      ? generated.toLocaleTimeString("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false })
+      : "—";
     note.textContent = `以 ${basis.state_as_of || "—"} 盤後定稿的品質與估值為底，疊上盤中報價比對既有買進區`
-      + `（${basis.quoted || 0}/${basis.candidates || 0} 檔取得報價）。`
+      + `（${basis.quoted || 0}/${basis.candidates || 0} 檔取得報價；本版產生於台北 ${generatedText}，盤中約每 15 分鐘重算）。`
       + "盤中價未定案，不寫入 Decision Ledger，也不取代盤後正式名單。";
   }
   const method = $("intradayFlashMethod");

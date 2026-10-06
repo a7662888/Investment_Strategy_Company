@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from unittest.mock import patch
@@ -108,11 +109,25 @@ class TestJobWindows(unittest.TestCase):
         self.assertTrue(jobs.postclose_due(stale, now)[0])
         self.assertFalse(jobs.postclose_due(fresh, now)[0])
 
-    def test_intraday_runs_once_per_trading_day(self) -> None:
+    def test_intraday_refreshes_on_a_fixed_cadence(self) -> None:
         now = at("2026-09-11T10:30")
+        fresh = {"date": "2026-09-11", "generated_at_taipei": "2026-09-11T10:20:00+08:00"}
+        stale = {"date": "2026-09-11", "generated_at_taipei": "2026-09-11T10:14:59+08:00"}
         self.assertTrue(jobs.intraday_due(None, now)[0])
-        self.assertFalse(jobs.intraday_due({"date": "2026-09-11"}, now)[0])
         self.assertTrue(jobs.intraday_due({"date": "2026-09-10"}, now)[0])
+        self.assertFalse(jobs.intraday_due(fresh, now)[0])
+        self.assertTrue(jobs.intraday_due(stale, now)[0])
+        self.assertTrue(jobs.intraday_due({"date": "2026-09-11"}, now)[0])
+
+    def test_intraday_never_refreshes_after_the_close(self) -> None:
+        stale = {"date": "2026-09-11", "generated_at_taipei": "2026-09-11T10:00:00+08:00"}
+        self.assertFalse(jobs.intraday_due(stale, at("2026-09-11T13:45"))[0])
+
+    def test_intraday_slot_buckets_the_session(self) -> None:
+        self.assertEqual(jobs.intraday_slot(at("2026-09-11T10:29")), "2026-09-11T10:15")
+        self.assertEqual(jobs.intraday_slot(at("2026-09-11T10:30")), "2026-09-11T10:30")
+        with patch.dict(os.environ, {"INTRADAY_REFRESH_MINUTES": "1"}):
+            self.assertEqual(jobs.intraday_refresh_minutes(), 5)
 
 
 class TestClaim(unittest.TestCase):

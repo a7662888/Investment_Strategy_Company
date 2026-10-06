@@ -103,17 +103,45 @@ def postclose_due(state: dict | None, now: datetime) -> tuple[bool, str]:
     return True, f"今日尚未重評（最後一次 {done or '無紀錄'}）"
 
 
+def intraday_refresh_minutes() -> int:
+    """盤中快訊的重算間隔。快訊只打一批報價、很輕，但每次會寫一筆 durable 文件，
+    故不追求逐分鐘；逐分鐘的價格由前端 60 秒輪詢負責。"""
+    try:
+        return max(5, int(os.environ.get("INTRADAY_REFRESH_MINUTES", "15")))
+    except ValueError:
+        return 15
+
+
+def intraday_slot(now: datetime) -> str:
+    """把盤中切成固定時段，作為 claim 的鍵：同一時段只產生一次。"""
+    step = intraday_refresh_minutes()
+    start = (_minutes(now) // step) * step
+    return f"{now.date().isoformat()}T{start // 60:02d}:{start % 60:02d}"
+
+
 def intraday_due(flash: dict | None, now: datetime) -> tuple[bool, str]:
-    """盤中研究快訊是否該產生。"""
+    """盤中研究快訊是否該（重新）產生。
+
+    原本每個交易日限一次，實測產生於 10:26 後整天不動，盤中後段看到的位置判斷
+    （落在買進區／高於買進區）早已過時。改為盤中每 intraday_refresh_minutes 重算。
+    """
     if not is_trading_weekday(now):
         return False, non_trading_reason(now)
     if not in_market_session(now):
         return False, f"非盤中時段（台北 {now:%H:%M}，09:00–13:30 才產生）"
     today = now.date().isoformat()
     done = (flash or {}).get("date")
-    if done == today:
-        return False, f"今日（{today}）快訊已產生"
-    return True, f"今日尚未產生快訊（最後一次 {done or '無紀錄'}）"
+    if done != today:
+        return True, f"今日尚未產生快訊（最後一次 {done or '無紀錄'}）"
+    step = intraday_refresh_minutes()
+    try:
+        generated = datetime.fromisoformat((flash or {}).get("generated_at_taipei") or "")
+    except ValueError:
+        return True, "快訊缺少產生時間，重新產生"
+    age = (now - generated.astimezone(TAIPEI)).total_seconds() / 60
+    if age >= step:
+        return True, f"快訊產生於 {generated.astimezone(TAIPEI):%H:%M}，已逾 {step} 分鐘，盤中重算"
+    return False, f"快訊產生於 {generated.astimezone(TAIPEI):%H:%M}，{step} 分鐘內不重算"
 
 
 def premarket_due(brief: dict | None, now: datetime,
