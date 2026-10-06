@@ -242,6 +242,8 @@ def build_html(positions, context=None, position_meta=None, audit_id=None):
         s = by_symbol.get(sym)
         if not s:
             return "未納入價值分析，僅供價格參考"
+        if str(s.get("model_version") or "").startswith("etf_dca"):
+            return "定期定額續扣，不依價位擇時；只在配置失衡時再平衡"
         act = (s.get("action") or "").lower()
         er = s.get("entry_range")
         er_txt = f"（便宜區約 {er[0]}–{er[1]}）" if isinstance(er, list) and len(er) == 2 else ""

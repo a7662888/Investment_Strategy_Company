@@ -55,8 +55,7 @@ def select_candidates(state: dict) -> list[dict]:
 
 
 def select_etf_candidates(state: dict) -> list[dict]:
-    """ETF 子軌（盤後 etf_candidates）。ETF 不過個股品質硬篩，判定與買進區來自
-    還原權值價位階，故與個股分開列，不混進同一排序。"""
+    """ETF 子軌（盤後 etf_candidates）。採定期定額，與個股分開列，不混進同一排序。"""
     as_of = state.get("as_of")
     picked = []
     for item in state.get("etf_candidates") or []:
@@ -64,10 +63,19 @@ def select_etf_candidates(state: dict) -> list[dict]:
             continue
         if item.get("as_of") and as_of and item["as_of"] != as_of:
             continue
-        if _entry_bounds(item)[0] is None:
-            continue
         picked.append(item)
     return picked
+
+
+def etf_ma_position(price: float | None, item: dict) -> tuple[float | None, str]:
+    """價格相對年線的乖離（%）與描述；年線來自盤後 value engine。"""
+    from company.screener.value_rescreen import etf_ma_band
+
+    ma = item.get("ma240")
+    if price is None or not ma:
+        return None, "年線資料不足" if not ma else "無即時報價"
+    deviation = float(price) / float(ma) - 1.0
+    return round(deviation * 100, 2), etf_ma_band(deviation)
 
 
 def _position(live: float | None, low: float, high: float) -> tuple[str, float | None]:
@@ -140,11 +148,10 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
     etf_items = []
     for item in select_etf_candidates(state):
         symbol = item.get("symbol")
-        low, high = _entry_bounds(item)
         quote = quotes.get(symbol) or {}
         live = quote.get("regularMarketPrice")
         live = round(float(live), 2) if live is not None else None
-        status, gap = _position(live, low, high)
+        deviation, band = etf_ma_position(live, item)
         etf_items.append({
             "symbol": symbol,
             "name": item.get("name"),
@@ -154,13 +161,12 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
             "quote_source": quote.get("source"),
             "quote_time": quote.get("regularMarketTime"),
             "close_price": item.get("price"),
-            "entry_low": round(low, 2),
-            "entry_high": round(high, 2),
-            "position": status,
-            "gap_to_chase_pct": round(gap, 2) if gap is not None else None,
-            "valuation_pct": item.get("valuation_pct"),
+            "ma240": item.get("ma240"),
+            "ma240_deviation_pct": deviation,
+            "ma240_band": band,
         })
-    etf_items.sort(key=lambda i: (order.get(i["position"], 9), i.get("gap_to_chase_pct") or 0))
+    # 乖離由低到高：低於年線者排前面，但這只是閱讀順序，不是加碼訊號。
+    etf_items.sort(key=lambda i: (i["ma240_deviation_pct"] is None, i["ma240_deviation_pct"] or 0))
 
     priced = sum(1 for i in items if i["live_price"] is not None)
     return {
@@ -181,8 +187,8 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
         "items": items,
         "etf_items": etf_items,
         "etf_method": (
-            "ETF 子軌：買進區為近一年還原權值價第 20–40 百分位（盤後 value engine），"
-            "本層只換算即時價相對位置；未含即時淨值與折溢價。"
+            "ETF 子軌 etf_dca v1：定期定額，不依盤中價位擇時；年線（240 日）乖離僅供參考，"
+            "不調整投入金額。未含即時淨值與折溢價。"
         ),
         "method": (
             "盤中快訊 v2：品質硬篩、估值位階與買進區沿用盤後 value engine 輸出；"

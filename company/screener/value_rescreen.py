@@ -362,6 +362,53 @@ def _at_pct(sorted_vals: list[float], p: float):
     return sorted_vals[idx]
 
 
+ETF_MA_DAYS = 240
+
+
+def etf_ma_band(deviation: float | None) -> str:
+    """年線乖離的文字描述。僅供參考，不改變定期定額判定。"""
+    if deviation is None:
+        return "年線資料不足"
+    if deviation < 0:
+        return "低於年線（市場回檔）"
+    if deviation < 0.10:
+        return "年線附近"
+    if deviation < 0.20:
+        return "高於年線"
+    return "大幅高於年線（偏熱）"
+
+
+def _evaluate_etf_dca(out: dict, rows: list[dict]) -> dict:
+    """ETF 子軌 v1（定期定額）。
+
+    舊規則（近一年還原價第 20–40 百分位才買）在多頭後長期不給買進訊號。
+    回測 0050／006208／0056／00878／00919（2008–2026，每月投入 1 單位，
+    docs/etf_dca_backtest_20261007.md）：每月固定投入在全期間五檔皆最佳；
+    滾動五年窗口中舊規則年化落後中位數 0.6–1.4 百分點，年線加權投入與定期定額
+    打平但未勝出。因此判定改為定期定額，年線位置只作資訊，不調整投入金額。
+    """
+    adj = [r["adj_close"] for r in rows]
+    cur_raw, cur_adj = rows[-1]["close"], rows[-1]["adj_close"]
+    ratio = cur_raw / cur_adj if cur_adj else 1.0
+    ma_adj = sum(adj[-ETF_MA_DAYS:]) / ETF_MA_DAYS if len(adj) >= ETF_MA_DAYS else None
+    ma240 = round(ma_adj * ratio, 4) if ma_adj else None   # 換回現價尺度，可直接和即時價比
+    deviation = cur_adj / ma_adj - 1.0 if ma_adj else None
+    band = etf_ma_band(deviation)
+    out.update(
+        valuation_pct=None, entry_range=None, dca=True, ma240=ma240,
+        ma240_deviation_pct=round(deviation * 100, 2) if deviation is not None else None,
+        ma240_band=band, action="accumulate",
+    )
+    out["reasons"].append(
+        "定期定額：每月固定投入，不依價位擇時；回測顯示擇時規則未勝過每月固定投入"
+    )
+    if deviation is not None:
+        out["reasons"].append(
+            f"年線（{ETF_MA_DAYS} 日）{ma240:.2f}，現價乖離 {deviation * 100:+.1f}%：{band}（僅供參考，不調整投入金額）"
+        )
+    return out
+
+
 # ---------- 核心 ----------
 def evaluate(symbol: str, fundamentals: dict) -> dict:
     """回傳最新判定：action／位階／買進區間／依據。純規則、可重現。"""
@@ -407,14 +454,7 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
     }
 
     if is_etf:
-        adjs = sorted(r["adj_close"] for r in rows)
-        p = _pct_rank(adjs, cur_adj)
-        ratio = cur_raw / cur_adj if cur_adj else 1.0
-        lo, hi = round(_at_pct(adjs, 20) * ratio, 2), round(_at_pct(adjs, 40) * ratio, 2)
-        out.update(valuation_pct=p, entry_range=[lo, hi])
-        out["action"] = "accumulate" if p is not None and p <= 40 else ("hold" if p is not None and p <= 70 else "watch")
-        out["reasons"].append(f"還原權值價位階：現價 {cur_raw} 位於近一年第 {p} 百分位；便宜區 {lo}–{hi}")
-        return out
+        return _evaluate_etf_dca(out, rows)
 
     # 個股：估值百分位（FinMind PER/PBR），基本面沿用季度快照
     cached = info.get("valuation") or {}
