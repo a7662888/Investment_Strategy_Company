@@ -3180,7 +3180,16 @@ def generate_premarket_brief() -> str:
     except Exception:  # noqa: BLE001
         market_news = []
 
-    brief = build_brief(state, markets, regime, news_by_symbol, market_news)
+    # 主動 ETF 前一交易日的官方配置變化；任何投信讀取失敗都不能讓簡報消失。
+    try:
+        import etf_research
+
+        active_etf = etf_research.active_digest()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[premarket] active ETF digest failed: {exc}")
+        active_etf = {"items": [], "error": type(exc).__name__}
+
+    brief = build_brief(state, markets, regime, news_by_symbol, market_news, active_etf=active_etf)
     saved = save_document(brief, _PREMARKET_LOCAL, _PREMARKET_REMOTE,
                           f"chore(market): premarket brief {brief['date']}")
     return (f"{brief['date']} 風險氛圍={regime['level']}，"
@@ -3311,15 +3320,15 @@ def generate_intraday_flash() -> str:
     from company.model.current_state import load_current_state
     from company.model.daily_jobs import in_market_session, taipei_now
     from company.model.durable_document import save_document
-    from company.model.intraday_flash import build_flash, select_candidates
+    from company.model.intraday_flash import build_flash, select_candidates, select_etf_candidates
 
     state, _ = load_current_state()
     if state is None:
         raise RuntimeError("current-state 尚未產生，無法做盤中比對")
 
-    candidates = select_candidates(state)
+    candidates = select_candidates(state) + select_etf_candidates(state)
     quotes: dict[str, dict] = {}
-    symbols = [item["symbol"] for item in candidates if item.get("symbol")]
+    symbols = list(dict.fromkeys(item["symbol"] for item in candidates if item.get("symbol")))
     if symbols:
         payload = fetch_quote(symbols)
         for quote in (payload.get("quoteResponse") or {}).get("result", []):
@@ -3331,7 +3340,8 @@ def generate_intraday_flash() -> str:
         document, _FLASH_LOCAL, _FLASH_REMOTE,
         f"chore(flash): intraday research note {document['date']}",
     )
-    return f"{len(document['items'])} 檔候選，durable={saved.get('durable')}"
+    return (f"{len(document['items'])} 檔候選、{len(document['etf_items'])} 檔 ETF，"
+            f"durable={saved.get('durable')}")
 
 
 def daily_refresh_status(trigger: bool = True) -> dict:

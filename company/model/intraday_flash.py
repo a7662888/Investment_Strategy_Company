@@ -54,6 +54,22 @@ def select_candidates(state: dict) -> list[dict]:
     return picked[:MAX_CANDIDATES]
 
 
+def select_etf_candidates(state: dict) -> list[dict]:
+    """ETF 子軌（盤後 etf_candidates）。ETF 不過個股品質硬篩，判定與買進區來自
+    還原權值價位階，故與個股分開列，不混進同一排序。"""
+    as_of = state.get("as_of")
+    picked = []
+    for item in state.get("etf_candidates") or []:
+        if item.get("error") or item.get("data_incomplete"):
+            continue
+        if item.get("as_of") and as_of and item["as_of"] != as_of:
+            continue
+        if _entry_bounds(item)[0] is None:
+            continue
+        picked.append(item)
+    return picked
+
+
 def _position(live: float | None, low: float, high: float) -> tuple[str, float | None]:
     """即時價相對買進區的位置。回傳 (狀態, 距上緣百分比)。"""
     if live is None:
@@ -121,6 +137,31 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
     order = {"落在買進區內": 0, "低於買進區（更便宜）": 1, "高於買進區，不追價": 2, "無即時報價": 3}
     items.sort(key=lambda i: (order.get(i["position"], 9), -float(i.get("rank_score") or 0)))
 
+    etf_items = []
+    for item in select_etf_candidates(state):
+        symbol = item.get("symbol")
+        low, high = _entry_bounds(item)
+        quote = quotes.get(symbol) or {}
+        live = quote.get("regularMarketPrice")
+        live = round(float(live), 2) if live is not None else None
+        status, gap = _position(live, low, high)
+        etf_items.append({
+            "symbol": symbol,
+            "name": item.get("name"),
+            "decision": item.get("decision"),
+            "action": item.get("action"),
+            "live_price": live,
+            "quote_source": quote.get("source"),
+            "quote_time": quote.get("regularMarketTime"),
+            "close_price": item.get("price"),
+            "entry_low": round(low, 2),
+            "entry_high": round(high, 2),
+            "position": status,
+            "gap_to_chase_pct": round(gap, 2) if gap is not None else None,
+            "valuation_pct": item.get("valuation_pct"),
+        })
+    etf_items.sort(key=lambda i: (order.get(i["position"], 9), i.get("gap_to_chase_pct") or 0))
+
     priced = sum(1 for i in items if i["live_price"] is not None)
     return {
         "schema_version": 1,
@@ -134,8 +175,15 @@ def build_flash(state: dict, quotes: dict, now: datetime | None = None,
             "state_analysis_date": state.get("analysis_date_taipei"),
             "candidates": len(items),
             "quoted": priced,
+            "etf_candidates": len(etf_items),
+            "etf_quoted": sum(1 for i in etf_items if i["live_price"] is not None),
         },
         "items": items,
+        "etf_items": etf_items,
+        "etf_method": (
+            "ETF 子軌：買進區為近一年還原權值價第 20–40 百分位（盤後 value engine），"
+            "本層只換算即時價相對位置；未含即時淨值與折溢價。"
+        ),
         "method": (
             "盤中快訊 v2：品質硬篩、估值位階與買進區沿用盤後 value engine 輸出；"
             "永豐量價欄位僅作有時間戳的市場脈絡，本層只做「即時價 × 既有買進區」"

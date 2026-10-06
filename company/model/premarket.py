@@ -64,10 +64,34 @@ def build_watchlist(state: dict, news_by_symbol: dict[str, list[dict]] | None = 
     return watchlist
 
 
+def build_etf_watch(state: dict) -> list[dict]:
+    """ETF 子軌帶進盤前：盤後判定＋收盤相對買進區的位置。不改判定、不排序。"""
+    from company.model.intraday_flash import _entry_bounds, _position, select_etf_candidates
+
+    rows = []
+    for item in select_etf_candidates(state):
+        low, high = _entry_bounds(item)
+        close = item.get("price")
+        position, gap = _position(float(close) if close is not None else None, low, high)
+        rows.append({
+            "symbol": item.get("symbol"),
+            "name": item.get("name"),
+            "decision": item.get("decision"),
+            "price": close,
+            "entry_range": [round(low, 2), round(high, 2)],
+            "valuation_pct": item.get("valuation_pct"),
+            "position": position.replace("無即時報價", "無收盤價"),
+            "gap_to_range_pct": round(gap, 2) if gap is not None else None,
+            "entry_evidence": item.get("entry_evidence"),
+        })
+    return rows
+
+
 def build_brief(state: dict, markets: dict, regime: dict,
                 news_by_symbol: dict | None = None,
                 market_news: list[dict] | None = None,
-                now: datetime | None = None) -> dict:
+                now: datetime | None = None,
+                active_etf: dict | None = None) -> dict:
     moment = now or datetime.now(timezone.utc)
     watchlist = build_watchlist(state, news_by_symbol)
     material_count = sum(1 for item in watchlist if item["material_news"])
@@ -80,6 +104,8 @@ def build_brief(state: dict, markets: dict, regime: dict,
         "regime": regime,
         "markets": markets,
         "watchlist": watchlist,
+        "etf_watch": build_etf_watch(state),
+        "active_etf": active_etf,
         "market_news": (market_news or [])[:5],
         "material_news_count": material_count,
         "execution_note": regime.get("guidance"),

@@ -2019,6 +2019,24 @@ const REGIME_STYLE = {
   neutral: ["#3730a3", "隔夜平穩"],
 };
 
+function renderActiveEtfDigest(digest) {
+  const items = asArray(digest?.items).filter(item => item.comparison_status === "comparable");
+  if (!items.length) return "";
+  const fmt = row => `${escapeHtml(row.name || row.code)} ${Number(row.weight_change_pp) > 0 ? "+" : ""}${Number(row.weight_change_pp).toFixed(2)}`;
+  const lines = items.map(item => `<div style="padding:4px 0;border-top:1px dashed #c7d2fe;">
+      <b>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</b>
+      <span style="color:var(--muted);">｜${escapeHtml(item.previous_as_of || "—")} → ${escapeHtml(item.as_of || "—")}${item.status === "baseline_official" ? "｜官方快照備援" : ""}${item.freshness === "stale" ? "｜資料偏舊" : ""}</span>
+      ${!asArray(item.increases).length && !asArray(item.decreases).length && !asArray(item.new).length && !asArray(item.dropped).length ? `<div style="color:var(--muted);">無明顯配置變化</div>` : ""}
+      ${asArray(item.increases).length ? `<div style="color:#137333;">權重增：${asArray(item.increases).map(fmt).join("、")}</div>` : ""}
+      ${asArray(item.decreases).length ? `<div style="color:#c5221f;">權重減：${asArray(item.decreases).map(fmt).join("、")}</div>` : ""}
+      ${asArray(item.new).length ? `<div>新進揭露：${escapeHtml(asArray(item.new).join("、"))}</div>` : ""}
+      ${asArray(item.dropped).length ? `<div>不再揭露：${escapeHtml(asArray(item.dropped).join("、"))}</div>` : ""}
+    </div>`).join("");
+  return `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12.5px;font-weight:600;">主動 ETF 最新持股權重異動（${items.length} 檔，單位：百分點）</summary>
+    <div style="font-size:12px;margin-top:4px;">${lines}
+      <p style="color:var(--muted);margin:6px 0 0;">${escapeHtml(digest.note || "")} 完整持股見 <a href="/etf.html">ETF 研究室</a>。</p></div></details>`;
+}
+
 async function loadPremarketBrief() {
   const section = $("premarketSection"), panel = $("premarketPanel");
   if (!section || !panel) return;
@@ -2054,6 +2072,16 @@ async function loadPremarketBrief() {
     </div>`;
   }).join("");
 
+  const etfRows = asArray(d.etf_watch).map(e => `<div style="padding:4px 0;border-top:1px dashed #c7d2fe;">
+      <b>${escapeHtml(String(e.symbol).split(".")[0])} ${escapeHtml(e.name || "")}</b>
+      <span style="color:var(--muted);">｜${escapeHtml(e.decision || "")}</span>
+      <span style="color:#475569;">｜收盤 ${e.price != null ? Number(e.price).toFixed(2) : "—"}，買進區 ${asArray(e.entry_range).map(v => Number(v).toFixed(2)).join("–")}
+        ${e.gap_to_range_pct != null ? `（距上緣 ${e.gap_to_range_pct > 0 ? "+" : ""}${Number(e.gap_to_range_pct).toFixed(1)}%）` : ""}</span>
+    </div>`).join("");
+  const etfBlock = etfRows ? `<div style="font-size:12.5px;margin-top:10px;">
+      <div style="font-weight:700;color:#3730a3;">ETF 子軌（盤後判定）</div>${etfRows}</div>` : "";
+  const activeBlock = renderActiveEtfDigest(d.active_etf);
+
   const news = asArray(d.market_news).map(n =>
     `<li style="margin:2px 0;">${escapeHtml(n.title || "")}</li>`).join("");
 
@@ -2064,6 +2092,8 @@ async function loadPremarketBrief() {
     <div style="font-size:12.5px;color:#1e293b;margin-bottom:6px;">${escapeHtml(d.execution_note || "")}</div>
     <div style="font-size:12px;color:#334155;margin-bottom:6px;">${markets}</div>
     ${rows ? `<div style="font-size:12.5px;">${rows}</div>` : ""}
+    ${etfBlock}
+    ${activeBlock}
     ${news ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:12.5px;font-weight:600;">大盤新聞（${asArray(d.market_news).length}）</summary>
       <ul style="font-size:12px;color:#475569;margin:6px 0 0 18px;">${news}</ul></details>` : ""}`;
 
@@ -2131,10 +2161,11 @@ async function loadIntradayFlash(marketOpenNow = false) {
     return;
   }
   const items = asArray(data.items);
+  const etfItems = asArray(data.etf_items);
   // 盤中快訊是 provisional，不可讓舊產物在隔日或盤後繼續冒充「盤中即時」。
   // 當前市場狀態由 /api/daily-refresh 以台北時區與交易日曆判定；artifact 自帶的
   // market_open 只代表產生當下，不能拿來判斷現在仍在盤中。
-  if (!items.length || !marketOpenNow || data.date !== taipeiDateString()) {
+  if ((!items.length && !etfItems.length) || !marketOpenNow || data.date !== taipeiDateString()) {
     section.style.display = "none";
     return;
   }
@@ -2152,7 +2183,8 @@ async function loadIntradayFlash(marketOpenNow = false) {
       ? generated.toLocaleTimeString("zh-TW", { timeZone: "Asia/Taipei", hour: "2-digit", minute: "2-digit", hour12: false })
       : "—";
     note.textContent = `以 ${basis.state_as_of || "—"} 盤後定稿的品質與估值為底，疊上盤中報價比對既有買進區`
-      + `（${basis.quoted || 0}/${basis.candidates || 0} 檔取得報價；本版產生於台北 ${generatedText}，盤中約每 15 分鐘重算）。`
+      + `（個股 ${basis.quoted || 0}/${basis.candidates || 0}、ETF ${basis.etf_quoted || 0}/${basis.etf_candidates || 0} 檔取得報價；`
+      + `本版產生於台北 ${generatedText}，盤中約每 15 分鐘重算）。`
       + "盤中價未定案，不寫入 Decision Ledger，也不取代盤後正式名單。";
   }
   const method = $("intradayFlashMethod");
@@ -2180,7 +2212,22 @@ async function loadIntradayFlash(marketOpenNow = false) {
         </div>
         ${renderBrokerMarketContext(item.market_context, true)}
       </div>`).join("")
-    + `</div>`;
+    + `</div>`
+    + (etfItems.length ? `<h3 style="font-size:14px;color:#92400e;margin:14px 0 6px;">ETF 子軌</h3>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:10px;">`
+      + etfItems.map(item => `
+        <div style="background:#fff; border:1px solid #fcd34d; border-radius:8px; padding:10px 12px;">
+          <div style="font-size:11px; color:${tone(item.position)}; font-weight:700;">${escapeHtml(item.position || "")}</div>
+          <h3 style="margin:4px 0 6px; font-size:16px;">${escapeHtml(String(item.symbol).split(".")[0])} ${escapeHtml(item.name || "")}</h3>
+          <div style="font-size:13px; line-height:1.65; color:#334155;">
+            盤中參考 <strong>${item.live_price != null ? Number(item.live_price).toFixed(2) : "—"}</strong>
+            ${item.close_price != null ? `（前收 ${Number(item.close_price).toFixed(2)}）` : ""}<br>
+            買進區：<strong>${Number(item.entry_low).toFixed(2)}–${Number(item.entry_high).toFixed(2)}</strong>
+            ${item.gap_to_chase_pct != null ? `（距上緣 ${item.gap_to_chase_pct > 0 ? "+" : ""}${Number(item.gap_to_chase_pct).toFixed(1)}%）` : ""}<br>
+            <span style="color:var(--muted);">${escapeHtml(item.decision || "")}</span>
+          </div>
+        </div>`).join("")
+      + `</div><p style="font-size:11.5px;color:#92400e;margin:6px 0 0;">${escapeHtml(data.etf_method || "")}</p>` : "");
 }
 
 async function loadDailyValueState() {
@@ -2287,7 +2334,9 @@ function renderDailyValuePanel() {
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}</span><span style="color:#0f766e;">${escapeHtml(item.decision)}</span>
       </strong>
-      <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}${highDistance}</p>
+      <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}${item.is_etf
+        ? (asArray(item.entry_range).length === 2 ? `｜買進區 ${asArray(item.entry_range).map(v => Number(v).toFixed(2)).join("–")}` : "")
+        : `｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}`}${highDistance}</p>
       <p style="font-size:12px;color:var(--muted);margin:0;">${escapeHtml(asArray(item.reasons).slice(0, 2).join("；") || "—")}</p>
       ${liveLine}
       ${renderEntryEvidence(item.entry_evidence)}
@@ -2297,13 +2346,17 @@ function renderDailyValuePanel() {
     };
     const picks = asArray(data.top_picks);
     const waiting = asArray(data.waiting_list);
+    const etfs = asArray(data.etf_candidates);
     panel.innerHTML = `
       <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:7px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#065f46;">
         母池 ${c.mother_pool || 0} 檔中，目前 ${c.quality_covered || 0} 檔具完整品質資料；其餘 ${c.not_yet_covered || 0} 檔不會假裝已完成基本面判定。
       </div>
       <h3 style="font-size:14px;margin:8px 0;">可分批研究</h3>
       ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">今天沒有同時通過品質、估值與止跌條件的標的；保留現金也是結果。</p>`}
-      ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}`;
+      ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}
+      ${etfs.length ? `<h3 style="font-size:14px;margin:14px 0 4px;">ETF 子軌（${etfs.length}）</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">ETF 不過個股品質硬篩；判定依近一年還原權值價位階，買進區為第 20–40 百分位。指數型 ETF 在多頭期間會長時間落在高位階。更多 ETF 見 <a href="/etf.html">ETF 研究室</a>。</p>
+        ${etfs.map(card).join("")}` : ""}`;
     renderMyHoldings();
 }
 
@@ -2369,7 +2422,8 @@ async function loadDailyHistoryDay() {
 
 async function refreshDailyLivePrices() {
   if (!dailyValueState) return;
-  const items = [...asArray(dailyValueState.top_picks), ...asArray(dailyValueState.waiting_list)];
+  const items = [...asArray(dailyValueState.top_picks), ...asArray(dailyValueState.waiting_list),
+    ...asArray(dailyValueState.etf_candidates)];
   const symbols = [...new Set(items.map(item => item.symbol).filter(isValidSymbol))];
   if (!symbols.length) return;
   try {

@@ -618,6 +618,47 @@ def compare_holdings(previous: dict | None, current: dict) -> dict:
     return {'status': 'comparable', 'previous_as_of': previous['as_of'], 'as_of': current['as_of'], 'rows': rows, 'increases_share_pct': round(increases / total * 100, 2) if total else None, 'decreases_share_pct': round(decreases / total * 100, 2) if total else None, 'increases_pp': round(increases, 5), 'decreases_pp': round(decreases, 5), 'denominator': '現貨證券權重增加百分點合計＋減少百分點絕對值合計', 'executed_buy_ratio_pct': None, 'executed_sell_ratio_pct': None, 'note': '增加／減少權重占異動比例，不是實際買賣比例或週轉率。股數變化可能含申贖、分割及其他公司行動；官方未揭露逐筆交易，不據此宣稱經理人買賣。'}
 
 
+def active_digest(top: int = 3, min_move_pp: float = 0.05) -> dict:
+    """盤前摘要：已串接主動 ETF 的最新官方持股權重異動。
+
+    投信於收盤後公告當日 PCF，開盤前看得到的就是前一交易日的配置變化。
+    權重變動含股價漲跌效果，不等於經理人買賣；這裡只摘要，判讀留給人。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    supported = {r['code']: r for r in catalog()['rows'] if r.get('active') and r.get('holdings_supported')}
+
+    def slim(row: dict) -> dict:
+        return {k: row.get(k) for k in ('code', 'name', 'weight_pct', 'previous_weight_pct', 'weight_change_pp')}
+
+    def one(code: str) -> dict:
+        base = {'code': code, 'name': supported[code].get('name')}
+        try:
+            data = holdings(code)
+        except Exception as exc:
+            return {**base, 'status': 'unavailable', 'error': type(exc).__name__}
+        comparison = data.get('comparison') or {}
+        rows = comparison.get('rows') or []
+        # 債券型多為 ±0.01 百分點的面額／價格漂移，列出來只是雜訊。
+        moved = [r for r in rows if abs(r.get('weight_change_pp') or 0) >= min_move_pp]
+        return {
+            **base, 'status': data.get('status'), 'as_of': data.get('as_of'),
+            'freshness': data.get('freshness'), 'comparison_status': comparison.get('status'),
+            'previous_as_of': comparison.get('previous_as_of'),
+            'increases': [slim(r) for r in sorted((r for r in moved if r['weight_change_pp'] > 0), key=lambda r: -r['weight_change_pp'])[:top]],
+            'decreases': [slim(r) for r in sorted((r for r in moved if r['weight_change_pp'] < 0), key=lambda r: r['weight_change_pp'])[:top]],
+            'new': [r['name'] for r in rows if r.get('change') == '新進揭露'][:5],
+            'dropped': [r['name'] for r in rows if r.get('change') == '不再揭露'][:5],
+        }
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        items = list(pool.map(one, sorted(supported)))
+    return {
+        'generated_at': now_iso(), 'items': items,
+        'note': f'投信官方 PCF 前後兩期權重差（僅列變動 ≥ {min_move_pp} 百分點）；含股價漲跌效果，不等於實際買賣，也不是買賣建議。',
+    }
+
+
 def holdings(code: str) -> dict:
     allowed = {r['code']: r for r in catalog()['rows']}
     if code not in allowed or not allowed[code]['active']:
