@@ -90,17 +90,47 @@ def is_after_close(now: datetime) -> bool:
     return is_trading_weekday(now) and _minutes(now) >= POSTCLOSE_MINUTES
 
 
+def latest_completed_session(now: datetime) -> str | None:
+    """最新已完成的交易日（14:00 後算當日；週末、國定與連續假日依證交所休市表往回找）。"""
+    try:
+        from company.model.daily_history import latest_completed_market_date
+
+        return latest_completed_market_date(now)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def next_trading_session(now: datetime) -> str | None:
+    """下一個要開盤的交易日：今日為交易日且尚未收盤則為今日，否則往後找。"""
+    day = now.astimezone(TAIPEI).date()
+    if not (is_trading_weekday(now) and _minutes(now) < MARKET_CLOSE_MINUTES):
+        day += timedelta(days=1)
+    for _ in range(40):
+        moment = datetime.combine(day, datetime.min.time(), TAIPEI).replace(hour=9)
+        if is_trading_weekday(moment):
+            return day.isoformat()
+        day += timedelta(days=1)
+    return None
+
+
 def postclose_due(state: dict | None, now: datetime) -> tuple[bool, str]:
-    """盤後母池重評是否該跑。state 為 current-state 文件。"""
-    if not is_trading_weekday(now):
-        return False, non_trading_reason(now)
-    if not is_after_close(now):
-        return False, f"尚未到盤後（台北 {now:%H:%M}，14:00 後才重評）"
-    today = now.date().isoformat()
-    done = (state or {}).get("analysis_date_taipei")
-    if done == today:
-        return False, f"今日（{today}）已完成盤後重評"
-    return True, f"今日尚未重評（最後一次 {done or '無紀錄'}）"
+    """盤後母池重評是否該跑：以「最新已完成交易日」是否已重評為準，不限今天是否開盤。
+
+    業主 2026-10-10：前一個交易日沒跑到就要補，假日或連假進網頁也一樣。
+    例：週三之後沒進網頁、週六才進來 → 若週五的盤後重評沒完成，週六補跑週五。
+    盤後流程只能算「最新一個」交易日（中間漏掉的單日快照無法事後重建）。
+    """
+    expected = latest_completed_session(now)
+    if expected is None:
+        return False, "交易日曆不可用，暫不判斷"
+    done = (state or {}).get("as_of")
+    if done and done >= expected:
+        return False, f"最新已完成交易日 {expected} 已重評"
+    if is_trading_weekday(now) and MARKET_OPEN_MINUTES <= _minutes(now) < POSTCLOSE_MINUTES:
+        # 盤中不補跑：盤後流程的永豐快照在盤中會抓到未收盤價格並存成收盤紀錄。
+        # 14:00 後當日的盤後重評會一併涵蓋（漏掉的那一天單日快照無法事後重建）。
+        return False, f"{expected} 尚未重評；盤中不補跑，14:00 後與今日盤後重評一併處理"
+    return True, f"最新已完成交易日 {expected} 尚未重評（目前資料停在 {done or '無紀錄'}）"
 
 
 # 盤中快訊自動產生的最早時間：09:00 一開盤時多數標的尚未成交，報價仍是昨收。
@@ -126,13 +156,25 @@ def intraday_due(flash: dict | None, now: datetime) -> tuple[bool, str]:
 
 def premarket_due(brief: dict | None, now: datetime,
                   state_as_of: str | None = None) -> tuple[bool, str]:
+    """交易日：06:00 後每日一次。非交易日：最新盤後狀態就緒後，產生一次「下一交易日預覽」。"""
+    if not is_trading_weekday(now):
+        expected = latest_completed_session(now)
+        target = next_trading_session(now)
+        if not state_as_of or not expected or state_as_of < expected:
+            return False, f"{non_trading_reason(now)}；等待 {expected or '最新交易日'} 盤後重評完成後再產生預覽"
+        if (brief or {}).get("target_session") == target and (brief or {}).get("state_as_of") == state_as_of:
+            return False, f"{non_trading_reason(now)}；下一交易日 {target} 預覽已產生"
+        return True, f"{non_trading_reason(now)}；產生下一交易日 {target} 的盤前預覽"
+    return _premarket_trading_day(brief, now, state_as_of)
+
+
+def _premarket_trading_day(brief: dict | None, now: datetime,
+                           state_as_of: str | None = None) -> tuple[bool, str]:
     """盤前簡報是否該自動產生：每個交易日最多成功一次。
 
     原本在底層狀態前進時會自動重做（2026-09-22 簡報停在 09-18 的案例），
     現改為「一天一次＋手動更新」；狀態落後時於說明中提示，由業主決定是否重做。
     """
-    if not is_trading_weekday(now):
-        return False, non_trading_reason(now)
     if _minutes(now) < PREMARKET_FROM_MINUTES:
         return False, f"尚未到產生時間（台北 {now:%H:%M}，06:00 後產生）"
     today = now.date().isoformat()
@@ -159,18 +201,19 @@ def manual_check(job: str, now: datetime, state: dict | None = None) -> tuple[bo
     """手動更新是否允許。回傳 (允許, 理由)。不改變自動任務的「今日已做」判斷。"""
     if job not in MANUAL_COOLDOWN_SECONDS:
         return False, "未知的更新項目"
-    if job != "broker" and not is_trading_weekday(now):
-        return False, non_trading_reason(now)
     if job == "intraday" and not in_market_session(now):
-        return False, f"非盤中時段（台北 {now:%H:%M}）；盤中 09:00–13:30 才能更新盤中資訊"
-    if job == "premarket" and _minutes(now) < PREMARKET_FROM_MINUTES:
+        reason = non_trading_reason(now) if not is_trading_weekday(now) else f"非盤中時段（台北 {now:%H:%M}）"
+        return False, f"{reason}；盤中資訊只能在交易日 09:00–13:30 更新（過去的盤中無法補）"
+    if job == "premarket" and is_trading_weekday(now) and _minutes(now) < PREMARKET_FROM_MINUTES:
         return False, "06:00 後才能產生盤前簡報"
     if job == "postclose":
-        if not is_after_close(now):
-            return False, f"尚未到盤後（台北 {now:%H:%M}，14:00 後）"
-        if (state or {}).get("analysis_date_taipei") == now.date().isoformat():
+        if is_trading_weekday(now) and MARKET_OPEN_MINUTES <= _minutes(now) < POSTCLOSE_MINUTES:
+            return False, "盤中不跑盤後重評（快照會抓到未收盤價格）；14:00 後再試"
+        expected = latest_completed_session(now)
+        done = (state or {}).get("as_of")
+        if expected and done and done >= expected:
             # 盤後流程包含寄 Email 與凍結帳本；已完成時再跑會重寄、重凍，不提供一鍵重做。
-            return False, "今日盤後重評已完成；為避免重複寄信與重複凍結，不提供一鍵重做"
+            return False, f"最新已完成交易日 {expected} 已重評；為避免重複寄信與重複凍結，不提供一鍵重做"
     with _LOCK:
         last = _MANUAL.get(job)
     elapsed = now.timestamp() - last if last else None
@@ -269,3 +312,39 @@ def dispatch_workflow(workflow: str, inputs: dict | None = None, ref: str = "mai
                 "error": exc.read().decode("utf-8", "replace")[:200]}
     except Exception as exc:  # noqa: BLE001
         return {"dispatched": False, "workflow": workflow, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def recent_workflow_run(workflow: str, since: datetime) -> dict | None:
+    """since 之後是否已有該 workflow 的成功、排隊或執行中的 run（避免補跑時重複寄信）。
+
+    查詢失敗回 None（視為沒有），由行程內 claim 擋同一實例的重複觸發。
+    """
+    token = (os.environ.get("GITHUB_DATA_TOKEN") or os.environ.get("GITHUB_PAT") or "").strip()
+    repo = os.environ.get("GITHUB_ACTIONS_REPO", "a7662888/Investment_Strategy_Company").strip()
+    if not token:
+        return None
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs?per_page=10",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                 "User-Agent": "investment-daily-jobs/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            runs = json.loads(response.read().decode("utf-8")).get("workflow_runs") or []
+    except Exception:  # noqa: BLE001
+        return None
+    for run in runs:
+        try:
+            created = datetime.fromisoformat(str(run.get("created_at")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        active = run.get("status") in ("queued", "in_progress", "waiting", "pending", "requested")
+        if created >= since and (active or run.get("conclusion") == "success"):
+            return {"status": run.get("status"), "conclusion": run.get("conclusion"),
+                    "created_at": run.get("created_at")}
+    return None
+
+
+def session_close(day: str) -> datetime:
+    """某交易日的盤後定稿時刻（14:00 台北），作為「這個交易日的盤後流程」的起算點。"""
+    return datetime.fromisoformat(day).replace(hour=14, tzinfo=TAIPEI)

@@ -94,17 +94,23 @@ class TestJobWindows(unittest.TestCase):
         saturday = at("2026-09-12T10:00")
         self.assertFalse(jobs.in_market_session(saturday))
         self.assertFalse(jobs.is_after_close(saturday))
-        self.assertFalse(jobs.postclose_due(None, saturday)[0])
+        # 週末仍會補跑「最新已完成交易日」的盤後重評（業主 2026-10-10），但已完成就不重跑。
+        self.assertTrue(jobs.postclose_due({"as_of": "2026-09-10"}, saturday)[0])
+        self.assertFalse(jobs.postclose_due({"as_of": "2026-09-11"}, saturday)[0])
         self.assertFalse(jobs.intraday_due(None, saturday)[0])
 
     def test_postclose_waits_until_after_the_close(self) -> None:
-        due, why = jobs.postclose_due({"analysis_date_taipei": "2026-09-10"}, at("2026-09-11T10:30"))
+        # 盤中不補跑：快照會抓到未收盤價格
+        due, why = jobs.postclose_due({"as_of": "2026-09-09"}, at("2026-09-11T10:30"))
         self.assertFalse(due)
-        self.assertIn("尚未到盤後", why)
+        self.assertIn("盤中不補跑", why)
+        # 開盤前可以補跑前一個交易日
+        self.assertTrue(jobs.postclose_due({"as_of": "2026-09-09"}, at("2026-09-11T07:30"))[0])
+        self.assertFalse(jobs.postclose_due({"as_of": "2026-09-10"}, at("2026-09-11T07:30"))[0])
 
     def test_postclose_runs_once_per_trading_day(self) -> None:
-        stale = {"analysis_date_taipei": "2026-09-10"}
-        fresh = {"analysis_date_taipei": "2026-09-11"}
+        stale = {"as_of": "2026-09-10"}
+        fresh = {"as_of": "2026-09-11"}
         now = at("2026-09-11T14:30")
         self.assertTrue(jobs.postclose_due(stale, now)[0])
         self.assertFalse(jobs.postclose_due(fresh, now)[0])
@@ -148,16 +154,42 @@ class TestManualRefresh(unittest.TestCase):
     def test_postclose_never_reruns_a_completed_day(self) -> None:
         now = at("2026-09-11T15:00")
         self.assertFalse(jobs.manual_check("postclose", at("2026-09-11T13:00"))[0])
-        self.assertTrue(jobs.manual_check("postclose", now, {"analysis_date_taipei": "2026-09-10"})[0])
-        ok, why = jobs.manual_check("postclose", now, {"analysis_date_taipei": "2026-09-11"})
+        self.assertTrue(jobs.manual_check("postclose", now, {"as_of": "2026-09-10"})[0])
+        ok, why = jobs.manual_check("postclose", now, {"as_of": "2026-09-11"})
         self.assertFalse(ok)
         self.assertIn("重複寄信", why)
 
     def test_broker_inventory_allowed_on_non_trading_days(self) -> None:
         saturday = at("2026-09-12T10:00")
         self.assertTrue(jobs.manual_check("broker", saturday)[0])
-        self.assertFalse(jobs.manual_check("premarket", saturday)[0])
+        self.assertTrue(jobs.manual_check("premarket", saturday)[0])          # 下一交易日預覽
+        self.assertTrue(jobs.manual_check("postclose", saturday, {"as_of": "2026-09-10"})[0])
+        self.assertFalse(jobs.manual_check("postclose", saturday, {"as_of": "2026-09-11"})[0])
+        self.assertFalse(jobs.manual_check("intraday", saturday)[0])
         self.assertFalse(jobs.manual_check("unknown", saturday)[0])
+
+
+class TestCatchUpAcrossHolidays(unittest.TestCase):
+    """業主情境：週三之後沒進網頁，週六才進來（2026-10-09 週五國慶日休市）。"""
+
+    def test_wednesday_to_saturday(self) -> None:
+        saturday = at("2026-10-10T17:46")
+        self.assertEqual(jobs.latest_completed_session(saturday), "2026-10-08")
+        self.assertEqual(jobs.next_trading_session(saturday), "2026-10-12")
+        # 1) 資料停在週三 → 補跑週四（最新已完成交易日）的盤後重評
+        due, why = jobs.postclose_due({"as_of": "2026-10-07"}, saturday)
+        self.assertTrue(due)
+        self.assertIn("2026-10-08", why)
+        # 2) 盤後還沒好之前不產生預覽；好了之後產生「下週一」預覽，且只產生一次
+        self.assertFalse(jobs.premarket_due({"date": "2026-10-07"}, saturday, "2026-10-07")[0])
+        due, why = jobs.premarket_due({"date": "2026-10-07"}, saturday, "2026-10-08")
+        self.assertTrue(due)
+        self.assertIn("2026-10-12", why)
+        done = {"date": "2026-10-10", "target_session": "2026-10-12", "state_as_of": "2026-10-08"}
+        self.assertFalse(jobs.premarket_due(done, saturday, "2026-10-08")[0])
+        # 3) 盤中資訊無法補；週一 06:00 後照常產生當日正式簡報
+        self.assertFalse(jobs.intraday_due(None, saturday)[0])
+        self.assertTrue(jobs.premarket_due(done, at("2026-10-12T07:40"), "2026-10-08")[0])
 
 
 class TestClaim(unittest.TestCase):
@@ -321,3 +353,25 @@ class TestShioajiCloseOfRecord(unittest.TestCase):
         import company.screener.value_rescreen as rescreen
         with patch("company.model.durable_document.load_document", return_value=(None, {})):
             self.assertEqual(rescreen._shioaji_closes(), {})
+
+
+class TestDuplicateRunGuard(unittest.TestCase):
+    def _runs(self, *runs):
+        import io, json as _json
+        body = _json.dumps({"workflow_runs": list(runs)}).encode()
+        class Resp(io.BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        return patch("urllib.request.urlopen", return_value=Resp(body))
+
+    def test_success_or_active_run_after_the_session_blocks_a_second_dispatch(self) -> None:
+        since = jobs.session_close("2026-10-08")
+        with patch.dict(os.environ, {"GITHUB_DATA_TOKEN": "t"}):
+            with self._runs({"created_at": "2026-10-08T07:40:00Z", "status": "completed", "conclusion": "success"}):
+                self.assertIsNotNone(jobs.recent_workflow_run("email-daily.yml", since))
+            with self._runs({"created_at": "2026-10-08T08:10:00Z", "status": "in_progress", "conclusion": None}):
+                self.assertEqual(jobs.recent_workflow_run("email-daily.yml", since)["status"], "in_progress")
+            # 失敗的、或早於該交易日收盤的 run 不算
+            with self._runs({"created_at": "2026-10-08T07:40:00Z", "status": "completed", "conclusion": "failure"},
+                            {"created_at": "2026-10-07T08:00:00Z", "status": "completed", "conclusion": "success"}):
+                self.assertIsNone(jobs.recent_workflow_run("email-daily.yml", since))

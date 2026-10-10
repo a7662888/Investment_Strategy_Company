@@ -89,7 +89,8 @@ def build_brief(state: dict, markets: dict, regime: dict,
                 news_by_symbol: dict | None = None,
                 market_news: list[dict] | None = None,
                 now: datetime | None = None,
-                active_etf: dict | None = None) -> dict:
+                active_etf: dict | None = None,
+                target_session: str | None = None) -> dict:
     moment = now or datetime.now(timezone.utc)
     watchlist = build_watchlist(state, news_by_symbol)
     material_count = sum(1 for item in watchlist if item["material_news"])
@@ -97,6 +98,10 @@ def build_brief(state: dict, markets: dict, regime: dict,
     return {
         "schema_version": 1,
         "date": moment.astimezone(TAIPEI).date().isoformat(),
+        # 簡報對應的開盤日：非交易日產生的是「下一交易日預覽」，週末新聞仍可能變化。
+        "target_session": target_session or moment.astimezone(TAIPEI).date().isoformat(),
+        "kind": ("preview" if target_session and target_session != moment.astimezone(TAIPEI).date().isoformat()
+                 else "brief"),
         "generated_at": moment.astimezone(timezone.utc).isoformat(),
         "state_as_of": state.get("as_of"),
         "regime": regime,

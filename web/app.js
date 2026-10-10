@@ -2119,7 +2119,9 @@ async function loadPremarketBrief() {
   section.style.display = "";
   const [color, label] = REGIME_STYLE[d.regime.level] || REGIME_STYLE.neutral;
   const title = $("premarketTitle");
-  if (title) title.textContent = `${d.date || ""} 盤前簡報`;
+  if (title) title.textContent = d.kind === "preview"
+    ? `${d.target_session || ""} 盤前預覽（${d.date || ""} 非交易日產生，開盤前會再更新）`
+    : `${d.date || ""} 盤前簡報`;
 
   const markets = Object.values(d.markets || {}).map(m => {
     const pct = Number(m.change_pct || 0);

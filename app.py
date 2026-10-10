@@ -3209,7 +3209,10 @@ def generate_premarket_brief() -> str:
         print(f"[premarket] active ETF digest failed: {exc}")
         active_etf = {"items": [], "error": type(exc).__name__}
 
-    brief = build_brief(state, markets, regime, news_by_symbol, market_news, active_etf=active_etf)
+    from company.model.daily_jobs import next_trading_session, taipei_now
+
+    brief = build_brief(state, markets, regime, news_by_symbol, market_news, active_etf=active_etf,
+                        target_session=next_trading_session(taipei_now()))
     saved = save_document(brief, _PREMARKET_LOCAL, _PREMARKET_REMOTE,
                           f"chore(market): premarket brief {brief['date']}")
     return (f"{brief['date']} 風險氛圍={regime['level']}，"
@@ -3453,6 +3456,11 @@ def manual_refresh(job: str) -> tuple[dict, int]:
     ok, reason = jobs.manual_check(job, now, state)
     if not ok:
         return {"job": job, "started": False, "reason": reason}, 409
+    if job == "postclose":
+        expected = jobs.latest_completed_session(now)
+        existing = jobs.recent_workflow_run(jobs.POSTCLOSE_WORKFLOWS[0], jobs.session_close(expected)) if expected else None
+        if existing and existing.get("status") != "completed":
+            return {"job": job, "started": False, "reason": f"{expected} 的盤後流程執行中，請稍候"}, 409
     key = f"manual_{job}"
     if not jobs.claim(key, now.isoformat(), stale_after_seconds=600):
         return {"job": job, "started": False, "reason": "同一項目更新中，請稍候"}, 409
@@ -3493,21 +3501,31 @@ def daily_refresh_status(trigger: bool = True) -> dict:
     premarket_due, premarket_why = jobs.premarket_due(brief, now, (state or {}).get("as_of"))
     triggered: dict[str, dict] = {}
 
-    if trigger and postclose_due and jobs.claim(jobs.POSTCLOSE_JOB, today):
+    # 以「最新已完成交易日」為鍵：假日或連假補跑時，同一個交易日只觸發一次。
+    expected_session = jobs.latest_completed_session(now) or today
+    if postclose_due:
+        existing = jobs.recent_workflow_run(jobs.POSTCLOSE_WORKFLOWS[0], jobs.session_close(expected_session))
+        if existing:
+            postclose_due = False
+            postclose_why = (f"{expected_session} 的盤後流程已在 GitHub 執行過或執行中（{existing['status']}），"
+                             "資料若仍落後多半是來源延遲，可稍後手動補跑")
+    if trigger and postclose_due and jobs.claim(jobs.POSTCLOSE_JOB, expected_session):
         # 兩支都不帶 inputs：email-daily 宣告 workflow_dispatch:{} 不收任何輸入，
         # 送了會被 GitHub 拒絕；value-rescreen 的 dry_run 預設本就是 false。
         results = [jobs.dispatch_workflow(name) for name in jobs.POSTCLOSE_WORKFLOWS]
         ok = all(item.get("dispatched") for item in results)
-        jobs.finish(jobs.POSTCLOSE_JOB, today, ok, json.dumps(results, ensure_ascii=False))
-        triggered["postclose_rescreen"] = {"workflows": results, "all_dispatched": ok}
+        jobs.finish(jobs.POSTCLOSE_JOB, expected_session, ok, json.dumps(results, ensure_ascii=False))
+        triggered["postclose_rescreen"] = {"workflows": results, "all_dispatched": ok, "session": expected_session}
 
     if trigger and intraday_due and jobs.claim(jobs.INTRADAY_JOB, today):
         jobs.run_in_background(jobs.INTRADAY_JOB, today, generate_intraday_flash)
         triggered["intraday_flash"] = {"started": True}
 
     # 盤前簡報只打幾支 Yahoo 與 RSS，夠輕可就地產生，不必等 workflow 權限。
-    if trigger and premarket_due and jobs.claim(jobs.PREMARKET_JOB, today):
-        jobs.run_in_background(jobs.PREMARKET_JOB, today, generate_premarket_brief)
+    # 非交易日的「下一交易日預覽」以目標交易日為鍵，交易日照舊以今天為鍵。
+    premarket_key = today if jobs.is_trading_weekday(now) else f"preview:{jobs.next_trading_session(now)}"
+    if trigger and premarket_due and jobs.claim(jobs.PREMARKET_JOB, premarket_key):
+        jobs.run_in_background(jobs.PREMARKET_JOB, premarket_key, generate_premarket_brief)
         triggered["premarket_brief"] = {"started": True}
 
     def _describe(job: str, due: bool, why: str) -> dict:
