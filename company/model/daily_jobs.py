@@ -103,55 +103,33 @@ def postclose_due(state: dict | None, now: datetime) -> tuple[bool, str]:
     return True, f"今日尚未重評（最後一次 {done or '無紀錄'}）"
 
 
-def intraday_refresh_minutes() -> int:
-    """盤中快訊的重算間隔。快訊只打一批報價、很輕，但每次會寫一筆 durable 文件，
-    故不追求逐分鐘；逐分鐘的價格由前端 60 秒輪詢負責。"""
-    try:
-        return max(5, int(os.environ.get("INTRADAY_REFRESH_MINUTES", "15")))
-    except ValueError:
-        return 15
-
-
-def intraday_slot(now: datetime) -> str:
-    """把盤中切成固定時段，作為 claim 的鍵：同一時段只產生一次。"""
-    step = intraday_refresh_minutes()
-    start = (_minutes(now) // step) * step
-    return f"{now.date().isoformat()}T{start // 60:02d}:{start % 60:02d}"
+# 盤中快訊自動產生的最早時間：09:00 一開盤時多數標的尚未成交，報價仍是昨收。
+INTRADAY_FROM_MINUTES = 9 * 60 + 5
 
 
 def intraday_due(flash: dict | None, now: datetime) -> tuple[bool, str]:
-    """盤中研究快訊是否該（重新）產生。
+    """盤中研究快訊是否該自動產生：每個交易日最多成功一次（業主 2026-10-10 定案）。
 
-    原本每個交易日限一次，實測產生於 10:26 後整天不動，盤中後段看到的位置判斷
-    （落在買進區／高於買進區）早已過時。改為盤中每 intraday_refresh_minutes 重算。
+    盤中想看較新的位置，改用「手動更新」（manual_check）；自動輪替不再重算，
+    避免整天反覆寫入，也讓「今天的快訊」有單一、可對照的版本。
     """
     if not is_trading_weekday(now):
         return False, non_trading_reason(now)
-    if not in_market_session(now):
-        return False, f"非盤中時段（台北 {now:%H:%M}，09:00–13:30 才產生）"
+    if not in_market_session(now) or _minutes(now) < INTRADAY_FROM_MINUTES:
+        return False, f"非盤中時段（台北 {now:%H:%M}，09:05–13:30 才自動產生）"
     today = now.date().isoformat()
     done = (flash or {}).get("date")
-    if done != today:
-        return True, f"今日尚未產生快訊（最後一次 {done or '無紀錄'}）"
-    step = intraday_refresh_minutes()
-    try:
-        generated = datetime.fromisoformat((flash or {}).get("generated_at_taipei") or "")
-    except ValueError:
-        return True, "快訊缺少產生時間，重新產生"
-    age = (now - generated.astimezone(TAIPEI)).total_seconds() / 60
-    if age >= step:
-        return True, f"快訊產生於 {generated.astimezone(TAIPEI):%H:%M}，已逾 {step} 分鐘，盤中重算"
-    return False, f"快訊產生於 {generated.astimezone(TAIPEI):%H:%M}，{step} 分鐘內不重算"
+    if done == today:
+        return False, f"今日（{today}）快訊已產生；需要較新資料請按手動更新"
+    return True, f"今日尚未產生快訊（最後一次 {done or '無紀錄'}）"
 
 
 def premarket_due(brief: dict | None, now: datetime,
                   state_as_of: str | None = None) -> tuple[bool, str]:
-    """盤前簡報是否該產生。
+    """盤前簡報是否該自動產生：每個交易日最多成功一次。
 
-    除了「今日尚未產生」，還要在**底層狀態已前進**時重做：簡報引用當時的
-    current-state，若它是在盤後重評之前產生的，內容會停在更舊的資料日
-    （實測 2026-09-22 20:31 產生的簡報，state_as_of 仍是 09-18），
-    而「今日已產生」又讓它整天不再更新。以資料日比對可自我修復。
+    原本在底層狀態前進時會自動重做（2026-09-22 簡報停在 09-18 的案例），
+    現改為「一天一次＋手動更新」；狀態落後時於說明中提示，由業主決定是否重做。
     """
     if not is_trading_weekday(now):
         return False, non_trading_reason(now)
@@ -162,9 +140,54 @@ def premarket_due(brief: dict | None, now: datetime,
     if done == today:
         brief_state = (brief or {}).get("state_as_of")
         if state_as_of and brief_state and brief_state != state_as_of:
-            return True, f"簡報依據 {brief_state} 已落後於最新狀態 {state_as_of}，需重做"
+            return False, (f"今日盤前簡報已產生（依據 {brief_state}，最新狀態 {state_as_of}）；"
+                           "需要重做請按手動更新")
         return False, f"今日（{today}）盤前簡報已產生"
     return True, f"今日尚未產生盤前簡報（最後一次 {done or '無紀錄'}）"
+
+
+# ---- 手動更新（業主一鍵）----
+# 冷卻時間防止連點與誤觸；盤中最短，因為那是最常需要即時資料的時段。
+MANUAL_COOLDOWN_SECONDS = {"premarket": 300, "intraday": 120, "postclose": 600, "broker": 900}
+MANUAL_JOBS = tuple(MANUAL_COOLDOWN_SECONDS)
+# 永豐庫存讀取（帳務查詢）走既有 workflow，不在網站行程內登入券商。
+BROKER_WORKFLOW = "broker-research-refresh.yml"
+_MANUAL: dict[str, float] = {}
+
+
+def manual_check(job: str, now: datetime, state: dict | None = None) -> tuple[bool, str]:
+    """手動更新是否允許。回傳 (允許, 理由)。不改變自動任務的「今日已做」判斷。"""
+    if job not in MANUAL_COOLDOWN_SECONDS:
+        return False, "未知的更新項目"
+    if job != "broker" and not is_trading_weekday(now):
+        return False, non_trading_reason(now)
+    if job == "intraday" and not in_market_session(now):
+        return False, f"非盤中時段（台北 {now:%H:%M}）；盤中 09:00–13:30 才能更新盤中資訊"
+    if job == "premarket" and _minutes(now) < PREMARKET_FROM_MINUTES:
+        return False, "06:00 後才能產生盤前簡報"
+    if job == "postclose":
+        if not is_after_close(now):
+            return False, f"尚未到盤後（台北 {now:%H:%M}，14:00 後）"
+        if (state or {}).get("analysis_date_taipei") == now.date().isoformat():
+            # 盤後流程包含寄 Email 與凍結帳本；已完成時再跑會重寄、重凍，不提供一鍵重做。
+            return False, "今日盤後重評已完成；為避免重複寄信與重複凍結，不提供一鍵重做"
+    with _LOCK:
+        last = _MANUAL.get(job)
+    elapsed = now.timestamp() - last if last else None
+    cooldown = MANUAL_COOLDOWN_SECONDS[job]
+    if elapsed is not None and elapsed < cooldown:
+        return False, f"剛更新過，請 {int(cooldown - elapsed)} 秒後再試"
+    return True, "允許手動更新"
+
+
+def mark_manual(job: str, now: datetime) -> None:
+    with _LOCK:
+        _MANUAL[job] = now.timestamp()
+
+
+def manual_state() -> dict:
+    with _LOCK:
+        return {job: datetime.fromtimestamp(ts, TAIPEI).isoformat() for job, ts in _MANUAL.items()}
 
 
 def job_state(job: str) -> dict:

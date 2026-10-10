@@ -3354,6 +3354,40 @@ def generate_intraday_flash() -> str:
             f"durable={saved.get('durable')}")
 
 
+def manual_refresh(job: str) -> tuple[dict, int]:
+    """業主一鍵更新。呼叫端必須已驗證同步密鑰。
+
+    盤前／盤中就地產生（輕量）；盤後與永豐庫存交由 GitHub Actions（重運算、
+    券商帳務查詢都不在網站行程內執行）。回傳 (payload, HTTP 狀態碼)。
+    """
+    from company.model import daily_jobs as jobs
+    from company.model.current_state import load_current_state
+
+    now = jobs.taipei_now()
+    state, _ = load_current_state() if job == "postclose" else (None, None)
+    ok, reason = jobs.manual_check(job, now, state)
+    if not ok:
+        return {"job": job, "started": False, "reason": reason}, 409
+    key = f"manual_{job}"
+    if not jobs.claim(key, now.isoformat(), stale_after_seconds=600):
+        return {"job": job, "started": False, "reason": "同一項目更新中，請稍候"}, 409
+    jobs.mark_manual(job, now)
+    if job in ("premarket", "intraday"):
+        target = generate_premarket_brief if job == "premarket" else generate_intraday_flash
+        jobs.run_in_background(key, now.isoformat(), target)
+        return {"job": job, "started": True, "mode": "in_process",
+                "reason": "已開始產生，約 10–30 秒完成"}, 202
+    workflow = jobs.POSTCLOSE_WORKFLOWS[0] if job == "postclose" else jobs.BROKER_WORKFLOW
+    # broker-research-refresh 收 mode 輸入；email-daily 不收任何輸入（送了會被拒）。
+    result = jobs.dispatch_workflow(workflow, {"mode": "refresh"} if job == "broker" else None)
+    jobs.finish(key, now.isoformat(), bool(result.get("dispatched")),
+                json.dumps(result, ensure_ascii=False))
+    if not result.get("dispatched"):
+        return {"job": job, "started": False, "reason": "GitHub Actions 觸發失敗", "workflow": result}, 502
+    return {"job": job, "started": True, "mode": "workflow", "workflow": workflow,
+            "reason": "已觸發 GitHub Actions，約 2–10 分鐘完成"}, 202
+
+
 def daily_refresh_status(trigger: bool = True) -> dict:
     """回報兩個每日任務的狀態，並在該跑而今日尚未跑時觸發。
 
@@ -3382,11 +3416,9 @@ def daily_refresh_status(trigger: bool = True) -> dict:
         jobs.finish(jobs.POSTCLOSE_JOB, today, ok, json.dumps(results, ensure_ascii=False))
         triggered["postclose_rescreen"] = {"workflows": results, "all_dispatched": ok}
 
-    intraday_slot = jobs.intraday_slot(now)
-    if trigger and intraday_due and jobs.claim(jobs.INTRADAY_JOB, intraday_slot,
-                                               stale_after_seconds=jobs.intraday_refresh_minutes() * 60):
-        jobs.run_in_background(jobs.INTRADAY_JOB, intraday_slot, generate_intraday_flash)
-        triggered["intraday_flash"] = {"started": True, "slot": intraday_slot}
+    if trigger and intraday_due and jobs.claim(jobs.INTRADAY_JOB, today):
+        jobs.run_in_background(jobs.INTRADAY_JOB, today, generate_intraday_flash)
+        triggered["intraday_flash"] = {"started": True}
 
     # 盤前簡報只打幾支 Yahoo 與 RSS，夠輕可就地產生，不必等 workflow 權限。
     if trigger and premarket_due and jobs.claim(jobs.PREMARKET_JOB, today):
@@ -3419,10 +3451,17 @@ def daily_refresh_status(trigger: bool = True) -> dict:
             "premarket_brief": _describe(jobs.PREMARKET_JOB, premarket_due, premarket_why),
         },
         "triggered": triggered,
+        "manual": {
+            "last": jobs.manual_state(),
+            "allowed": {job: dict(zip(("ok", "reason"), jobs.manual_check(job, now, state)))
+                        for job in jobs.MANUAL_JOBS},
+            "running": {job: bool(jobs.job_state(f"manual_{job}").get("running")) for job in jobs.MANUAL_JOBS},
+            "last_error": {job: jobs.job_state(f"manual_{job}").get("error") for job in jobs.MANUAL_JOBS},
+        },
         "policy": (
             "盤後母池重評每個交易日限一次（14:00 後，交由 GitHub Actions 執行）；"
-            f"盤中研究快訊於 09:00–13:30 每 {jobs.intraday_refresh_minutes()} 分鐘重算一次，"
-            "為 provisional 不寫入決策帳本。"
+            "盤前簡報、盤中快訊（09:05–13:30）每個交易日各自最多自動成功一次，"
+            "失敗會在下次造訪時重試；需要較新資料時由業主手動更新。盤中快訊為 provisional，不寫入決策帳本。"
         ),
     }
 
@@ -3793,6 +3832,16 @@ class Handler(SimpleHTTPRequestHandler):
                     },
                     HTTPStatus.GONE,
                 )
+                return
+            if self.path == "/api/daily-refresh/manual":
+                from company.model.positions import expected_sync_token, is_authorized
+                if expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized", "reason": "手動更新需要私有同步密鑰"},
+                                   HTTPStatus.UNAUTHORIZED)
+                    return
+                job = str(self.read_body().get("job") or "")
+                payload, status = manual_refresh(job)
+                self.send_json(payload, HTTPStatus(status))
                 return
             if self.path == "/api/positions":
                 from company.model.positions import (

@@ -47,6 +47,19 @@
       </div>
     </details>
 
+    <!-- 資料更新：開頁自動觸發（每日盤前／盤中／盤後各自最多成功一次）＋業主一鍵手動更新 -->
+    <section id="refreshSection" class="panel" style="border:1px solid var(--line);">
+      <div class="sectionHead">
+        <h2 style="margin:0; font-size:16px; display:flex; align-items:center; gap:8px;"><span>🔄</span> 資料更新</h2>
+        <span id="refreshClock" class="pill" style="font-size:12px;">讀取中…</span>
+      </div>
+      <div id="refreshPanel" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px; margin-top:8px;"></div>
+      <p id="refreshNote" style="font-size:11.5px; color:var(--muted); margin:8px 0 0; line-height:1.55;">
+        開啟網頁時自動檢查：盤前簡報（06:00 後）、盤中快訊（09:05–13:30）、盤後重評（14:00 後）每個交易日各自最多自動成功一次。
+        需要較新資料時可按「立即更新」（需先在「我的持股」輸入私有同步密鑰）。
+      </p>
+    </section>
+
     <!-- 盤前簡報：每個交易日一次，內容由 /api/premarket-brief 動態帶入。
          定位是「今天怎麼執行」的脈絡，不改變選股名單與買賣判定。 -->
     <section id="premarketSection" class="panel" style="border:2px solid #4338ca; background:#eef2ff; display:none;">
@@ -81,6 +94,7 @@
         格式：<code>代號:股數@成本</code>，多筆用逗號分隔。例：<code>0056.TW:1000@53.95, 00878.TW:1000@34.13</code>
         （配對後經 HTTPS 傳至私有資料庫；未配對時只留在此瀏覽器）
       </p>
+      <div id="brokerAdoptBanner" style="display:none; font-size:12.5px; background:#fefce8; border:1px solid #fde047; border-radius:7px; padding:8px 10px; margin-bottom:10px; line-height:1.6;"></div>
       <div class="position-entry-row" style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
         <input id="homePositionInput" type="text" placeholder="0056.TW:1000@53.95, 00878.TW:1000@34.13"
                style="flex:1; min-width:280px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px;">
