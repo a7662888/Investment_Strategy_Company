@@ -106,3 +106,18 @@ class OutOfRangeFills(unittest.TestCase):
         self.assertEqual(out["fills"], [])
         self.assertEqual(out["excluded_out_of_range"][0]["date"], "2026-07-20")
         self.assertEqual(out["fills_vs_vwap_pct"]["n"], 0)
+
+
+class SessionGuards(unittest.TestCase):
+    def test_snapshot_and_etf_jobs_skip_while_the_session_is_unsettled(self):
+        from unittest.mock import patch
+        import run_etf_metrics, run_shioaji_snapshot
+        with patch("company.model.daily_jobs.session_unsettled", return_value=True), \
+                patch.object(run_shioaji_snapshot, "fetch_snapshots") as fetch, \
+                patch.object(run_shioaji_snapshot, "pool_symbols", return_value=["2330.TW"]), \
+                patch.object(run_etf_metrics.etf_research, "catalog") as catalog, \
+                patch("builtins.print"):
+            self.assertEqual(run_shioaji_snapshot.main(), 0)
+            self.assertEqual(run_etf_metrics.main(), 0)
+            fetch.assert_not_called()
+            catalog.assert_not_called()

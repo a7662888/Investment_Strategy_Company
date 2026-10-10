@@ -138,35 +138,39 @@ class TestJobWindows(unittest.TestCase):
 
 
 class TestManualRefresh(unittest.TestCase):
+    """業主 2026-10-10：手動鍵隨時可按；只擋未知項目與 30 秒內重複點擊。"""
+
     def setUp(self) -> None:
         jobs._MANUAL.clear()
 
-    def test_intraday_only_during_the_session_with_cooldown(self) -> None:
-        self.assertFalse(jobs.manual_check("intraday", at("2026-09-11T08:30"))[0])
+    def test_every_job_is_allowed_any_time_with_an_explanation(self) -> None:
+        for moment in ("2026-09-11T08:30", "2026-09-11T10:00", "2026-09-11T15:00", "2026-09-12T10:00"):
+            for job in jobs.MANUAL_JOBS:
+                ok, note = jobs.manual_check(job, at(moment), {"as_of": "2026-09-11"})
+                self.assertTrue(ok, (job, moment))
+                self.assertTrue(note)
+        self.assertFalse(jobs.manual_check("unknown", at("2026-09-11T10:00"))[0])
+
+    def test_notes_warn_about_side_effects(self) -> None:
+        self.assertIn("最後成交價", jobs.manual_check("intraday", at("2026-09-12T10:00"))[1])
+        self.assertIn("再寄一次", jobs.manual_check("postclose", at("2026-09-11T15:00"), {"as_of": "2026-09-11"})[1])
+        self.assertIn("略過今日未收盤", jobs.manual_check("postclose", at("2026-09-11T10:00"), {"as_of": "2026-09-10"})[1])
+        self.assertIn("盤前預覽", jobs.manual_check("premarket", at("2026-09-12T10:00"))[1])
+
+    def test_double_click_guard(self) -> None:
         now = at("2026-09-11T10:00")
-        self.assertTrue(jobs.manual_check("intraday", now)[0])
         jobs.mark_manual("intraday", now)
-        ok, why = jobs.manual_check("intraday", at("2026-09-11T10:01"))
+        ok, why = jobs.manual_check("intraday", at("2026-09-11T10:00:10"))
         self.assertFalse(ok)
         self.assertIn("秒後再試", why)
-        self.assertTrue(jobs.manual_check("intraday", at("2026-09-11T10:02:01"))[0])
+        self.assertTrue(jobs.manual_check("intraday", at("2026-09-11T10:00:31"))[0])
 
-    def test_postclose_never_reruns_a_completed_day(self) -> None:
-        now = at("2026-09-11T15:00")
-        self.assertFalse(jobs.manual_check("postclose", at("2026-09-11T13:00"))[0])
-        self.assertTrue(jobs.manual_check("postclose", now, {"as_of": "2026-09-10"})[0])
-        ok, why = jobs.manual_check("postclose", now, {"as_of": "2026-09-11"})
-        self.assertFalse(ok)
-        self.assertIn("重複寄信", why)
-
-    def test_broker_inventory_allowed_on_non_trading_days(self) -> None:
-        saturday = at("2026-09-12T10:00")
-        self.assertTrue(jobs.manual_check("broker", saturday)[0])
-        self.assertTrue(jobs.manual_check("premarket", saturday)[0])          # 下一交易日預覽
-        self.assertTrue(jobs.manual_check("postclose", saturday, {"as_of": "2026-09-10"})[0])
-        self.assertFalse(jobs.manual_check("postclose", saturday, {"as_of": "2026-09-11"})[0])
-        self.assertFalse(jobs.manual_check("intraday", saturday)[0])
-        self.assertFalse(jobs.manual_check("unknown", saturday)[0])
+    def test_session_unsettled_window(self) -> None:
+        self.assertTrue(jobs.session_unsettled(at("2026-09-11T10:00")))
+        self.assertTrue(jobs.session_unsettled(at("2026-09-11T13:59")))
+        self.assertFalse(jobs.session_unsettled(at("2026-09-11T14:00")))
+        self.assertFalse(jobs.session_unsettled(at("2026-09-11T08:59")))
+        self.assertFalse(jobs.session_unsettled(at("2026-09-12T10:00")))
 
 
 class TestCatchUpAcrossHolidays(unittest.TestCase):

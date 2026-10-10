@@ -51,6 +51,11 @@ def _subpool() -> list[str]:
 
 
 def main() -> int:
+    from company.model.daily_jobs import session_unsettled
+    if session_unsettled():
+        # 盤中成交值與折溢價都未定稿，寫進歷史會污染 20 日均量與停扣檢查。
+        print(json.dumps({"skipped": "session not settled; ETF metrics run after 14:00"}))
+        return 0
     catalog = etf_research.catalog()
     rows = catalog["rows"]
     codes = [r["code"] for r in rows]

@@ -12,7 +12,9 @@ import sys
 try:
     from pathlib import Path as _Path
     _env_path = _Path(__file__).resolve().parent / ".env"
-    if _env_path.exists():
+    # 測試設 APP_SKIP_DOTENV=1：否則本機 .env 的正式資料庫金鑰會讓測試真的連 GitHub
+    # （讀正式私有資料、網路慢就逾時，最壞情況寫入正式資料）。
+    if _env_path.exists() and os.environ.get("APP_SKIP_DOTENV") != "1":
         for _line in _env_path.read_text(encoding="utf-8").splitlines():
             _line = _line.strip()
             if _line and not _line.startswith("#"):

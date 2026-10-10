@@ -100,6 +100,11 @@ def main() -> int:
     mode = (os.environ.get("SHIOAJI_SNAPSHOT_MODE") or "postclose").strip().lower()
     if mode not in {"postclose", "intraday"}:
         raise RuntimeError("SHIOAJI_SNAPSHOT_MODE must be postclose or intraday")
+    from company.model.daily_jobs import session_unsettled
+    if mode == "postclose" and session_unsettled():
+        # 手動盤後重評可能在盤中觸發：此時快照是未收盤價，不得存成 close-of-record。
+        print(json.dumps({"skipped": "session not settled; postclose snapshot runs after 14:00"}))
+        return 0
     # SDK native logs contain connection identifiers.  They are diagnostic data,
     # not public build output, so suppress them exactly as the broker-inventory job does.
     with _quiet_sdk():

@@ -189,38 +189,52 @@ def _premarket_trading_day(brief: dict | None, now: datetime,
 
 
 # ---- 手動更新（業主一鍵）----
-# 冷卻時間防止連點與誤觸；盤中最短，因為那是最常需要即時資料的時段。
-MANUAL_COOLDOWN_SECONDS = {"premarket": 300, "intraday": 120, "postclose": 600, "broker": 900}
+# 業主 2026-10-10：手動鍵要能隨時按。只保留防連點；資料保護（盤中不存未收盤價）
+# 放在資料來源端（session_unsettled），不再以時段或「今日已完成」拒絕。
+MANUAL_COOLDOWN_SECONDS = {"premarket": 30, "intraday": 30, "postclose": 30, "broker": 30}
 MANUAL_JOBS = tuple(MANUAL_COOLDOWN_SECONDS)
 # 永豐庫存讀取（帳務查詢）走既有 workflow，不在網站行程內登入券商。
 BROKER_WORKFLOW = "broker-research-refresh.yml"
 _MANUAL: dict[str, float] = {}
 
 
-def manual_check(job: str, now: datetime, state: dict | None = None) -> tuple[bool, str]:
-    """手動更新是否允許。回傳 (允許, 理由)。不改變自動任務的「今日已做」判斷。"""
-    if job not in MANUAL_COOLDOWN_SECONDS:
-        return False, "未知的更新項目"
-    if job == "intraday" and not in_market_session(now):
-        reason = non_trading_reason(now) if not is_trading_weekday(now) else f"非盤中時段（台北 {now:%H:%M}）"
-        return False, f"{reason}；盤中資訊只能在交易日 09:00–13:30 更新（過去的盤中無法補）"
-    if job == "premarket" and is_trading_weekday(now) and _minutes(now) < PREMARKET_FROM_MINUTES:
-        return False, "06:00 後才能產生盤前簡報"
+def manual_note(job: str, now: datetime, state: dict | None = None) -> str:
+    """按下去會發生什麼（給按鈕下方與確認視窗）。不阻擋執行。"""
+    if job == "intraday":
+        if in_market_session(now):
+            return "重新產生盤中快訊並刷新即時價"
+        return "非盤中時段：以最後成交價產生參考版本，不代表盤中即時"
+    if job == "premarket":
+        if not is_trading_weekday(now):
+            return f"非交易日：產生下一交易日 {next_trading_session(now)} 的盤前預覽"
+        return "重新產生今日盤前簡報（隔夜行情與新聞重抓）"
     if job == "postclose":
-        if is_trading_weekday(now) and MARKET_OPEN_MINUTES <= _minutes(now) < POSTCLOSE_MINUTES:
-            return False, "盤中不跑盤後重評（快照會抓到未收盤價格）；14:00 後再試"
         expected = latest_completed_session(now)
         done = (state or {}).get("as_of")
+        parts = []
+        if session_unsettled(now):
+            parts.append("盤中執行：快照、分 K、ETF 每日資料會略過今日未收盤部分，只更新前一交易日的分析")
         if expected and done and done >= expected:
-            # 盤後流程包含寄 Email 與凍結帳本；已完成時再跑會重寄、重凍，不提供一鍵重做。
-            return False, f"最新已完成交易日 {expected} 已重評；為避免重複寄信與重複凍結，不提供一鍵重做"
+            parts.append(f"{expected} 已重評過：會重新計算並再寄一次每日 Email")
+        else:
+            parts.append(f"補跑 {expected or '最新交易日'} 的盤後重評（約 10–20 分鐘）")
+        return "；".join(parts)
+    if job == "broker":
+        return "讀取永豐最新庫存、逐筆紀錄與已實現損益（約 2–10 分鐘）"
+    return ""
+
+
+def manual_check(job: str, now: datetime, state: dict | None = None) -> tuple[bool, str]:
+    """手動更新：隨時允許，只擋未知項目與 30 秒內重複點擊。回傳 (允許, 說明)。"""
+    if job not in MANUAL_COOLDOWN_SECONDS:
+        return False, "未知的更新項目"
     with _LOCK:
         last = _MANUAL.get(job)
     elapsed = now.timestamp() - last if last else None
     cooldown = MANUAL_COOLDOWN_SECONDS[job]
     if elapsed is not None and elapsed < cooldown:
-        return False, f"剛更新過，請 {int(cooldown - elapsed)} 秒後再試"
-    return True, "允許手動更新"
+        return False, f"剛按過，請 {int(cooldown - elapsed)} 秒後再試"
+    return True, manual_note(job, now, state)
 
 
 def mark_manual(job: str, now: datetime) -> None:
@@ -348,3 +362,13 @@ def recent_workflow_run(workflow: str, since: datetime) -> dict | None:
 def session_close(day: str) -> datetime:
     """某交易日的盤後定稿時刻（14:00 台北），作為「這個交易日的盤後流程」的起算點。"""
     return datetime.fromisoformat(day).replace(hour=14, tzinfo=TAIPEI)
+
+
+def session_unsettled(now: datetime | None = None) -> bool:
+    """今日交易時段已開始但尚未定稿（交易日 09:00–14:00）。
+
+    手動「盤後重評」允許隨時按（業主 2026-10-10），所以「盤中不得把未收盤價存成收盤紀錄」
+    的保護必須放在資料來源端：快照、分 K、ETF 每日資料在此時段一律略過當日。
+    """
+    now = now or taipei_now()
+    return is_trading_weekday(now) and MARKET_OPEN_MINUTES <= _minutes(now) < POSTCLOSE_MINUTES

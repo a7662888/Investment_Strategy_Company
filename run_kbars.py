@@ -69,6 +69,7 @@ def fetch_symbol(api, symbol: str, start: date, end: date) -> tuple[dict, int]:
 
 def main() -> int:
     from company.data.shioaji_source import connect_best_effort
+    from company.model.daily_jobs import session_unsettled
     from run_broker_positions import _quiet_sdk
 
     today = datetime.now(TAIPEI).date()
@@ -94,6 +95,8 @@ def main() -> int:
                 except Exception:  # noqa: BLE001 - 單檔失敗不影響其他檔
                     stats["errors"] += 1
                     continue
+                if session_unsettled():
+                    days.pop(today.isoformat(), None)   # 今日盤中尚未收盤：不存半天的資料
                 stats["queries"] += queries
                 stats["backfilled"] += int(backfill)
                 stats["new_sessions"] += len(set(days) - set(known))
