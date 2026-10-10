@@ -3119,6 +3119,7 @@ async function loadTimingResearch() {
       + `<h4 style="margin:10px 0 4px;">2. 你的成交價 vs 當日成交量加權均價</h4>`
       + `<p>平均 ${s(ex.fills_vs_vwap_pct)}｜高於均價的比例 ${ex.fills_above_vwap_share_pct == null ? "—" : ex.fills_above_vwap_share_pct + "%"}｜在當日高低區間的位置 ${ex.fills_range_position?.mean == null ? "—" : Math.round(ex.fills_range_position.mean * 100) + "%"}（0%＝最低、100%＝最高）</p>`
       + (fills ? `<div style="overflow:auto;"><table><thead><tr><th>日期</th><th>代號</th><th>成交價</th><th>當日均價</th><th>相對均價</th><th>區間位置</th></tr></thead><tbody>${fills}</tbody></table></div>` : "")
+      + (asArray(ex.excluded_out_of_range).length ? `<p style="color:#b45309;">另有 ${asArray(ex.excluded_out_of_range).length} 筆不在當日高低區間內，已排除：${escapeHtml(ex.excluded_note || "")}</p>` : "")
       + `<p>時段成本（關注清單全部交易日）：開盤 15 分鐘均價相對全日 ${s(ex.session_first15_vs_day_pct)}；收盤前 30 分鐘 ${s(ex.session_last30_vs_day_pct)}。</p>`
       + `<p style="color:var(--muted);">${escapeHtml(d.method || "")}<br>${escapeHtml(d.caveat || "")}</p>`;
   } catch (err) { panel.textContent = `讀取失敗：${err.message}`; }

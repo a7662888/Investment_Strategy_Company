@@ -96,3 +96,13 @@ class Execution(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OutOfRangeFills(unittest.TestCase):
+    def test_fills_outside_the_days_range_are_listed_not_averaged(self):
+        days = {"00878.TW": {"2026-07-20": {"high": 31.6, "low": 31.2, "vwap": 31.43}}}
+        lots = {"00878.TW": [{"date": "2026-07-20", "shares": 1000, "cost_per_share": 30.43, "fee": 20}]}
+        out = execution_study(lots, days)
+        self.assertEqual(out["fills"], [])
+        self.assertEqual(out["excluded_out_of_range"][0]["date"], "2026-07-20")
+        self.assertEqual(out["fills_vs_vwap_pct"]["n"], 0)
