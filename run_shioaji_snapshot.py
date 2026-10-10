@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from company.data.shioaji_source import build_document, connect_best_effort, fetch_snapshots
-from company.model.durable_document import save_document
+from company.model.durable_document import load_document, save_document
 
 ROOT = Path(__file__).resolve().parent
 TAIPEI = timezone(timedelta(hours=8))
@@ -23,6 +23,57 @@ LOCAL_PATH = ROOT / "data" / "shioaji_snapshot.json"
 REMOTE_PATH = os.environ.get("SHIOAJI_SNAPSHOT_PATH", "market/shioaji_snapshot.json")
 LOCAL_DIR = ROOT / "data" / "shioaji"
 REMOTE_DIR = os.environ.get("SHIOAJI_SNAPSHOT_DIR", "market/shioaji")
+VOLUME_HISTORY = (ROOT / "data" / "volume_history.json", "market/volume_history.json")
+RVOL_WINDOW = 20
+RVOL_MIN_DAYS = 5
+
+
+def _backfill_volume_history(trade_date: str) -> dict:
+    """第一次執行時，從既有的逐日快照補建成交量歷史（最多回看 45 個日曆日）。"""
+    codes: dict[str, list] = {}
+    day = datetime.fromisoformat(trade_date).date()
+    for back in range(1, 46):
+        name = (day - timedelta(days=back)).isoformat()
+        doc, _ = load_document(LOCAL_DIR / f"{name}.json", f"{REMOTE_DIR}/{name}.json")
+        if not doc or doc.get("mode", "postclose") != "postclose":
+            continue
+        for symbol, row in (doc.get("snapshots") or {}).items():
+            if _row_date(row, doc.get("trade_date")) == name and row.get("total_volume"):
+                codes.setdefault(symbol, []).append([name, row["total_volume"]])
+    return {"schema_version": 1, "codes": {k: sorted(v) for k, v in codes.items()}}
+
+
+def _row_date(row: dict, document_date: str | None) -> str | None:
+    """逐列交易日。2026-10-05 前的舊快照沒有逐列日期與 timestamp_status，
+    只能沿用整份（逐日檔）的日期；新格式則必須逐列驗證，不得以批次日期冒充。"""
+    if "timestamp_status" not in row and row.get("trade_date") is None:
+        return document_date
+    return row.get("trade_date") if row.get("timestamp_status") in (None, "valid") else None
+
+
+def apply_relative_volume(document: dict, history: dict | None) -> dict:
+    """相對成交量 rvol20＝當日量 ÷ 前 N 日平均量（N ≤ 20，至少 5 日才計算）。
+
+    永豐 snapshot 的 volume_ratio 實測等於「當日量 ÷ 昨日量」（2026-10-08 母池 106/106 吻合），
+    只拿一天當基準、雜訊大；相對近 20 日均量較能看出量能是否真的異常。
+    同一來源（永豐盤後快照）逐日累積，不混用其他來源的成交量單位。
+    """
+    trade_date = document.get("trade_date")
+    history = history or {"schema_version": 1, "codes": {}}
+    codes = history.setdefault("codes", {})
+    for symbol, row in (document.get("snapshots") or {}).items():
+        past = [v for d, v in codes.get(symbol, []) if d < trade_date][-RVOL_WINDOW:]
+        volume = row.get("total_volume")
+        same_day = _row_date(row, trade_date) == trade_date
+        if same_day and volume and len(past) >= RVOL_MIN_DAYS:
+            average = sum(past) / len(past)
+            row["rvol20"] = round(volume / average, 2) if average else None
+            row["rvol_days"] = len(past)
+        if same_day and volume:
+            kept = [p for p in codes.get(symbol, []) if p[0] != trade_date] + [[trade_date, volume]]
+            codes[symbol] = sorted(kept)[-(RVOL_WINDOW + 5):]
+    history["last_trade_date"] = trade_date
+    return history
 
 
 def _trade_date(snapshots: dict) -> str | None:
@@ -66,6 +117,11 @@ def main() -> int:
 
     document = build_document(snapshots, missing, simulation, _trade_date(snapshots), mode=mode)
     trade_date = document["trade_date"]
+    volume_storage = None
+    if trade_date and mode == "postclose":
+        history, _ = load_document(*VOLUME_HISTORY)
+        history = apply_relative_volume(document, history or _backfill_volume_history(trade_date))
+        volume_storage = save_document(history, *VOLUME_HISTORY, f"chore(market): volume history {trade_date}")
 
     # 每日各存一份不可變的當日檔：量價訊號是否真的有預測力，必須靠累積的歷史
     # 用既有 outcome 框架驗證。只留「最新一份」等於永遠無法回測，這個決定
@@ -84,6 +140,8 @@ def main() -> int:
         "trade_date": trade_date, "count": document["count"],
         "missing": missing, "simulation": simulation, "mode": mode,
         "latest_storage": storage, "dated_storage": dated_storage,
+        "volume_history_storage": volume_storage,
+        "rvol_count": sum(1 for r in document["snapshots"].values() if r.get("rvol20") is not None),
     }, ensure_ascii=False, indent=2))
     return 0 if storage.get("local_saved") else 1
 

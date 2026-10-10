@@ -87,6 +87,17 @@ jobs:
         continue-on-error: true
         run: python run_market_scanners.py
 
+      # 處置股／注意股（公開監理資訊，不碰帳務），供網站標示風險；失敗不擋 Email。
+      - name: Save regulatory lists (disposition / attention)
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        continue-on-error: true
+        run: python run_regulatory.py
+
       - name: Freeze changed decisions after fresh analysis
         env:
           GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
