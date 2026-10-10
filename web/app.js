@@ -1260,6 +1260,7 @@ function bindActions() {
   });
   safeBind("homePositionCloudSync", configurePositionCloud);
   safeBind("brokerPositionRefresh", loadBrokerInventory);
+  $("brokerLedgerDetails")?.addEventListener("toggle", e => { if (e.target.open) loadBrokerLedger(); });
   safeBind("brokerPositionAdopt", adoptBrokerInventory);
   safeBind("brokerPositionDisable", async () => {
     const manual = validatePositionsRaw($("homePositionInput")?.value || "");
@@ -3061,6 +3062,34 @@ function renderBrokerAdoptBanner(inventory) {
   $("brokerAdoptQuick")?.addEventListener("click", adoptBrokerInventory);
 }
 
+// 已實現損益（永豐 list_profit_loss，近一年）＋賣出前一個交易日系統的判定，用來對照實際操作。
+async function loadBrokerLedger() {
+  const panel = $("brokerLedgerPanel");
+  const token = positionSyncToken();
+  if (!panel) return;
+  if (!token) { panel.textContent = "輸入私有同步密鑰後可查看。"; return; }
+  panel.textContent = "讀取中…";
+  try {
+    const res = await fetch("/api/broker-ledger", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
+    if (res.status === 401) { panel.textContent = "同步密鑰不正確。"; return; }
+    const d = await readJson(res);
+    const trades = asArray(d.trades);
+    const money = v => v == null ? "—" : `${Number(v) >= 0 ? "+" : ""}${Math.round(Number(v)).toLocaleString()}`;
+    const pct = v => v == null ? "—" : `${Number(v) >= 0 ? "+" : ""}${Number(v).toFixed(2)}%`;
+    const color = v => v == null ? "inherit" : Number(v) >= 0 ? "#137333" : "#c5221f";
+    const total = d.total || {};
+    panel.innerHTML = !trades.length
+      ? `<p>${d.realized_as_of ? `近一年（${escapeHtml(asArray(d.range).join("～"))}）沒有已實現交易。` : "尚未取得；下次盤後或按「讀取最新庫存」後產生。"}</p>`
+      : `<p>${escapeHtml(asArray(d.range).join("～"))}｜共 ${trades.length} 筆｜已實現損益合計 <b style="color:${color(total.pnl)};">${money(total.pnl)}</b> 元`
+        + `${total.pr_ratio != null ? `（${pct(total.pr_ratio)}）` : ""}｜更新 ${escapeHtml(String(d.realized_as_of || "").slice(0, 16).replace("T", " "))}</p>`
+        + `<div style="overflow:auto;"><table><thead><tr><th>賣出日</th><th>代號</th><th>股數</th><th>價格</th><th>損益（元）</th><th>報酬率</th><th>賣出前一日系統判定</th></tr></thead><tbody>`
+        + trades.map(t => `<tr><td>${escapeHtml(t.date || "—")}</td><td>${escapeHtml(t.symbol)}</td><td>${t.shares == null ? "—" : Number(t.shares).toLocaleString()}</td>`
+          + `<td>${t.price == null ? "—" : Number(t.price).toFixed(2)}</td><td style="color:${color(t.pnl)};">${money(t.pnl)}</td><td>${pct(t.pr_ratio)}</td>`
+          + `<td>${t.system_decision_before ? `${escapeHtml(t.system_decision_before)}<span style="color:var(--muted);">（${escapeHtml(t.system_basis_date || "")}）</span>` : `<span style="color:var(--muted);">無當日紀錄</span>`}</td></tr>`).join("")
+        + `</tbody></table></div><p style="color:var(--muted);">系統判定欄是賣出前一個交易日盤後網站顯示的判定，用來對照你的實際操作；不是事後評分。每日歷史自 2026-09 起才有，較早的交易顯示「無當日紀錄」。</p>`;
+  } catch (err) { panel.textContent = `讀取失敗：${err.message}`; }
+}
+
 async function adoptBrokerInventory() {
   if (!brokerInventory) return;
   if (brokerPositionsEnabled) {
@@ -3119,8 +3148,11 @@ async function renderMyHoldings() {
   let valueActions = {};
   let sellTiming = {};
   // 兩支端點併行：賣出時機要抓即時報價與日線 OHLC，不應拖慢持股損益顯示。
+  // 帶同步密鑰時，伺服器才會用永豐逐筆買進日（私人資料）計算「買進後最高價」停損。
+  const syncToken = positionSyncToken();
   const postPositions = (url) => fetch(url, {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(syncToken ? { Authorization: `Bearer ${syncToken}` } : {}) },
     body: JSON.stringify({ positions: pos })
   }).then(readJson);
   const [portfolioResult, timingResult] = await Promise.allSettled([
@@ -3237,6 +3269,8 @@ function renderConfirmation(c) {
 
 function renderSellTiming(t) {
   if (!t) return "";
+  const holding = t.holding ? `<div style="font-size:12px;color:#334155;margin:6px 0 0;">📅 持有 ${Number(t.holding.holding_days)} 天｜最早買進 ${escapeHtml(t.holding.first_buy_date || "—")}`
+    + `${t.holding.lot_count > 1 ? `｜共 ${Number(t.holding.lot_count)} 筆，最近 ${escapeHtml(t.holding.last_buy_date || "—")}` : ""}（永豐逐筆紀錄）</div>` : "";
   const style = TIMING_STYLE[t.urgency] || TIMING_STYLE.advisory;
   const priceLine = [
     t.live_price != null ? `參考價 ${Number(t.live_price).toFixed(2)}` : null,
@@ -3259,7 +3293,7 @@ function renderSellTiming(t) {
     `<div style="padding:2px 0;">第 ${step.stage} 批：<b>${Number(step.price).toFixed(2)}</b> 元收盤跌破「${escapeHtml(step.label)}」→ 減碼 ${(Number(step.fraction) * 100).toFixed(0)}%</div>`
   ).join("");
 
-  return `<div style="font-size:12px;background:${style.bg};border:1px solid ${style.line};border-radius:6px;padding:8px 9px;margin-top:7px;line-height:1.55;">
+  return holding + `<div style="font-size:12px;background:${style.bg};border:1px solid ${style.line};border-radius:6px;padding:8px 9px;margin-top:7px;line-height:1.55;">
     <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
       <b style="color:${style.color};">${style.icon} 賣出時機：${escapeHtml(t.headline || "—")}</b>
       <span style="color:var(--muted);">${t.market_open ? "盤中" : "非盤中"} · shadow</span>
