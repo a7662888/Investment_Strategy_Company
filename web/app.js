@@ -2245,8 +2245,8 @@ function renderRefreshPanel(data) {
       ${lastManual ? `<div style="color:var(--muted);">上次手動：${escapeHtml(new Date(lastManual).toLocaleTimeString("zh-TW", {timeZone: "Asia/Taipei", hour12: false}))}</div>` : ""}
       ${error ? `<div style="color:#b91c1c;">上次失敗：${escapeHtml(String(error).slice(0, 80))}</div>` : ""}
       <button type="button" data-manual-job="${item.job}" ${disabled ? "disabled" : ""} ${running ? 'aria-busy="true"' : ""} title="${escapeHtml(title)}"
-        style="margin-top:5px;padding:5px 10px;font-size:12px;">${running ? "更新中…" : allowed.ok === false && owner ? "今日不可用" : item.button}</button>
-      ${owner && allowed.ok === false && allowed.reason !== (auto && auto.reason) ? `<div style="color:var(--muted);font-size:11.5px;">${escapeHtml(allowed.reason || "")}</div>` : ""}
+        style="margin-top:5px;padding:5px 10px;font-size:12px;">${running ? "更新中…" : item.button}</button>
+      ${owner && allowed.reason ? `<div style="color:${allowed.ok === false ? "#b45309" : "var(--muted)"};font-size:11.5px;">${allowed.ok === false ? "" : "按下："}${escapeHtml(allowed.reason)}</div>` : ""}
     </div>`;
   }).join("");
   panel.querySelectorAll("[data-manual-job]").forEach(btn => btn.addEventListener("click", () => manualRefresh(btn.dataset.manualJob, btn)));
@@ -2255,7 +2255,10 @@ function renderRefreshPanel(data) {
 async function manualRefresh(job, button) {
   const token = positionSyncToken();
   if (!token) return;
-  if (job === "postclose" && !window.confirm("盤後重評會重算母池、凍結判定改變的決策卡並寄出每日 Email。確定觸發？")) return;
+  const note = ((lastDailyRefresh?.manual?.allowed || {})[job] || {}).reason || "";
+  if (job === "postclose" && !window.confirm(`盤後重評會重算母池、凍結判定改變的決策卡並寄出每日 Email。
+${note}
+確定觸發？`)) return;
   if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "更新中…"; }
   let result = {};
   try {
@@ -2267,8 +2270,8 @@ async function manualRefresh(job, button) {
     result = await res.json().catch(() => ({}));
     if (res.status === 401) result.reason = "同步密鑰不正確，無法手動更新";
   } catch (err) { result = {reason: `連線失敗：${err.message}`}; }
-  const note = $("refreshNote");
-  if (note) note.textContent = `${REFRESH_ITEMS.find(i => i.job === job)?.title || job}：${result.reason || (result.started ? "已開始" : "未執行")}`;
+  const noteEl = $("refreshNote");
+  if (noteEl) noteEl.textContent = `${REFRESH_ITEMS.find(i => i.job === job)?.title || job}：${result.reason || (result.started ? "已開始" : "未執行")}`;
   if (!result.started) { refreshRefreshPanel(); return; }
   if (result.mode === "in_process") {
     // 盤前／盤中就地產生：等背景完成後重讀內容；盤中同時刷新即時價與持股賣出時機。
@@ -2283,7 +2286,7 @@ async function manualRefresh(job, button) {
       await refreshDailyLivePrices();
       renderMyHoldings();
     }
-    if (note) note.textContent += "｜已重新載入";
+    if (noteEl) noteEl.textContent += "｜已重新載入";
   } else {
     refreshRefreshPanel();
   }
@@ -2322,7 +2325,7 @@ async function loadIntradayFlash(marketOpenNow = false) {
   const title = $("intradayFlashTitle");
   if (title) title.textContent = `${data.date || ""} 盤中研究快訊`;
   const badge = $("intradayFlashBadge");
-  if (badge) badge.textContent = "PROVISIONAL · 盤中即時";
+  if (badge) badge.textContent = data.market_open ? "PROVISIONAL · 盤中即時" : "非盤中產生 · 最後成交價參考";
   const note = $("intradayFlashNote");
   if (note) {
     const basis = data.basis || {};
