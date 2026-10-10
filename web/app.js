@@ -1261,6 +1261,7 @@ function bindActions() {
   safeBind("homePositionCloudSync", configurePositionCloud);
   safeBind("brokerPositionRefresh", loadBrokerInventory);
   $("brokerLedgerDetails")?.addEventListener("toggle", e => { if (e.target.open) loadBrokerLedger(); });
+  $("timingResearchDetails")?.addEventListener("toggle", e => { if (e.target.open) loadTimingResearch(); });
   safeBind("brokerPositionAdopt", adoptBrokerInventory);
   safeBind("brokerPositionDisable", async () => {
     const manual = validatePositionsRaw($("homePositionInput")?.value || "");
@@ -3087,6 +3088,39 @@ async function loadBrokerLedger() {
           + `<td>${t.price == null ? "—" : Number(t.price).toFixed(2)}</td><td style="color:${color(t.pnl)};">${money(t.pnl)}</td><td>${pct(t.return_pct)}</td>`
           + `<td>${t.system_decision_before ? `${escapeHtml(t.system_decision_before)}<span style="color:var(--muted);">（${escapeHtml(t.system_basis_date || "")}）</span>` : `<span style="color:var(--muted);">無當日紀錄</span>`}</td></tr>`).join("")
         + `</tbody></table></div><p style="color:var(--muted);">系統判定欄是賣出前一個交易日盤後網站顯示的判定，用來對照你的實際操作；不是事後評分。每日歷史自 2026-09 起才有，較早的交易顯示「無當日紀錄」。</p>`;
+  } catch (err) { panel.textContent = `讀取失敗：${err.message}`; }
+}
+
+const TIMING_LEVEL_LABEL = {ma20: "跌破 20 日均線", ma60: "跌破 60 日均線", atr_trailing: "ATR 移動停損"};
+
+async function loadTimingResearch() {
+  const panel = $("timingResearchPanel");
+  const token = positionSyncToken();
+  if (!panel) return;
+  if (!token) { panel.textContent = "輸入私有同步密鑰後可查看。"; return; }
+  panel.textContent = "讀取中…";
+  try {
+    const res = await fetch("/api/timing-research", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
+    if (res.status === 401) { panel.textContent = "同步密鑰不正確。"; return; }
+    if (res.status === 404) { panel.textContent = "尚未產生；盤後批次或按「讀取最新庫存」後產生。"; return; }
+    const d = await readJson(res);
+    const n = v => v == null ? "—" : Number(v).toFixed(2);
+    const s = x => x && x.n ? `${n(x.mean)}%（中位 ${n(x.median)}%，${x.n} 次）` : "—";
+    const fb = Object.entries(d.false_breaks || {}).map(([key, v]) => `<tr><td>${escapeHtml(TIMING_LEVEL_LABEL[key] || key)}</td><td>${v.events}</td>`
+      + `<td><b>${v.recovered_share_pct == null ? "—" : v.recovered_share_pct + "%"}</b></td><td>${s(v.recovered_edge_pct)}</td><td>${s(v.confirmed_edge_pct)}</td>`
+      + `<td>${s(v.recovered_fwd5_pct)}</td><td>${s(v.confirmed_fwd5_pct)}</td></tr>`).join("");
+    const ex = d.execution || {};
+    const fills = asArray(ex.fills).slice(0, 12).map(f => `<tr><td>${escapeHtml(f.date)}</td><td>${escapeHtml(f.symbol)}</td><td>${n(f.price)}</td><td>${n(f.vwap)}</td>`
+      + `<td style="color:${f.vs_vwap_pct > 0 ? "#c5221f" : "#137333"};">${f.vs_vwap_pct > 0 ? "+" : ""}${n(f.vs_vwap_pct)}%</td><td>${f.range_position == null ? "—" : Math.round(f.range_position * 100) + "%"}</td></tr>`).join("");
+    panel.innerHTML = `<p>${d.symbols} 檔關注標的、${d.sessions} 個交易日｜更新 ${escapeHtml(String(d.generated_at || "").slice(0, 16).replace("T", " "))}</p>`
+      + `<h4 style="margin:8px 0 4px;">1. 盤中跌破後，收盤站回的比例</h4>`
+      + (fb ? `<div style="overflow:auto;"><table><thead><tr><th>觸發價</th><th>新跌破次數</th><th>收盤站回</th><th>站回時：盤中賣出少賺</th><th>確認時：等收盤多賠</th><th>站回後 5 日報酬</th><th>確認後 5 日報酬</th></tr></thead><tbody>${fb}</tbody></table></div>`
+        : "<p>樣本不足。</p>")
+      + `<h4 style="margin:10px 0 4px;">2. 你的成交價 vs 當日成交量加權均價</h4>`
+      + `<p>平均 ${s(ex.fills_vs_vwap_pct)}｜高於均價的比例 ${ex.fills_above_vwap_share_pct == null ? "—" : ex.fills_above_vwap_share_pct + "%"}｜在當日高低區間的位置 ${ex.fills_range_position?.mean == null ? "—" : Math.round(ex.fills_range_position.mean * 100) + "%"}（0%＝最低、100%＝最高）</p>`
+      + (fills ? `<div style="overflow:auto;"><table><thead><tr><th>日期</th><th>代號</th><th>成交價</th><th>當日均價</th><th>相對均價</th><th>區間位置</th></tr></thead><tbody>${fills}</tbody></table></div>` : "")
+      + `<p>時段成本（關注清單全部交易日）：開盤 15 分鐘均價相對全日 ${s(ex.session_first15_vs_day_pct)}；收盤前 30 分鐘 ${s(ex.session_last30_vs_day_pct)}。</p>`
+      + `<p style="color:var(--muted);">${escapeHtml(d.method || "")}<br>${escapeHtml(d.caveat || "")}</p>`;
   } catch (err) { panel.textContent = `讀取失敗：${err.message}`; }
 }
 

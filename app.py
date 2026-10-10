@@ -3686,6 +3686,20 @@ class Handler(SimpleHTTPRequestHandler):
                     document, storage = load_positions()
                     self.send_json({**document, "storage": storage})
                 return
+            if parsed.path == "/api/timing-research":
+                # 關注清單含個人持股、成交價分析含個人買進紀錄 → 需同步密鑰。
+                from company.model.durable_document import load_document
+                from company.model.positions import expected_sync_token, is_authorized
+                if expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                    return
+                doc, storage = load_document(PROJECT / "data" / "daily_audit" / "broker_positions" / "timing_research.json",
+                                             "private/timing_research.json")
+                if doc is None:
+                    self.send_json({"error": "買賣時機研究尚未產生（盤後批次）", "storage": storage}, HTTPStatus.NOT_FOUND)
+                else:
+                    self.send_json({**doc, "storage": storage})
+                return
             if parsed.path == "/api/broker-ledger":
                 from company.model.positions import expected_sync_token, is_authorized
                 if expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
