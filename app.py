@@ -3242,7 +3242,57 @@ def annotate_entry_evidence(state: dict) -> dict:
     return annotated
 
 
-def build_sell_timing(normalized_positions: list[dict]) -> dict:
+def load_private_ledger(name: str) -> dict:
+    """私有帳務文件（broker_lots／realized_pnl）。只在已驗證同步密鑰的請求中呼叫。"""
+    from company.data import broker_ledger
+    from company.model.durable_document import load_document
+
+    remote = broker_ledger.LOTS_REMOTE if name == "lots" else broker_ledger.REALIZED_REMOTE
+    local = PROJECT / "data" / "daily_audit" / "broker_positions" / ("lots.json" if name == "lots" else "realized.json")
+    doc, _ = load_document(local, remote)
+    return doc or {}
+
+
+def entry_summaries(lots_doc: dict) -> dict[str, dict]:
+    """每檔：最早／最近買進日、筆數、持有天數（以最早一筆計）。"""
+    today = datetime.now(timezone(timedelta(hours=8))).date()
+    out = {}
+    for symbol, lots in (lots_doc.get("lots") or {}).items():
+        dates = sorted(l["date"] for l in lots if l.get("date"))
+        if not dates:
+            continue
+        out[symbol] = {"first_buy_date": dates[0], "last_buy_date": dates[-1], "lot_count": len(dates),
+                       "holding_days": (today - datetime.fromisoformat(dates[0]).date()).days}
+    return out
+
+
+def decisions_before(dates: list[str]) -> dict[str, dict]:
+    """每個賣出日「前一個已完成交易日」的系統判定（使用者當時在網站上看到的）。"""
+    from company.model.daily_history import load_history_day, load_history_index
+
+    index, _ = load_history_index()
+    available = sorted(str(e.get("as_of") if isinstance(e, dict) else e)
+                       for e in ((index or {}).get("entries") or (index or {}).get("days")
+                                 or (index or {}).get("dates") or []))
+    cache: dict[str, dict] = {}
+    out = {}
+    for day in sorted(set(dates)):
+        prior = [d for d in available if d < day]
+        if not prior:
+            continue
+        basis = prior[-1]
+        if basis not in cache:
+            try:
+                doc, _ = load_history_day(basis)
+            except Exception:  # noqa: BLE001
+                doc = None
+            state = (doc or {}).get("state") or doc or {}
+            cache[basis] = {e.get("symbol"): e.get("decision") for e in state.get("evaluations") or []}
+        out[day] = {"basis_date": basis, "decisions": cache[basis]}
+    return out
+
+
+def build_sell_timing(normalized_positions: list[dict], entries: dict | None = None) -> dict:
     """每檔持股的賣出時機建議。
 
     刻意複用 portfolio_actions 產出的 Exit Engine 結果，維持單一決策鏈：
@@ -3301,6 +3351,7 @@ def build_sell_timing(normalized_positions: list[dict]) -> dict:
             gain=action.get("unrealized_gain"),
             market_open=market_open,
             market_snapshot=market_snapshots.get(symbol),
+            entry=(entries or {}).get(symbol),
         )
         results.append({
             "symbol": symbol,
@@ -3620,6 +3671,27 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     document, storage = load_positions()
                     self.send_json({**document, "storage": storage})
+                return
+            if parsed.path == "/api/broker-ledger":
+                from company.model.positions import expected_sync_token, is_authorized
+                if expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                    return
+                lots = load_private_ledger("lots")
+                realized = load_private_ledger("realized")
+                trades = list(realized.get("trades") or [])
+                context = decisions_before([t["date"] for t in trades if t.get("date")])
+                for trade in trades:
+                    ctx = context.get(trade.get("date")) or {}
+                    trade["system_decision_before"] = (ctx.get("decisions") or {}).get(trade.get("symbol"))
+                    trade["system_basis_date"] = ctx.get("basis_date")
+                self.send_json({
+                    "lots_as_of": lots.get("as_of"), "entries": entry_summaries(lots),
+                    "lots": lots.get("lots") or {}, "lot_status": lots.get("status") or {},
+                    "realized_as_of": realized.get("as_of"), "range": realized.get("range"),
+                    "trades": trades, "summary": realized.get("summary") or [], "total": realized.get("total"),
+                    "note": realized.get("note"),
+                })
                 return
             if parsed.path == "/api/broker-positions":
                 from company.model.positions import expected_sync_token, is_authorized
@@ -3942,7 +4014,15 @@ class Handler(SimpleHTTPRequestHandler):
                     {"symbol": symbol, "shares": value.get("shares", 0), "cost": value.get("cost", 0)}
                     for symbol, value in positions.items()
                 ]
-                payload = build_sell_timing(normalized)
+                # 個人買進日屬私人資料：只有帶正確同步密鑰的請求才用；公開請求照舊用 60 日回看。
+                from company.model.positions import expected_sync_token, is_authorized
+                entries = None
+                if expected_sync_token() is not None and is_authorized(self.headers.get("Authorization")):
+                    try:
+                        entries = entry_summaries(load_private_ledger("lots"))
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[sell-timing] lots unavailable: {type(exc).__name__}")
+                payload = build_sell_timing(normalized, entries)
                 self.send_json(
                     payload,
                     HTTPStatus.SERVICE_UNAVAILABLE if payload.get("error") else HTTPStatus.OK,

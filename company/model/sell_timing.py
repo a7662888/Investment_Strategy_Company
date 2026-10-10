@@ -53,6 +53,14 @@ def wilder_atr(rows: list[dict], period: int = 14) -> float | None:
     return round(atr, 4)
 
 
+def entry_anchor_high(rows: list[dict], entry_date: str | None) -> float | None:
+    """買進後最高價（Chandelier 原意）。entry_date 早於日線資料起點時無法算，回 None。"""
+    if not entry_date or not rows or str(rows[0].get("date") or "") > entry_date:
+        return None
+    highs = [float(r["high"]) for r in rows if str(r.get("date") or "") >= entry_date and r.get("high") is not None]
+    return round(max(highs), 4) if highs else None
+
+
 def _anchor_high(rows: list[dict], lookback: int = 60) -> float | None:
     """移動停損的錨點：近 lookback 個交易日的最高價（Chandelier 式）。
 
@@ -79,22 +87,27 @@ def _state(level_price: float, last_close: float | None,
 
 
 def build_levels(item: dict, exit_result: dict, rows: list[dict],
-                 cost: float | None, gain: float | None) -> list[dict]:
+                 cost: float | None, gain: float | None, entry: dict | None = None) -> list[dict]:
     """組出所有觸發價位。ETF 不掛趨勢型停損，只留配置與保本提示。"""
     is_etf = bool(item.get("is_etf"))
     score = (exit_result or {}).get("score")
     levels: list[dict] = []
 
     atr = wilder_atr(rows)
-    anchor = _anchor_high(rows)
+    # 有永豐逐筆買進紀錄時，錨點用「最早一筆買進後的最高價」；否則退回固定 60 日回看。
+    entry_date = (entry or {}).get("first_buy_date")
+    since_entry = entry_anchor_high(rows, entry_date)
+    anchor = since_entry if since_entry is not None else _anchor_high(rows)
+    anchor_label = (f"{entry_date} 買進後最高" if since_entry is not None else "近 60 日最高")
     if atr is not None and anchor is not None and not is_etf:
         multiple = atr_multiple(score)
         levels.append({
             "key": "atr_trailing",
             "label": f"ATR 移動停損（{multiple}×ATR14）",
             "price": round(anchor - multiple * atr, 2),
-            "basis": f"近 60 日最高 {anchor:.2f} − {multiple}×ATR({atr:.2f})",
+            "basis": f"{anchor_label} {anchor:.2f} − {multiple}×ATR({atr:.2f})",
             "kind": "trailing_stop",
+            "anchor": "since_entry" if since_entry is not None else "lookback_60",
         })
 
     ma20, ma60 = item.get("ma20"), item.get("ma60")
@@ -242,7 +255,7 @@ def grade_confirmation(snapshot: dict | None) -> dict | None:
 def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
                         live_quote: dict | None, cost: float | None,
                         gain: float | None, market_open: bool,
-                        market_snapshot: dict | None = None) -> dict:
+                        market_snapshot: dict | None = None, entry: dict | None = None) -> dict:
     """回傳可稽核的賣出時機建議。不下單、不自動執行。"""
     is_etf = bool(item.get("is_etf"))
     # Yahoo 會回 54.849998474121094 這類浮點雜訊；台股報價本身只有兩位小數，
@@ -261,7 +274,7 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
     elif last_close is not None:
         price_basis = f"日線收盤（{last_close_date}）"
 
-    levels = build_levels(item, exit_result, rows, cost, gain)
+    levels = build_levels(item, exit_result, rows, cost, gain, entry)
     for level in levels:
         state, note = _state(level["price"], last_close, live_price)
         level["state"], level["state_note"] = state, note
@@ -339,7 +352,13 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
         "plan": plan,
         "confirmation": confirmation,
         "confirm_rule": CONFIRM_NOTE,
-        "anchor_note": "移動停損錨點採近 60 交易日最高價；系統未保存個人進場日，故非「進場後最高點」。",
+        "anchor_note": (
+            f"移動停損錨點採 {(entry or {}).get('first_buy_date')} 買進後最高價（永豐逐筆買進紀錄）。"
+            if any(l.get("anchor") == "since_entry" for l in levels)
+            else "移動停損錨點採近 60 交易日最高價（未取得個人買進日，或買進日早於日線資料範圍）。"
+        ),
+        "holding": ({k: entry.get(k) for k in ("first_buy_date", "last_buy_date", "lot_count", "holding_days")}
+                    if entry else None),
         "shadow": True,
         "disclaimer": "研究提示，不自動下單；執行前須人工確認公告、流動性與稅費。",
     }

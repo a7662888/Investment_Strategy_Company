@@ -81,3 +81,17 @@ def test_manual_refresh_refusal_and_broker_dispatch():
         payload, status = app.manual_refresh("broker")
         assert status == 202 and payload["mode"] == "workflow"
         dispatch.assert_called_once_with(jobs.BROKER_WORKFLOW, {"mode": "refresh"})
+
+
+def test_broker_ledger_requires_auth_and_sell_timing_uses_lots_only_when_authorized():
+    with patch("company.model.positions.expected_sync_token", return_value="synthetic-test-only"), \
+         patch.object(app, "load_private_ledger") as ledger, server_url() as url:
+        try:
+            urllib.request.urlopen(url + "/api/broker-ledger")
+            raise AssertionError("authentication required")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+        with patch.object(app, "build_sell_timing", return_value={"items": []}) as build:
+            _post(url + "/api/sell-timing", {"positions": []})
+            assert build.call_args.args[1] is None
+        ledger.assert_not_called()

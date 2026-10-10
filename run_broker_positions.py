@@ -69,13 +69,74 @@ def _fetch():
             share_unit = getattr(unit_class, "Share", None)
             if share_unit is None:
                 raise broker.BrokerPositionsError("SHARE_UNIT_REQUIRED")
-            return broker.fetch_broker_positions(api, broker_id=broker_id, account_id=account_id,
-                                                share_unit=share_unit, production_confirmed=True)
+            snapshot = broker.fetch_broker_positions(api, broker_id=broker_id, account_id=account_id,
+                                                     share_unit=share_unit, production_confirmed=True)
+            _LEDGER.update(_fetch_ledger(api, broker_id, account_id, share_unit, snapshot))
+            return snapshot
         finally:
             try:
                 api.logout()
             except Exception:
                 pass
+
+
+_LEDGER: dict = {}
+
+
+def _fetch_ledger(api, broker_id, account_id, share_unit, snapshot) -> dict:
+    """同一次登入順便讀逐筆買進紀錄與已實現損益。失敗只回錯誤代碼，不影響庫存。"""
+    from company.data import broker_ledger
+
+    result = {}
+    try:
+        account = broker.select_stock_account(api, broker_id=broker_id, account_id=account_id)
+    except Exception as exc:
+        return {"lots_error": broker.error_code(exc), "realized_error": broker.error_code(exc)}
+
+    def symbol_of(code):
+        return broker._symbol(api, code)
+
+    try:
+        result["lots"] = broker_ledger.fetch_lots(api, account, share_unit, symbol_of)
+    except Exception as exc:
+        result["lots_error"] = broker.error_code(exc)
+    try:
+        result["realized"] = broker_ledger.fetch_realized(api, account, share_unit, symbol_of)
+    except Exception as exc:
+        result["realized_error"] = broker.error_code(exc)
+    result["account_key"] = snapshot.get("account_key")
+    return result
+
+
+def _save_ledger() -> dict:
+    """只寫私有資料庫；回傳筆數與狀態（不含任何持股內容），供公開 log 列印。"""
+    from company.data import broker_ledger
+    from company.model import durable_document
+
+    local_dir = broker.LOCAL_PATH.parent   # 已被 .gitignore 排除的私有目錄
+    report = {}
+    now = broker._now()
+    if "lots" in _LEDGER:
+        lots = _LEDGER["lots"]
+        doc = {"schema_version": 1, "as_of": now, "account_key": _LEDGER.get("account_key"),
+               "lots": lots["lots"], "status": lots["status"]}
+        storage = durable_document.save_document(doc, local_dir / "lots.json", broker_ledger.LOTS_REMOTE,
+                                                 "chore(private): broker lots")
+        report["lots"] = {"symbols": len(lots["lots"]), "lot_count": sum(len(v) for v in lots["lots"].values()),
+                          "unreconciled": sum(1 for v in lots["status"].values() if v != "ok"),
+                          "durable": storage.get("durable")}
+    elif _LEDGER.get("lots_error"):
+        report["lots"] = {"error_code": _LEDGER["lots_error"]}
+    if "realized" in _LEDGER:
+        realized = _LEDGER["realized"]
+        doc = {"schema_version": 1, "as_of": now, "account_key": _LEDGER.get("account_key"), **realized}
+        storage = durable_document.save_document(doc, local_dir / "realized.json",
+                                                 broker_ledger.REALIZED_REMOTE, "chore(private): realized pnl")
+        report["realized"] = {"trades": len(realized["trades"]), "summary": len(realized["summary"]),
+                              "durable": storage.get("durable")}
+    elif _LEDGER.get("realized_error"):
+        report["realized"] = {"error_code": _LEDGER["realized_error"]}
+    return report
 
 
 def _account_diagnostics(api):
@@ -171,8 +232,12 @@ def main(argv=None) -> int:
         storage = broker.record_broker_attempt(snapshot=snapshot, failure_code=code)
     except Exception:
         storage = {"saved": False, "durable": False, "error_code": "STORAGE_WRITE_FAILED"}
+    try:
+        ledger_report = _save_ledger() if snapshot is not None else {}
+    except Exception:
+        ledger_report = {"error_code": "LEDGER_SAVE_FAILED"}
     print(json.dumps({"position_count": len(snapshot["positions"]) if snapshot is not None else 0,
-                      "error_code": code, "storage": storage}))
+                      "error_code": code, "storage": storage, "ledger": ledger_report}))
     return 0 if snapshot is not None and storage.get("durable") and not storage.get("error_code") else 1
 
 
