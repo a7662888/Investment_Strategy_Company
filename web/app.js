@@ -2242,8 +2242,8 @@ function renderRefreshPanel(data) {
       <div style="color:#475569;">${escapeHtml(auto ? auto.reason || "" : "盤後自動讀取一次；交易後可手動讀取")}</div>
       ${lastManual ? `<div style="color:var(--muted);">上次手動：${escapeHtml(new Date(lastManual).toLocaleTimeString("zh-TW", {timeZone: "Asia/Taipei", hour12: false}))}</div>` : ""}
       ${error ? `<div style="color:#b91c1c;">上次失敗：${escapeHtml(String(error).slice(0, 80))}</div>` : ""}
-      <button type="button" data-manual-job="${item.job}" ${disabled ? "disabled" : ""} title="${escapeHtml(title)}"
-        style="margin-top:5px;padding:5px 10px;font-size:12px;">${running ? "更新中…" : item.button}</button>
+      <button type="button" data-manual-job="${item.job}" ${disabled ? "disabled" : ""} ${running ? 'aria-busy="true"' : ""} title="${escapeHtml(title)}"
+        style="margin-top:5px;padding:5px 10px;font-size:12px;">${running ? "更新中…" : allowed.ok === false && owner ? "今日不可用" : item.button}</button>
       ${owner && allowed.ok === false && allowed.reason !== (auto && auto.reason) ? `<div style="color:var(--muted);font-size:11.5px;">${escapeHtml(allowed.reason || "")}</div>` : ""}
     </div>`;
   }).join("");
@@ -2254,7 +2254,7 @@ async function manualRefresh(job, button) {
   const token = positionSyncToken();
   if (!token) return;
   if (job === "postclose" && !window.confirm("盤後重評會重算母池、凍結判定改變的決策卡並寄出每日 Email。確定觸發？")) return;
-  if (button) { button.disabled = true; button.textContent = "更新中…"; }
+  if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "更新中…"; }
   let result = {};
   try {
     const res = await fetch("/api/daily-refresh/manual", {
