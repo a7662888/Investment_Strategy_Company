@@ -3081,10 +3081,10 @@ async function loadBrokerLedger() {
     panel.innerHTML = !trades.length
       ? `<p>${d.realized_as_of ? `近一年（${escapeHtml(asArray(d.range).join("～"))}）沒有已實現交易。` : "尚未取得；下次盤後或按「讀取最新庫存」後產生。"}</p>`
       : `<p>${escapeHtml(asArray(d.range).join("～"))}｜共 ${trades.length} 筆｜已實現損益合計 <b style="color:${color(total.pnl)};">${money(total.pnl)}</b> 元`
-        + `${total.pr_ratio != null ? `（${pct(total.pr_ratio)}）` : ""}｜更新 ${escapeHtml(String(d.realized_as_of || "").slice(0, 16).replace("T", " "))}</p>`
+        + `${total.return_pct != null ? `（${pct(total.return_pct)}）` : ""}｜更新 ${escapeHtml(String(d.realized_as_of || "").slice(0, 16).replace("T", " "))}</p>`
         + `<div style="overflow:auto;"><table><thead><tr><th>賣出日</th><th>代號</th><th>股數</th><th>價格</th><th>損益（元）</th><th>報酬率</th><th>賣出前一日系統判定</th></tr></thead><tbody>`
         + trades.map(t => `<tr><td>${escapeHtml(t.date || "—")}</td><td>${escapeHtml(t.symbol)}</td><td>${t.shares == null ? "—" : Number(t.shares).toLocaleString()}</td>`
-          + `<td>${t.price == null ? "—" : Number(t.price).toFixed(2)}</td><td style="color:${color(t.pnl)};">${money(t.pnl)}</td><td>${pct(t.pr_ratio)}</td>`
+          + `<td>${t.price == null ? "—" : Number(t.price).toFixed(2)}</td><td style="color:${color(t.pnl)};">${money(t.pnl)}</td><td>${pct(t.return_pct)}</td>`
           + `<td>${t.system_decision_before ? `${escapeHtml(t.system_decision_before)}<span style="color:var(--muted);">（${escapeHtml(t.system_basis_date || "")}）</span>` : `<span style="color:var(--muted);">無當日紀錄</span>`}</td></tr>`).join("")
         + `</tbody></table></div><p style="color:var(--muted);">系統判定欄是賣出前一個交易日盤後網站顯示的判定，用來對照你的實際操作；不是事後評分。每日歷史自 2026-09 起才有，較早的交易顯示「無當日紀錄」。</p>`;
   } catch (err) { panel.textContent = `讀取失敗：${err.message}`; }
