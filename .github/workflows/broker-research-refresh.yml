@@ -7,7 +7,7 @@ on:
       mode:
         description: Read-only account diagnosis, inventory/rankings refresh, or one market snapshot
         type: choice
-        options: [market, refresh, diagnose]
+        options: [market, refresh, diagnose, kbars]
         default: refresh
 
 permissions:
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   research:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25  # kbars 首次回補約 390 次查詢
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -62,3 +62,12 @@ jobs:
           GITHUB_DATA_BRANCH: main
           SHIOAJI_SNAPSHOT_MODE: intraday
         run: python run_shioaji_snapshot.py
+      - name: Watchlist 1-minute kbars and timing research (private storage)
+        if: inputs.mode == 'kbars'
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        run: python run_kbars.py

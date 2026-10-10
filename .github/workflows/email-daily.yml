@@ -77,6 +77,17 @@ jobs:
         continue-on-error: true
         run: python run_broker_positions.py --fetch
 
+      # 關注清單分 K（盤後一次，只抓清單內標的）→ 假跌破與成交價研究；失敗不擋 Email。
+      - name: Watchlist kbars and timing research
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        continue-on-error: true
+        run: python run_kbars.py
+
       - name: Save post-close market scanners (research only)
         env:
           SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}

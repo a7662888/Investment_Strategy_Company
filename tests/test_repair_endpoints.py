@@ -95,3 +95,12 @@ def test_broker_ledger_requires_auth_and_sell_timing_uses_lots_only_when_authori
             _post(url + "/api/sell-timing", {"positions": []})
             assert build.call_args.args[1] is None
         ledger.assert_not_called()
+
+
+def test_timing_research_requires_the_owner_key():
+    with patch("company.model.positions.expected_sync_token", return_value="synthetic-test-only"), server_url() as url:
+        try:
+            urllib.request.urlopen(url + "/api/timing-research")
+            raise AssertionError("authentication required")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
