@@ -64,7 +64,11 @@ class TestTradingDayGate(unittest.TestCase):
         with patch.object(calendar, "refresh", return_value=self.holidays):
             moment = self._at("2026-09-25T10:30")  # 中秋節（週五）
             self.assertFalse(jobs.is_trading_weekday(moment))
-            self.assertFalse(jobs.postclose_due({}, self._at("2026-09-25T14:30"))[0])
+            # 假日當天不會把假日當成交易日；補跑對象是前一個交易日（09-24）。
+            self.assertFalse(jobs.postclose_due({"as_of": "2026-09-24"}, self._at("2026-09-25T14:30"))[0])
+            due, why = jobs.postclose_due({"as_of": "2026-09-23"}, self._at("2026-09-25T14:30"))
+            self.assertTrue(due)
+            self.assertIn("2026-09-24", why)
             self.assertIn("中秋節", jobs.non_trading_reason(moment))
 
     def test_ordinary_weekday_still_trades(self) -> None:

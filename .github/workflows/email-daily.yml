@@ -136,3 +136,10 @@ jobs:
           GITHUB_DATA_REPO: a7662888/investment-strategy-data
           GITHUB_DATA_BRANCH: main
         run: python run_daily_email.py
+
+      # 盤後狀態更新後順手喚醒網站：非交易日補跑時，網站會接著產生「下一交易日盤前預覽」；
+      # 交易日當天簡報已存在，這一步不會重做任何事。
+      - name: Chain next steps on the site (premarket preview after catch-up)
+        if: always()
+        continue-on-error: true
+        run: curl -sS --max-time 120 -o /dev/null -w "%{http_code}\n" https://investment-strategy-company.onrender.com/api/daily-refresh
