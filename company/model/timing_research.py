@@ -83,8 +83,14 @@ def false_break_study(days_by_symbol: dict[str, dict[str, dict]]) -> dict:
     return result
 
 
+RANGE_TOLERANCE = 0.002
+
+
 def execution_study(lots: dict[str, list[dict]], days_by_symbol: dict[str, dict[str, dict]]) -> dict:
-    fills = []
+    """成交價落在當日高低區間外的紀錄另列、不進平均：實測 2026-06/07 有 7 筆低於當日最低價
+    2.5–4%，不可能是當日盤中成交（可能是定期定額扣款日與成交日不同，或成本已扣配息），
+    與當日均價比較沒有意義。"""
+    fills, excluded = [], []
     for symbol, symbol_lots in (lots or {}).items():
         days = days_by_symbol.get(symbol) or {}
         for lot in symbol_lots:
@@ -95,6 +101,10 @@ def execution_study(lots: dict[str, list[dict]], days_by_symbol: dict[str, dict[
             # 永豐明細成本含手續費（實測 price 為該筆總成本）；扣掉手續費才是成交價。
             price = (lot["cost_per_share"] * shares - (lot.get("fee") or 0)) / shares
             span = day["high"] - day["low"]
+            if not (day["low"] * (1 - RANGE_TOLERANCE) <= price <= day["high"] * (1 + RANGE_TOLERANCE)):
+                excluded.append({"symbol": symbol, "date": lot["date"], "price": round(price, 4),
+                                 "day_low": day["low"], "day_high": day["high"]})
+                continue
             fills.append({
                 "symbol": symbol, "date": lot["date"], "price": round(price, 4), "vwap": day["vwap"],
                 "vs_vwap_pct": round((price / day["vwap"] - 1) * 100, 3),
@@ -107,6 +117,9 @@ def execution_study(lots: dict[str, list[dict]], days_by_symbol: dict[str, dict[
     ]
     return {
         "fills": sorted(fills, key=lambda f: f["date"], reverse=True),
+        "excluded_out_of_range": sorted(excluded, key=lambda f: f["date"], reverse=True),
+        "excluded_note": ("成交價不在當日高低區間內，無法當作該日盤中成交比較；"
+                          "可能為定期定額扣款（紀錄日≠成交日）或成本已調整配息，尚待確認。"),
         "fills_vs_vwap_pct": _summary([f["vs_vwap_pct"] for f in fills]),
         "fills_above_vwap_share_pct": (round(sum(f["vs_vwap_pct"] > 0 for f in fills) / len(fills) * 100, 1)
                                        if fills else None),
