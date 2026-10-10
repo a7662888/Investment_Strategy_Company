@@ -93,3 +93,12 @@ class SaveReportIsCountsOnly(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReturnUnits(unittest.TestCase):
+    def test_fraction_and_percent_are_unified(self):
+        import app
+        # 1216 實測：pr_ratio 0.021（小數），損益 1559，賣價 76.1 × 1000 股 → 約 2.09%
+        self.assertEqual(app.realized_return_pct({"pnl": 1559, "price": 76.1, "shares": 1000, "pr_ratio": 0.021}), 2.1)
+        self.assertEqual(app.realized_return_pct({"pnl": 1559, "price": 76.1, "shares": 1000, "pr_ratio": 2.09}), 2.09)
+        self.assertEqual(app.realized_return_pct({"pnl": 1559, "price": 76.1, "shares": 1000, "pr_ratio": None}), 2.09)

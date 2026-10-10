@@ -3253,6 +3253,20 @@ def load_private_ledger(name: str) -> dict:
     return doc or {}
 
 
+def realized_return_pct(trade: dict) -> float | None:
+    """逐筆報酬率（%）。永豐逐筆 pr_ratio 實測為小數（1216：0.021），合計 pr_ratio 卻是
+    百分比（1.97），文件未說明。以「損益 ÷（賣出金額 − 損益）」交叉驗證後統一成百分比。"""
+    pnl, price, shares, ratio = (trade.get(k) for k in ("pnl", "price", "shares", "pr_ratio"))
+    estimate = None
+    if pnl is not None and price and shares and price * shares - pnl > 0:
+        estimate = pnl / (price * shares - pnl) * 100
+    if ratio is not None:
+        for candidate in (ratio * 100, ratio):
+            if estimate is None or abs(candidate - estimate) <= 0.5:
+                return round(candidate, 2)
+    return round(estimate, 2) if estimate is not None else None
+
+
 def entry_summaries(lots_doc: dict) -> dict[str, dict]:
     """每檔：最早／最近買進日、筆數、持有天數（以最早一筆計）。"""
     today = datetime.now(timezone(timedelta(hours=8))).date()
@@ -3681,7 +3695,11 @@ class Handler(SimpleHTTPRequestHandler):
                 realized = load_private_ledger("realized")
                 trades = list(realized.get("trades") or [])
                 context = decisions_before([t["date"] for t in trades if t.get("date")])
+                total = dict(realized.get("total") or {})
+                if total.get("pnl") is not None and total.get("buy_cost"):
+                    total["return_pct"] = round(total["pnl"] / total["buy_cost"] * 100, 2)
                 for trade in trades:
+                    trade["return_pct"] = realized_return_pct(trade)
                     ctx = context.get(trade.get("date")) or {}
                     trade["system_decision_before"] = (ctx.get("decisions") or {}).get(trade.get("symbol"))
                     trade["system_basis_date"] = ctx.get("basis_date")
@@ -3689,7 +3707,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "lots_as_of": lots.get("as_of"), "entries": entry_summaries(lots),
                     "lots": lots.get("lots") or {}, "lot_status": lots.get("status") or {},
                     "realized_as_of": realized.get("as_of"), "range": realized.get("range"),
-                    "trades": trades, "summary": realized.get("summary") or [], "total": realized.get("total"),
+                    "trades": trades, "summary": realized.get("summary") or [], "total": total or None,
                     "note": realized.get("note"),
                 })
                 return
@@ -3924,6 +3942,9 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         try:
             if self.path in self.RETIRED_POST_ENDPOINTS:
+                # 先讀完請求內容再回 410：未讀的 body 留在 socket 時，Windows 關閉連線會送 RST，
+                # 客戶端偶發 ConnectionAbortedError（WinError 10053；test_legacy_decision_endpoints_are_retired 曾 1/4 失敗）。
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
                 self.send_json(
                     {
                         "status": "retired",
