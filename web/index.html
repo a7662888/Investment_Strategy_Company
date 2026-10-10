@@ -162,9 +162,16 @@
     <section class="panel">
       <div class="sectionHead"><h2>盤後行情排行</h2><span id="marketResearchStatus" class="pill">載入中</span></div>
       <select id="marketResearchMode" aria-label="排行指標" style="margin:8px 0;">
-        <option value="amount">成交值</option><option value="volume">成交量</option>
-        <option value="gainers">漲幅</option><option value="losers">跌幅</option>
-        <option value="volume_ratio">量比（母池）</option>
+        <optgroup label="母池（有品質判定）">
+          <option value="pool:rvol20" selected>量能異常：相對近 20 日均量</option>
+          <option value="pool:volume_ratio">量比：相對昨日</option>
+          <option value="pool:amount">成交值</option>
+          <option value="pool:gainers">漲幅</option><option value="pool:losers">跌幅</option>
+        </optgroup>
+        <optgroup label="全市場（永豐掃描，多數無品質判定）">
+          <option value="market:amount">成交值</option><option value="market:volume">成交量</option>
+          <option value="market:gainers">漲幅</option><option value="market:losers">跌幅</option>
+        </optgroup>
       </select>
       <div id="marketResearchPanel"></div>
     </section>

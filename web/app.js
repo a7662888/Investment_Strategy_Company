@@ -1301,6 +1301,21 @@ loadDailyValueState();
 loadDecisionLedger();
 runDailyJobs();
 loadEtfScreen();
+loadRegulatory();
+
+// 處置股／注意股（永豐 punish／notice，盤後批次）：只作風險標記，不改任何判定。
+let regulatoryFlags = {};
+async function loadRegulatory() {
+  try {
+    const data = await readJson(await fetch("/api/regulatory", {cache: "no-store"}));
+    regulatoryFlags = data.flags || {};
+    if (dailyValueState) renderDailyValuePanel();
+  } catch (err) { regulatoryFlags = {}; }
+}
+function regBadge(symbol) {
+  const flags = asArray(regulatoryFlags[String(symbol || "").split(".")[0]]);
+  return flags.map(f => ` <span class="pill" style="font-size:11px;color:#b91c1c;border-color:#fecaca;" title="公開監理資訊，僅作風險提示">⚠ ${escapeHtml(f)}</span>`).join("");
+}
 
 async function loadEtfScreen() {
   const section = $("etfScreenSection"), panel = $("etfScreenPanel"), status = $("etfScreenStatus");
@@ -2327,7 +2342,7 @@ async function loadIntradayFlash(marketOpenNow = false) {
     + items.map(item => `
       <div style="background:#fff; border:1px solid #fcd34d; border-radius:8px; padding:12px;">
         <div style="font-size:11px; color:${tone(item.position)}; font-weight:700;">${escapeHtml(item.position || "")}</div>
-        <h3 style="margin:4px 0 6px; font-size:17px;">${escapeHtml(item.symbol.split(".")[0])} ${escapeHtml(item.name || "")}</h3>
+        <h3 style="margin:4px 0 6px; font-size:17px;">${escapeHtml(item.symbol.split(".")[0])} ${escapeHtml(item.name || "")}${regBadge(item.symbol)}</h3>
         <div style="font-size:13px; line-height:1.65; color:#334155;">
           盤中參考 <strong>${item.live_price != null ? Number(item.live_price).toFixed(2) : "—"}</strong>
           ${item.close_price != null ? `（前收 ${Number(item.close_price).toFixed(2)}）` : ""}<br>
@@ -2462,7 +2477,7 @@ function renderDailyValuePanel() {
         : "";
       return `<article class="candidate" style="margin-bottom:8px;">
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}</span><span style="color:#0f766e;">${escapeHtml(item.decision)}</span>
+        <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}${regBadge(item.symbol)}</span><span style="color:#0f766e;">${escapeHtml(item.decision)}</span>
       </strong>
       <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}${item.is_etf
         ? (item.dca ? `｜${etfMaText(item.ma240, item.ma240_deviation_pct, item.ma240_band)}` : "")
@@ -2512,13 +2527,38 @@ async function loadMarketResearch() {
 function renderMarketResearch() {
   const data = marketResearchData;
   if (!data) return;
-  const key = $("marketResearchMode")?.value || "amount";
+  const [scope, key] = String($("marketResearchMode")?.value || "pool:rvol20").split(":");
   const market = data.market_scanners;
-  const rows = asArray(market?.rankings?.[key] || data.rankings?.[key]);
-  $("marketResearchStatus").textContent = `${data.as_of || "—"} · ${market ? "永豐全市場掃描" : `母池＋ETF ${data.coverage || 0} 檔`} · ${data.freshness?.status === "current" ? "完整交易日" : "資料落後"}`;
-  $("marketResearchPanel").innerHTML = rows.length ? `<div style="overflow:auto;"><table><thead><tr><th>代號／名稱</th><th>收盤</th><th>漲跌</th><th>成交值</th><th>成交量（張）</th><th>量比</th><th>品質判定</th></tr></thead><tbody>`
-    + rows.map(row => `<tr><td>${escapeHtml(row.symbol || row.code)} ${escapeHtml(row.name || "")}</td><td>${row.close == null ? "—" : Number(row.close).toFixed(2)}</td><td>${row.change_rate != null ? Number(row.change_rate).toFixed(2) + "%" : (key === "gainers" || key === "losers") && row.rank_value != null ? Number(row.rank_value).toFixed(2) + "%" : "—"}</td><td>${row.total_amount == null ? "—" : (Number(row.total_amount) / 1e8).toFixed(2) + " 億"}</td><td>${row.total_volume == null ? "—" : Number(row.total_volume).toLocaleString()}</td><td>${row.volume_ratio == null ? "—" : Number(row.volume_ratio).toFixed(2)}</td><td>${escapeHtml(row.decision || "須另核對基本面")}</td></tr>`).join("") + "</tbody></table></div>"
-    : "此排行尚無同日有效資料，不以舊排行替代。";
+  const useMarket = scope === "market" && market;
+  const rows = asArray(useMarket ? market?.rankings?.[key] : data.rankings?.[key]);
+  const days = Number(data.rvol_days || 0);
+  $("marketResearchStatus").textContent = `${data.as_of || "—"} · ${useMarket ? "永豐全市場掃描" : `母池＋ETF ${data.coverage || 0} 檔`}`
+    + `${!useMarket && key === "rvol20" ? ` · 均量基準 ${days} 日` : ""} · ${data.freshness?.status === "current" ? "完整交易日" : "資料落後"}`;
+  const fmt = (v, d = 2, suffix = "") => v == null ? "—" : `${Number(v).toFixed(d)}${suffix}`;
+  const change = row => row.change_rate != null ? fmt(row.change_rate, 2, "%")
+    : (key === "gainers" || key === "losers") && row.rank_value != null ? fmt(row.rank_value, 2, "%")
+    : row.change_price != null && row.close && row.close !== row.change_price
+      ? fmt(Number(row.change_price) / (Number(row.close) - Number(row.change_price)) * 100, 2, "%") : "—";
+  const quality = row => {
+    const text = row.decision || "未納入品質評估";
+    const muted = /未在母池|未納入/.test(text);
+    return `<span style="color:${muted ? "var(--muted)" : "inherit"};">${escapeHtml(text)}</span>`
+      + asArray(row.regulatory).map(f => ` <span class="pill" style="font-size:11px;color:#b91c1c;border-color:#fecaca;">⚠ ${escapeHtml(f)}</span>`).join("");
+  };
+  const note = useMarket
+    ? "全市場排行多數不在母池，沒有品質判定；只當作市場熱度參考。"
+    : key === "rvol20"
+      ? `相對量＝當日成交量 ÷ 前 ${days || "N"} 日平均（逐日累積至 20 日）。量能放大代表關注度改變，方向要看漲跌與收盤相對均價；預測力尚未驗證，不改買賣判定。`
+      : key === "volume_ratio" ? "永豐量比只和昨日比，昨日量縮時容易誇大；建議以「相對近 20 日均量」為主。" : "";
+  $("marketResearchPanel").innerHTML = (rows.length ? `<div style="overflow:auto;"><table><thead><tr><th>代號／名稱</th><th>收盤</th><th>漲跌</th><th>成交值</th>`
+    + `<th>相對量(20日)</th><th>量比(昨日)</th><th>收盤 vs 均價</th><th>品質判定</th></tr></thead><tbody>`
+    + rows.map(row => `<tr><td>${escapeHtml(row.symbol || row.code)} ${escapeHtml(row.name || "")}</td><td>${fmt(row.close)}</td><td>${change(row)}</td>`
+      + `<td>${row.total_amount == null ? "—" : (Number(row.total_amount) / 1e8).toFixed(2) + " 億"}</td>`
+      + `<td>${row.rvol20 == null ? "—" : `<b>${fmt(row.rvol20)}</b>`}</td><td>${fmt(row.volume_ratio)}</td>`
+      + `<td>${fmt(row.close_vs_vwap_pct ?? (row.average_price && row.close ? (row.close / row.average_price - 1) * 100 : null), 2, "%")}</td>`
+      + `<td>${quality(row)}</td></tr>`).join("") + "</tbody></table></div>"
+    : key === "rvol20" ? "相對量需至少 5 個交易日的盤後快照才計算；資料累積中。" : "此排行尚無同日有效資料，不以舊排行替代。")
+    + (note ? `<p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;">${escapeHtml(note)}</p>` : "");
 }
 
 async function loadDailyHistory() {
@@ -3138,7 +3178,7 @@ async function renderMyHoldings() {
     const timingPanel = renderSellTiming(sellTiming[p.symbol]);
     return `<article class="candidate" style="margin-bottom:10px;">
       <strong style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-        <span>${escapeHtml(p.symbol)} ${sig && sig.name ? escapeHtml(sig.name) : ""} ${sigLine}</span>
+        <span>${escapeHtml(p.symbol)} ${sig && sig.name ? escapeHtml(sig.name) : ""} ${sigLine}${regBadge(p.symbol)}</span>
         <span style="color:${gcls}">${gtxt}</span>
       </strong>
       <p style="font-size:13px; margin:6px 0;">

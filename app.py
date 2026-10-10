@@ -3135,6 +3135,26 @@ def load_market_snapshots() -> dict[str, dict]:
     return {symbol: dict(item) for symbol, item in rows.items()}
 
 
+_REGULATORY_CACHE: dict = {}
+_REGULATORY_TTL = 1800.0
+
+
+def load_regulatory() -> dict:
+    """處置股／注意股清單（盤後批次 run_regulatory.py 寫入）。讀不到回空字典。"""
+    now = time.time()
+    if _REGULATORY_CACHE.get("doc") is not None and now - _REGULATORY_CACHE.get("at", 0) < _REGULATORY_TTL:
+        return _REGULATORY_CACHE["doc"]
+    try:
+        from company.model.durable_document import load_document
+
+        doc, _ = load_document(PROJECT / "data" / "regulatory.json", "market/regulatory.json")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[regulatory] unavailable: {exc}")
+        doc = None
+    _REGULATORY_CACHE.update(at=now, doc=doc or {})
+    return doc or {}
+
+
 _PREMARKET_LOCAL = PROJECT / "data" / "premarket_brief.json"
 _PREMARKET_REMOTE = os.environ.get("PREMARKET_BRIEF_PATH", "market/premarket_brief.json")
 
@@ -3643,8 +3663,16 @@ class Handler(SimpleHTTPRequestHandler):
                 from company.model.market_research import build_market_research
                 state, storage = load_current_state()
                 scanners, _ = load_document(PROJECT / "data/market_scanners.json", "market/scanners/latest.json")
-                self.send_json({**build_market_research(state or {}, load_market_snapshots(), scanners),
+                self.send_json({**build_market_research(state or {}, load_market_snapshots(), scanners,
+                                                        load_regulatory()),
                                 "freshness": current_state_freshness(state), "storage": storage})
+                return
+            if parsed.path == "/api/regulatory":
+                from company.model.market_research import regulatory_flags
+                doc = load_regulatory()
+                self.send_json({"as_of": doc.get("as_of"), "source": doc.get("source"),
+                                "flags": regulatory_flags(doc),
+                                "note": "處置股／注意股為公開監理資訊，僅作風險提示，不改買賣判定。"})
                 return
             if parsed.path == "/api/daily-refresh":
                 # 前端每次載入呼叫一次；只在「該跑且今日尚未跑」時才真的觸發。
