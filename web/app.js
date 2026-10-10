@@ -157,6 +157,7 @@ async function configurePositionCloud() {
   localStorage.setItem(POSITION_SYNC_TOKEN_KEY, key);
   input.value = "";
   await loadCloudPositions();
+  if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
 }
 
 function restorePositionInput() {
@@ -2150,12 +2151,14 @@ async function loadPremarketBrief() {
   if (note) note.textContent = `${d.discipline || ""} ${d.disclaimer || ""}`;
 }
 
-const DAILY_JOBS_INTERVAL_MS = 5 * 60 * 1000;
-let dailyJobsTimer = null;
+// 每日任務：開頁時檢查一次（伺服器端判斷盤前／盤中／盤後是否今日尚未成功），
+// 不再於背景反覆輪詢；需要較新資料時由業主按「立即更新」。
+let lastDailyRefresh = null;
 
 async function runDailyJobs() {
   try {
-    const data = await readJson(await fetch("/api/daily-refresh"));
+    const data = await readJson(await fetch("/api/daily-refresh", {cache: "no-store"}));
+    lastDailyRefresh = data;
     const flashJob = (data.jobs || {}).intraday_flash || {};
     const postJob = (data.jobs || {}).postclose_rescreen || {};
     const triggered = data.triggered || {};
@@ -2166,28 +2169,105 @@ async function runDailyJobs() {
     } else if (postJob.last_error) {
       setDailyJobNote(`盤後重評觸發失敗：${postJob.last_error}`, true);
     }
+    renderRefreshPanel(data);
 
-    // 剛觸發的盤中快訊要等背景產生完成，因此隔一段時間再抓一次。
+    // 剛觸發的任務要等背景產生完成，因此隔一段時間再抓一次（僅此一次，不輪詢）。
     await loadPremarketBrief();
     await loadIntradayFlash(data.market_open === true);
-    if (triggered.intraday_flash || flashJob.running) {
-      setTimeout(() => loadIntradayFlash(data.market_open === true), 12000);
+    if (triggered.intraday_flash || triggered.premarket_brief || flashJob.running) {
+      setTimeout(async () => {
+        await loadPremarketBrief();
+        await loadIntradayFlash(data.market_open === true);
+        refreshRefreshPanel();
+      }, 15000);
     }
-    // 盤中快訊在伺服器端每 15 分鐘重算；頁面開著時定期回來，才看得到新版本，
-    // 也讓「有人在看」本身成為盤中更新的觸發來源。
-    clearTimeout(dailyJobsTimer);
-    if (data.market_open === true) dailyJobsTimer = setTimeout(rerunDailyJobsWhenVisible, DAILY_JOBS_INTERVAL_MS);
   } catch (err) {
     console.warn("daily jobs check failed:", err);
+    if ($("refreshClock")) $("refreshClock").textContent = "更新狀態暫時無法取得";
   }
 }
 
-function rerunDailyJobsWhenVisible() {
-  if (document.hidden) {
-    dailyJobsTimer = setTimeout(rerunDailyJobsWhenVisible, 60000);
-    return;
+async function refreshRefreshPanel() {
+  try {
+    const data = await readJson(await fetch("/api/daily-refresh?trigger=0", {cache: "no-store"}));
+    lastDailyRefresh = data;
+    renderRefreshPanel(data);
+    return data;
+  } catch (err) { return null; }
+}
+
+const REFRESH_ITEMS = [
+  {job: "premarket", auto: "premarket_brief", title: "🌅 盤前簡報", button: "立即更新盤前"},
+  {job: "intraday", auto: "intraday_flash", title: "⚡ 盤中資訊", button: "立即更新盤中"},
+  {job: "postclose", auto: "postclose_rescreen", title: "🌱 盤後重評", button: "觸發盤後重評"},
+  {job: "broker", auto: null, title: "💼 永豐庫存", button: "讀取最新庫存"},
+];
+
+function renderRefreshPanel(data) {
+  const panel = $("refreshPanel");
+  if (!panel || !data) return;
+  const clock = $("refreshClock");
+  const t = data.taipei_time ? new Date(data.taipei_time) : null;
+  if (clock) clock.textContent = `台北 ${t ? t.toLocaleString("zh-TW", {timeZone: "Asia/Taipei", hour12: false}) : "—"}`
+    + `｜${data.trading_weekday ? (data.market_open ? "盤中" : data.after_close ? "盤後" : "非盤中") : "非交易日"}`;
+  const owner = Boolean(positionSyncToken());
+  const manual = data.manual || {};
+  panel.innerHTML = REFRESH_ITEMS.map(item => {
+    const auto = item.auto ? (data.jobs || {})[item.auto] || {} : null;
+    const allowed = (manual.allowed || {})[item.job] || {};
+    const running = (manual.running || {})[item.job] || (auto && auto.running);
+    const lastManual = (manual.last || {})[item.job];
+    const error = (manual.last_error || {})[item.job] || (auto && auto.last_error);
+    const disabled = !owner || running || allowed.ok === false;
+    const title = !owner ? "請先在「我的持股」輸入私有同步密鑰" : allowed.ok === false ? allowed.reason : "";
+    return `<div style="border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-size:12.5px;line-height:1.55;">
+      <b>${item.title}</b>
+      <div style="color:#475569;">${escapeHtml(auto ? auto.reason || "" : "盤後自動讀取一次；交易後可手動讀取")}</div>
+      ${lastManual ? `<div style="color:var(--muted);">上次手動：${escapeHtml(new Date(lastManual).toLocaleTimeString("zh-TW", {timeZone: "Asia/Taipei", hour12: false}))}</div>` : ""}
+      ${error ? `<div style="color:#b91c1c;">上次失敗：${escapeHtml(String(error).slice(0, 80))}</div>` : ""}
+      <button type="button" data-manual-job="${item.job}" ${disabled ? "disabled" : ""} title="${escapeHtml(title)}"
+        style="margin-top:5px;padding:5px 10px;font-size:12px;">${running ? "更新中…" : item.button}</button>
+      ${owner && allowed.ok === false && allowed.reason !== (auto && auto.reason) ? `<div style="color:var(--muted);font-size:11.5px;">${escapeHtml(allowed.reason || "")}</div>` : ""}
+    </div>`;
+  }).join("");
+  panel.querySelectorAll("[data-manual-job]").forEach(btn => btn.addEventListener("click", () => manualRefresh(btn.dataset.manualJob, btn)));
+}
+
+async function manualRefresh(job, button) {
+  const token = positionSyncToken();
+  if (!token) return;
+  if (job === "postclose" && !window.confirm("盤後重評會重算母池、凍結判定改變的決策卡並寄出每日 Email。確定觸發？")) return;
+  if (button) { button.disabled = true; button.textContent = "更新中…"; }
+  let result = {};
+  try {
+    const res = await fetch("/api/daily-refresh/manual", {
+      method: "POST", cache: "no-store",
+      headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
+      body: JSON.stringify({job}),
+    });
+    result = await res.json().catch(() => ({}));
+    if (res.status === 401) result.reason = "同步密鑰不正確，無法手動更新";
+  } catch (err) { result = {reason: `連線失敗：${err.message}`}; }
+  const note = $("refreshNote");
+  if (note) note.textContent = `${REFRESH_ITEMS.find(i => i.job === job)?.title || job}：${result.reason || (result.started ? "已開始" : "未執行")}`;
+  if (!result.started) { refreshRefreshPanel(); return; }
+  if (result.mode === "in_process") {
+    // 盤前／盤中就地產生：等背景完成後重讀內容；盤中同時刷新即時價與持股賣出時機。
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const data = await refreshRefreshPanel();
+      if (data && !((data.manual || {}).running || {})[job]) break;
+    }
+    if (job === "premarket") await loadPremarketBrief();
+    if (job === "intraday") {
+      await loadIntradayFlash(true);
+      await refreshDailyLivePrices();
+      renderMyHoldings();
+    }
+    if (note) note.textContent += "｜已重新載入";
+  } else {
+    refreshRefreshPanel();
   }
-  runDailyJobs();
 }
 
 function setDailyJobNote(message, isError = false) {
@@ -2233,7 +2313,7 @@ async function loadIntradayFlash(marketOpenNow = false) {
       : "—";
     note.textContent = `以 ${basis.state_as_of || "—"} 盤後定稿的品質與估值為底，疊上盤中報價比對既有買進區`
       + `（個股 ${basis.quoted || 0}/${basis.candidates || 0}、ETF ${basis.etf_quoted || 0}/${basis.etf_candidates || 0} 檔取得報價；`
-      + `本版產生於台北 ${generatedText}，盤中約每 15 分鐘重算）。`
+      + `本版產生於台北 ${generatedText}；盤中自動產生一次，需要較新資料請按上方「立即更新盤中」）。`
       + "盤中價未定案，不寫入 Decision Ledger，也不取代盤後正式名單。";
   }
   const method = $("intradayFlashMethod");
@@ -2911,6 +2991,7 @@ async function loadBrokerInventory() {
       + rows.map(row => `<div style="font-size:12px; padding:3px 0;">${escapeHtml(row.symbol)}｜${Number(row.shares)} 股｜平均成本 ${Number(row.cost).toFixed(2)}</div>`).join("");
     panel.innerHTML += `<p>${brokerPositionsEnabled ? "已啟用永豐庫存合併；手動輸入僅代表其他券商持股。" : "尚未啟用合併，現有手動持股維持原樣。"}</p>`;
     if ($("brokerPositionAdopt")) $("brokerPositionAdopt").disabled = stale;
+    renderBrokerAdoptBanner(stale ? null : data);
     _heldSet = null;
     renderMyHoldings();
     if (ledgerSignals.length) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
@@ -2923,6 +3004,21 @@ async function loadBrokerInventory() {
     renderMyHoldings();
     if (ledgerSignals.length) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
   }
+}
+
+// 永豐庫存已可讀但尚未採用時，把「一次性採用」放到持股區最上方：
+// 採用後雲端記住 broker_enabled，之後每次開頁與每日 Email 都自動用最新庫存。
+// 刻意不在背景自動採用——手動清單若與永豐重複，直接合併會重複計算股數，需業主確認一次。
+function renderBrokerAdoptBanner(inventory) {
+  const banner = $("brokerAdoptBanner");
+  if (!banner) return;
+  if (!inventory || brokerPositionsEnabled) { banner.style.display = "none"; return; }
+  const count = asArray(inventory.positions).length;
+  banner.style.display = "";
+  banner.innerHTML = `<b>偵測到永豐庫存 ${count} 檔（${escapeHtml(inventory.as_of || inventory.fetched_at || "")}）</b>：
+    採用一次後，之後開網頁與每日 Email 都會自動使用最新永豐庫存，手動欄只需填其他券商持股。
+    <button type="button" id="brokerAdoptQuick" class="primary" style="margin-left:6px;padding:5px 12px;">一鍵採用永豐庫存</button>`;
+  $("brokerAdoptQuick")?.addEventListener("click", adoptBrokerInventory);
 }
 
 async function adoptBrokerInventory() {
@@ -2941,7 +3037,10 @@ async function adoptBrokerInventory() {
   if (!window.confirm(message)) return;
   const others = manual.filter(p => !codes.has(p.symbol));
   const saved = await saveCloudPositions(others, true);
-  if (saved) applyCloudPositions(others, true);
+  if (saved) {
+    applyCloudPositions(others, true);
+    renderBrokerAdoptBanner(null);
+  }
 }
 
 function effectiveHoldings() {

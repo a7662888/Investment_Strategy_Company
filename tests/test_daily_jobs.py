@@ -109,25 +109,55 @@ class TestJobWindows(unittest.TestCase):
         self.assertTrue(jobs.postclose_due(stale, now)[0])
         self.assertFalse(jobs.postclose_due(fresh, now)[0])
 
-    def test_intraday_refreshes_on_a_fixed_cadence(self) -> None:
+    def test_intraday_auto_runs_once_per_trading_day(self) -> None:
         now = at("2026-09-11T10:30")
-        fresh = {"date": "2026-09-11", "generated_at_taipei": "2026-09-11T10:20:00+08:00"}
-        stale = {"date": "2026-09-11", "generated_at_taipei": "2026-09-11T10:14:59+08:00"}
         self.assertTrue(jobs.intraday_due(None, now)[0])
         self.assertTrue(jobs.intraday_due({"date": "2026-09-10"}, now)[0])
-        self.assertFalse(jobs.intraday_due(fresh, now)[0])
-        self.assertTrue(jobs.intraday_due(stale, now)[0])
-        self.assertTrue(jobs.intraday_due({"date": "2026-09-11"}, now)[0])
+        done, why = jobs.intraday_due({"date": "2026-09-11", "generated_at_taipei": "2026-09-11T09:06:00+08:00"}, now)
+        self.assertFalse(done)
+        self.assertIn("手動更新", why)
 
-    def test_intraday_never_refreshes_after_the_close(self) -> None:
-        stale = {"date": "2026-09-11", "generated_at_taipei": "2026-09-11T10:00:00+08:00"}
-        self.assertFalse(jobs.intraday_due(stale, at("2026-09-11T13:45"))[0])
+    def test_intraday_waits_for_the_open_to_print_and_stops_after_close(self) -> None:
+        self.assertFalse(jobs.intraday_due(None, at("2026-09-11T09:02"))[0])
+        self.assertTrue(jobs.intraday_due(None, at("2026-09-11T09:05"))[0])
+        self.assertFalse(jobs.intraday_due(None, at("2026-09-11T13:45"))[0])
 
-    def test_intraday_slot_buckets_the_session(self) -> None:
-        self.assertEqual(jobs.intraday_slot(at("2026-09-11T10:29")), "2026-09-11T10:15")
-        self.assertEqual(jobs.intraday_slot(at("2026-09-11T10:30")), "2026-09-11T10:30")
-        with patch.dict(os.environ, {"INTRADAY_REFRESH_MINUTES": "1"}):
-            self.assertEqual(jobs.intraday_refresh_minutes(), 5)
+    def test_premarket_auto_runs_once_even_if_state_moves(self) -> None:
+        now = at("2026-09-11T20:00")
+        brief = {"date": "2026-09-11", "state_as_of": "2026-09-10"}
+        due, why = jobs.premarket_due(brief, now, "2026-09-11")
+        self.assertFalse(due)
+        self.assertIn("手動更新", why)
+        self.assertTrue(jobs.premarket_due({"date": "2026-09-10"}, at("2026-09-11T07:40"))[0])
+
+
+class TestManualRefresh(unittest.TestCase):
+    def setUp(self) -> None:
+        jobs._MANUAL.clear()
+
+    def test_intraday_only_during_the_session_with_cooldown(self) -> None:
+        self.assertFalse(jobs.manual_check("intraday", at("2026-09-11T08:30"))[0])
+        now = at("2026-09-11T10:00")
+        self.assertTrue(jobs.manual_check("intraday", now)[0])
+        jobs.mark_manual("intraday", now)
+        ok, why = jobs.manual_check("intraday", at("2026-09-11T10:01"))
+        self.assertFalse(ok)
+        self.assertIn("秒後再試", why)
+        self.assertTrue(jobs.manual_check("intraday", at("2026-09-11T10:02:01"))[0])
+
+    def test_postclose_never_reruns_a_completed_day(self) -> None:
+        now = at("2026-09-11T15:00")
+        self.assertFalse(jobs.manual_check("postclose", at("2026-09-11T13:00"))[0])
+        self.assertTrue(jobs.manual_check("postclose", now, {"analysis_date_taipei": "2026-09-10"})[0])
+        ok, why = jobs.manual_check("postclose", now, {"analysis_date_taipei": "2026-09-11"})
+        self.assertFalse(ok)
+        self.assertIn("重複寄信", why)
+
+    def test_broker_inventory_allowed_on_non_trading_days(self) -> None:
+        saturday = at("2026-09-12T10:00")
+        self.assertTrue(jobs.manual_check("broker", saturday)[0])
+        self.assertFalse(jobs.manual_check("premarket", saturday)[0])
+        self.assertFalse(jobs.manual_check("unknown", saturday)[0])
 
 
 class TestClaim(unittest.TestCase):
