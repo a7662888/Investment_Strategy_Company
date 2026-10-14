@@ -120,7 +120,9 @@ def test_public_etf_api_and_bad_inputs():
             with pytest.raises(urllib.error.HTTPError) as exc:
                 urllib.request.urlopen(base + '/api/etf/holdings?code=../../positions')
             assert exc.value.code == 400
-            payload = e.holdings('00400A')   # 國泰：仍未串接（00982A 已於 2026-10-14 接上群益）
+            # 任挑一檔尚未串接的主動 ETF（陸續接上新投信後不必再改測試）
+            unconnected = next(r['code'] for r in data['rows'] if r.get('active') and not e.supported_issuer(r['code']))
+            payload = e.holdings(unconnected)
             assert payload['status'] == 'not_connected' and payload['holdings'] == []
     finally:
         server.shutdown(); server.server_close()

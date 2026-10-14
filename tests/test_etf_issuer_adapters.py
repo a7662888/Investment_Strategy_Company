@@ -88,3 +88,46 @@ class StoredFallback(unittest.TestCase):
                 patch.object(e, "stored_pair") as stored:
             self.assertEqual(e.holdings("00980A")["status"], "official_snapshot")
             stored.assert_not_called()
+
+
+FUBON_PAGE = """<div>資料日期：<span>2026/10/14</span></div>
+<table><tr><th>股票代碼</th><th>股票名稱</th><th>股數</th><th>金額</th><th>權重(%)</th></tr>
+<tr><td>6223</td><td>旺矽</td><td>323,000</td><td>1,900,855,000</td><td>7.9057</td></tr>
+<tr><td>8046</td><td>南電</td><td>1,299,000</td><td>1,857,570,000</td><td>7.7257</td></tr>
+<tr><td>合計</td><td></td><td></td><td>3,758,425,000</td><td>15.6314</td></tr></table>
+<table><tr><th>期貨代碼</th><th>期貨名稱</th><th>口數</th><th>金額</th><th>權重(%)</th></tr>
+<tr><td>TNZ6F</td><td>超長美債</td><td>20</td><td>67,971,859</td><td>9.1728</td></tr></table>
+<table><tr><th>項目</th><th>金額</th></tr><tr><td>現金 (TWD)</td><td>1,220,979,272</td></tr></table>"""
+
+
+class Fubon(unittest.TestCase):
+    def test_tables_total_row_and_date(self):
+        out = e.parse_fubon_assets(FUBON_PAGE, "00405A", "src")
+        self.assertEqual(out["as_of"], "2026-10-14")
+        self.assertEqual([h["code"] for h in out["holdings"]], ["6223", "8046"])   # 合計列排除
+        self.assertEqual(out["holdings"][0]["shares"], 323000)
+        self.assertEqual(out["derivatives"][0]["code"], "TNZ6F")
+
+    def test_missing_date_is_rejected(self):
+        with self.assertRaises(ValueError):
+            e.parse_fubon_assets(FUBON_PAGE.replace("資料日期", "日期"), "00405A", "src")
+
+
+class Cathay(unittest.TestCase):
+    def test_official_weights_with_shares_from_the_matching_pcf(self):
+        from unittest.mock import patch
+        import json as _json
+        weights = {"result": {"date": "2026/10/14", "stockWeights": [{"stockCode": "2330", "stockName": "台積電", "weights": "8.85"}]}}
+        wrong = {"result": {"stockCode": "00400A", "date": "2026/10/14", "preDateC": "2026/10/13"}}
+        right = {"result": {"stockCode": "00400A", "date": "2026/10/15", "preDateC": "2026/10/14", "totUnit": "1,949,140,000",
+                            "basketUnit": "500,000", "aum": "30,788,558,230", "nav": "15.8"}}
+        basket = {"result": [{"prod": "2330", "basketShares": "281"}]}
+        def read(url, body=None):
+            if "GetIndexStockWeights" in url: return _json.dumps(weights).encode()
+            if "GetStocksList" in url: return _json.dumps(basket).encode()
+            return _json.dumps(right if "2026/10/15" in url else wrong).encode()
+        with patch.object(e, "read_public", side_effect=read):
+            out = e.cathay_snapshot("00400A")
+        self.assertEqual((out["as_of"], out["effective_date"]), ("2026-10-14", "2026-10-15"))
+        self.assertEqual(out["holdings"][0]["shares"], round(281 * 1949140000 / 500000))
+        self.assertEqual(out["holdings"][0]["weight_pct"], 8.85)
