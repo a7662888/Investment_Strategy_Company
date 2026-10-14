@@ -215,7 +215,7 @@ def manual_note(job: str, now: datetime, state: dict | None = None) -> str:
         if session_unsettled(now):
             parts.append("盤中執行：快照、分 K、ETF 每日資料會略過今日未收盤部分，只更新前一交易日的分析")
         if expected and done and done >= expected:
-            parts.append(f"{expected} 已重評過：會重新計算並再寄一次每日 Email")
+            parts.append(f"{expected} 已重評過：會重新計算並更新網站資料（每日 Email 當天已寄過就不會重寄）")
         else:
             parts.append(f"補跑 {expected or '最新交易日'} 的盤後重評（約 10–20 分鐘）")
         return "；".join(parts)
@@ -326,6 +326,33 @@ def dispatch_workflow(workflow: str, inputs: dict | None = None, ref: str = "mai
                 "error": exc.read().decode("utf-8", "replace")[:200]}
     except Exception as exc:  # noqa: BLE001
         return {"dispatched": False, "workflow": workflow, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def latest_workflow_run(workflow: str, since: datetime) -> dict | None:
+    """since 之後最新一次 run（任何結果），供手動觸發後追蹤進度。查詢失敗回 None。"""
+    token = (os.environ.get("GITHUB_DATA_TOKEN") or os.environ.get("GITHUB_PAT") or "").strip()
+    repo = os.environ.get("GITHUB_ACTIONS_REPO", "a7662888/Investment_Strategy_Company").strip()
+    if not token:
+        return None
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs?per_page=5",
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                 "User-Agent": "investment-daily-jobs/1.0"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            runs = json.loads(response.read().decode("utf-8")).get("workflow_runs") or []
+    except Exception:  # noqa: BLE001
+        return None
+    for run in runs:   # GitHub 依建立時間新到舊排序
+        try:
+            created = datetime.fromisoformat(str(run.get("created_at")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if created >= since - timedelta(seconds=60):
+            return {"status": run.get("status"), "conclusion": run.get("conclusion"),
+                    "created_at": run.get("created_at"), "updated_at": run.get("updated_at")}
+    return None
 
 
 def recent_workflow_run(workflow: str, since: datetime) -> dict | None:

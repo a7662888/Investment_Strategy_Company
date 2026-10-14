@@ -104,3 +104,26 @@ def test_timing_research_requires_the_owner_key():
             raise AssertionError("authentication required")
         except urllib.error.HTTPError as exc:
             assert exc.code == 401
+
+
+def test_manual_status_requires_key_and_reports_the_run():
+    with patch("company.model.positions.expected_sync_token", return_value="synthetic-test-only"), server_url() as url:
+        try:
+            urllib.request.urlopen(url + "/api/daily-refresh/manual-status?job=broker&since=2026-10-14T10:24:00Z")
+            raise AssertionError("authentication required")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+    with patch("company.model.positions.expected_sync_token", return_value="k"), \
+         patch("company.model.positions.is_authorized", return_value=True), \
+         patch("company.model.daily_jobs.latest_workflow_run", return_value={"status": "completed", "conclusion": "success"}), \
+         server_url() as url:
+        req = urllib.request.Request(url + "/api/daily-refresh/manual-status?job=broker&since=2026-10-14T10:24:00Z",
+                                     headers={"Authorization": "Bearer k"})
+        with urllib.request.urlopen(req) as response:
+            assert json.loads(response.read())["run"]["conclusion"] == "success"
+        try:
+            urllib.request.urlopen(urllib.request.Request(url + "/api/daily-refresh/manual-status?job=intraday&since=x",
+                                                          headers={"Authorization": "Bearer k"}))
+            raise AssertionError("bad request expected")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400

@@ -153,7 +153,7 @@ class TestManualRefresh(unittest.TestCase):
 
     def test_notes_warn_about_side_effects(self) -> None:
         self.assertIn("最後成交價", jobs.manual_check("intraday", at("2026-09-12T10:00"))[1])
-        self.assertIn("再寄一次", jobs.manual_check("postclose", at("2026-09-11T15:00"), {"as_of": "2026-09-11"})[1])
+        self.assertIn("Email 當天已寄過", jobs.manual_check("postclose", at("2026-09-11T15:00"), {"as_of": "2026-09-11"})[1])
         self.assertIn("略過今日未收盤", jobs.manual_check("postclose", at("2026-09-11T10:00"), {"as_of": "2026-09-10"})[1])
         self.assertIn("盤前預覽", jobs.manual_check("premarket", at("2026-09-12T10:00"))[1])
 
@@ -379,3 +379,24 @@ class TestDuplicateRunGuard(unittest.TestCase):
             with self._runs({"created_at": "2026-10-08T07:40:00Z", "status": "completed", "conclusion": "failure"},
                             {"created_at": "2026-10-07T08:00:00Z", "status": "completed", "conclusion": "success"}):
                 self.assertIsNone(jobs.recent_workflow_run("email-daily.yml", since))
+
+
+class TestScheduleGuard(unittest.TestCase):
+    def _run(self, event, as_of, tmp):
+        import run_postclose_guard as guard
+        out = Path(tmp) / "out.txt"
+        with patch.dict(os.environ, {"GITHUB_EVENT_NAME": event, "GITHUB_OUTPUT": str(out)}), \
+                patch("company.model.current_state.load_current_state", return_value=({"as_of": as_of}, {})), \
+                patch("company.model.daily_history.latest_completed_market_date", return_value="2026-10-13"), \
+                patch("builtins.print"):
+            guard.main()
+        return out.read_text(encoding="utf-8").strip()
+
+    def test_schedule_skips_only_when_the_session_is_already_done(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._run("schedule", "2026-10-13", tmp), "skip=true")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._run("schedule", "2026-10-08", tmp), "skip=false")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(self._run("workflow_dispatch", "2026-10-13", tmp), "skip=false")

@@ -2222,6 +2222,10 @@ const REFRESH_ITEMS = [
   {job: "broker", auto: null, title: "💼 永豐庫存", button: "讀取最新庫存"},
 ];
 
+// 手動觸發 GitHub Actions 的項目（盤後、庫存）：記住觸發時間，輪詢到跑完再重新載入。
+const manualPending = {};
+let cooldownTimer = null;
+
 function renderRefreshPanel(data) {
   const panel = $("refreshPanel");
   if (!panel || !data) return;
@@ -2234,7 +2238,8 @@ function renderRefreshPanel(data) {
   panel.innerHTML = REFRESH_ITEMS.map(item => {
     const auto = item.auto ? (data.jobs || {})[item.auto] || {} : null;
     const allowed = (manual.allowed || {})[item.job] || {};
-    const running = (manual.running || {})[item.job] || (auto && auto.running);
+    const pending = manualPending[item.job];
+    const running = (manual.running || {})[item.job] || (auto && auto.running) || Boolean(pending);
     const lastManual = (manual.last || {})[item.job];
     const error = (manual.last_error || {})[item.job] || (auto && auto.last_error);
     const disabled = !owner || running || allowed.ok === false;
@@ -2246,9 +2251,25 @@ function renderRefreshPanel(data) {
       ${error ? `<div style="color:#b91c1c;">上次失敗：${escapeHtml(String(error).slice(0, 80))}</div>` : ""}
       <button type="button" data-manual-job="${item.job}" ${disabled ? "disabled" : ""} ${running ? 'aria-busy="true"' : ""} title="${escapeHtml(title)}"
         style="margin-top:5px;padding:5px 10px;font-size:12px;">${running ? "更新中…" : item.button}</button>
-      ${owner && allowed.reason ? `<div style="color:${allowed.ok === false ? "#b45309" : "var(--muted)"};font-size:11.5px;">${allowed.ok === false ? "" : "按下："}${escapeHtml(allowed.reason)}</div>` : ""}
+      ${pending ? `<div style="color:#1d4ed8;font-size:11.5px;">${escapeHtml(pending.text || "GitHub Actions 執行中…")}</div>`
+        : owner && allowed.reason ? `<div data-cooldown="${allowed.ok === false ? item.job : ""}" style="color:${allowed.ok === false ? "#b45309" : "var(--muted)"};font-size:11.5px;">${allowed.ok === false ? "" : "按下："}${escapeHtml(allowed.reason)}</div>` : ""}
     </div>`;
-  }).join("");
+  }).join("") + (owner ? "" : `<div style="grid-column:1/-1;font-size:12px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:6px 9px;">
+      此裝置尚未輸入私有同步密鑰，手動鍵暫時不能按。到下方「我的持股」輸入一次後，這台裝置（含手機）就會記住。</div>`);
+  // 防連點的倒數：伺服器只回「N 秒後再試」，這裡在本機倒數，時間到自動重抓狀態並解除停用。
+  clearInterval(cooldownTimer);
+  const waits = Object.values(manual.allowed || {}).map(a => Number((String(a.reason || "").match(/請 (\d+) 秒後再試/) || [])[1] || 0));
+  const longest = Math.max(0, ...waits);
+  if (longest > 0) {
+    const started = Date.now();
+    cooldownTimer = setInterval(() => {
+      const left = Math.ceil(longest - (Date.now() - started) / 1000);
+      panel.querySelectorAll("[data-cooldown]").forEach(el => {
+        if (el.dataset.cooldown) el.textContent = left > 0 ? `剛按過，請 ${left} 秒後再試` : "可以再按了";
+      });
+      if (left <= 0) { clearInterval(cooldownTimer); refreshRefreshPanel(); }
+    }, 1000);
+  }
   panel.querySelectorAll("[data-manual-job]").forEach(btn => btn.addEventListener("click", () => manualRefresh(btn.dataset.manualJob, btn)));
 }
 
@@ -2256,7 +2277,7 @@ async function manualRefresh(job, button) {
   const token = positionSyncToken();
   if (!token) return;
   const note = ((lastDailyRefresh?.manual?.allowed || {})[job] || {}).reason || "";
-  if (job === "postclose" && !window.confirm(`盤後重評會重算母池、凍結判定改變的決策卡並寄出每日 Email。
+  if (job === "postclose" && !window.confirm(`盤後重評會重算母池、凍結判定改變的決策卡；每日 Email 當天未寄過才會寄出。
 ${note}
 確定觸發？`)) return;
   if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "更新中…"; }
@@ -2288,8 +2309,47 @@ ${note}
     }
     if (noteEl) noteEl.textContent += "｜已重新載入";
   } else {
-    refreshRefreshPanel();
+    followWorkflow(job, new Date(Date.now() - 5000).toISOString());
   }
+}
+
+// 盤後重評、永豐庫存在 GitHub Actions 執行：每 15 秒查一次進度（最多 25 分鐘），
+// 跑完自動重新載入受影響的區塊。之前只觸發不追蹤，手機上看起來就像「按了沒反應」。
+async function followWorkflow(job, since) {
+  const token = positionSyncToken();
+  const title = REFRESH_ITEMS.find(i => i.job === job)?.title || job;
+  const noteEl = $("refreshNote");
+  manualPending[job] = {since, text: "已送出，等待 GitHub Actions 開始…"};
+  if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
+  const started = Date.now();
+  let finished = null;
+  while (Date.now() - started < 25 * 60 * 1000) {
+    await new Promise(r => setTimeout(r, 15000));
+    let run = null;
+    try {
+      const res = await fetch(`/api/daily-refresh/manual-status?job=${encodeURIComponent(job)}&since=${encodeURIComponent(since)}`,
+        {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
+      run = (await res.json()).run;
+    } catch (err) { /* 暫時連不上就下一輪再試 */ }
+    const minutes = Math.floor((Date.now() - started) / 60000);
+    if (run && run.status === "completed") { finished = run; break; }
+    manualPending[job].text = run ? `GitHub Actions ${run.status === "queued" ? "排隊中" : "執行中"}（已 ${minutes} 分鐘）…` : `等待 GitHub Actions 開始（已 ${minutes} 分鐘）…`;
+    if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
+  }
+  delete manualPending[job];
+  if (!finished) {
+    if (noteEl) noteEl.textContent = `${title}：超過 25 分鐘仍未完成，請稍後重新整理頁面確認。`;
+  } else if (finished.conclusion !== "success") {
+    if (noteEl) noteEl.textContent = `${title}：GitHub Actions 結果為 ${finished.conclusion}，資料未更新。`;
+  } else {
+    if (job === "broker") await loadCloudPositions();       // 會接著讀永豐庫存並重算持股
+    if (job === "postclose") {
+      await loadDailyValueState();
+      loadPremarketBrief(); loadEtfScreen(); loadMarketResearch(); loadDecisionLedger(); loadRegulatory();
+    }
+    if (noteEl) noteEl.textContent = `${title}：完成並已重新載入（${new Date().toLocaleTimeString("zh-TW", {timeZone: "Asia/Taipei", hour12: false})}）`;
+  }
+  refreshRefreshPanel();
 }
 
 function setDailyJobNote(message, isError = false) {
