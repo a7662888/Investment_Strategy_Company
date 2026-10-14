@@ -60,6 +60,15 @@ CATHAY_API = 'https://cwapi.cathaysite.com.tw/api'
 # 規模、單位數、淨值取自 Pcf.aspx。
 FUBON = {'00405A', '00982D', '00983D'}
 FUBON_BASE = 'https://websys.fsit.com.tw/FubonETF/Trade'
+# 凱基投信：申購買回清單頁以 POST /Fund/RedemptionVC {fundID, queryDate} 載入 HTML 片段
+# （中文為 HTML 實體編碼）；queryDate 為 PCF 日，「(日期)每受益權單位淨資產價值」為持股日。
+KGI = {'00407A': 'J024'}
+KGI_URL = 'https://www.kgifund.com.tw/Fund/RedemptionVC'
+# 安聯投信：交易資訊頁（list-trade）POST /webapi/api/Fund/GetFundTradeInfo {FundNo, Date}；
+# Angular 標準 XSRF：先 GET AntiForgery/GetAntiForgeryToken 取 Cookie，再以 X-XSRF-TOKEN 標頭送出。
+# FundNo 為內部編號（回應 CSecuritiesCode 為股票代號，用來核對）；Date 為 PCF 日。
+ALLIANZ = {'00984A': 'E0001', '00993A': 'E0002', '00402A': 'E0003', '00412A': 'E0004'}
+ALLIANZ_API = 'https://etf.allianzgi.com.tw/webapi/api'
 YUANTA_URL = 'https://etfapi.yuantaetfs.com/ectranslation/api/bridge?APIType=ETFAPI&CompanyName=YUANTAFUNDS&PageName=%2FtradeInfo%2Fpcf%2F00990A&DeviceId=null&FuncId=PCF%2FDaily&ticker=00990A&AppName=ETF&Platform=ETF&Device=3'
 
 
@@ -825,6 +834,135 @@ def fubon_pair(code: str) -> tuple[dict, dict | None]:
     return current, None
 
 
+def parse_kgi(fragment: str, code: str, source: str) -> dict:
+    import html as _html
+
+    page = _html.unescape(fragment)
+    text = re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', page))
+    if f'({code})' not in text:
+        raise ValueError('invalid issuer product')
+    pcf = re.search(r'(20\d\d/\d\d/\d\d)\s*\S*申購買回清單公告', text)
+    held = re.search(r'\((20\d\d/\d\d/\d\d)\)\s*每受益權單位淨資產價值', text)
+    as_of = date_iso(held.group(1).replace('/', '-')) if held else None
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('missing issuer date')
+    def grab(label):
+        m = re.search(label + r'[^0-9\-]{0,30}([0-9,.\-]+)', text)
+        return number(m.group(1)) if m else None
+    kinds = {'股票代號': ('stock', '股數'), '債券代號': ('bond', '面額'), '期貨代號': ('futures', '口數'), '基金代號': ('fund', '單位數')}
+    positions, derivatives = [], []
+    for table in re.findall(r'<table[^>]*>(.*?)</table>', page, re.S):
+        rows = _html_cells(table)
+        if not rows or rows[0][0] not in kinds or not any('權重' in h for h in rows[0]):
+            continue
+        asset, unit = kinds[rows[0][0]]
+        weight_col = next(i for i, h in enumerate(rows[0]) if '權重' in h)
+        for row in rows[1:]:
+            if len(row) <= weight_col or not row[1] or re.match(r'(合計|總計|小計)', row[0] + row[1]):
+                continue
+            weight = number(row[weight_col])
+            if weight is None:
+                raise ValueError('missing official weight')
+            item = {'code': row[0], 'name': row[1], 'weight_pct': weight, 'shares': number(row[2]),
+                    'quantity_unit': unit, 'asset_type': asset}
+            (derivatives if asset == 'futures' else positions).append(item)
+    if not positions or len({p['code'] for p in positions}) != len(positions) or any(p['weight_pct'] < 0 or p['weight_pct'] > 100 for p in positions) or sum(p['weight_pct'] for p in positions) > 102:
+        raise ValueError('invalid issuer holdings')
+    return {'code': code, 'as_of': as_of, 'effective_date': date_iso(pcf.group(1).replace('/', '-')) if pcf else None,
+            'units': grab('已發行受益權單位總數'), 'aum_twd': grab('基金淨資產價值'), 'nav': grab('每受益權單位淨資產價值'),
+            'holdings': positions, 'derivatives': derivatives, 'source': source, 'fetched_at': now_iso(),
+            'scope': '官方申購買回清單現貨部位；期貨另列；現金未列入本表'}
+
+
+def kgi_pair(code: str) -> tuple[dict, dict | None]:
+    fund = KGI[code]
+    def fetch(day: str | None) -> dict:
+        body = urllib.parse.urlencode({'fundID': fund, **({'queryDate': day} if day else {})}).encode()
+        request = urllib.request.Request(KGI_URL, data=body, method='POST', headers={
+            'User-Agent': 'ETFResearch/1.0', 'Content-Type': 'application/x-www-form-urlencoded'})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            page = response.read(MAX_BYTES + 1).decode('utf-8', 'replace')
+        return parse_kgi(page, code, f'{KGI_URL} (fundID={fund}, queryDate={day or "latest"})')
+    current = fetch(None)
+    day = datetime.fromisoformat(current['effective_date'] or current['as_of'])
+    for _ in range(6):
+        day -= timedelta(days=1)
+        if day.weekday() >= 5:
+            continue
+        try:
+            previous = fetch(f'{day:%Y/%m/%d}')
+            if previous['as_of'] < current['as_of']:
+                return current, previous
+        except Exception:
+            continue
+    return current, None
+
+
+def parse_allianz(raw: dict, code: str, source: str) -> dict:
+    entries = (raw or {}).get('Entries') or {}
+    if raw.get('StatusCode') != 0 or entries.get('CSecuritiesCode') != code:
+        raise ValueError('invalid issuer product')
+    as_of, effective = (date_iso(str(entries.get(k) or '')[:10]) for k in ('CNavDt', 'CPcfdate'))
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('invalid issuer date')
+    kinds = [('股票', 'stock'), ('債券', 'bond'), ('期貨', 'futures'), ('基金', 'fund'), ('ETF', 'fund')]
+    positions, derivatives = [], []
+    for table in entries.get('DynamicTableData') or []:
+        asset = next((a for prefix, a in kinds if str(table.get('TableTitle') or '').startswith(prefix)), None)
+        names = [c.get('Name') or '' for c in table.get('Columns') or []]
+        idx = lambda *keys: next((i for i, n in enumerate(names) if any(k in n for k in keys)), None)
+        code_i, name_i, qty_i, weight_i = idx('代號'), idx('名稱'), idx('股數', '口數', '面額', '單位數'), idx('權重')
+        if asset is None or None in (code_i, name_i, weight_i):
+            continue
+        unit = names[qty_i] if qty_i is not None else ''
+        for row in table.get('Rows') or []:
+            weight = number(str(row[weight_i]).replace('%', ''))
+            if weight is None:
+                raise ValueError('missing official weight')
+            item = {'code': str(row[code_i]).strip(), 'name': str(row[name_i]), 'weight_pct': weight,
+                    'shares': number(row[qty_i]) if qty_i is not None else None, 'quantity_unit': unit, 'asset_type': asset}
+            (derivatives if asset == 'futures' else positions).append(item)
+    if not positions or len({p['code'] for p in positions}) != len(positions) or any(p['weight_pct'] < 0 or p['weight_pct'] > 100 for p in positions) or sum(p['weight_pct'] for p in positions) > 102:
+        raise ValueError('invalid issuer holdings')
+    return {'code': code, 'as_of': as_of, 'effective_date': effective, 'units': number(entries.get('CAnceTotalIssues')),
+            'aum_twd': number(entries.get('CAnceTotalAv')), 'nav': number(entries.get('CAnceNav')), 'holdings': positions,
+            'derivatives': derivatives, 'source': source, 'fetched_at': now_iso(),
+            'scope': '官方交易資訊頁現貨部位；期貨另列；現金未列入本表'}
+
+
+def allianz_pair(code: str) -> tuple[dict, dict | None]:
+    fund = ALLIANZ[code]
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    agent = {'User-Agent': 'ETFResearch/1.0'}
+    with opener.open(urllib.request.Request(f'{ALLIANZ_API}/AntiForgery/GetAntiForgeryToken', headers=agent), timeout=15) as response:
+        issued = json.loads(response.read(65536).decode('utf-8') or '{}')
+    # 回應本身附 token；Cookie 名稱實測為 X-XSRF-TOKEN（瀏覽器端為 XSRF-TOKEN），兩者都當備援。
+    token = issued.get('token') or next((urllib.parse.unquote(c.value) for c in jar if c.name in ('X-XSRF-TOKEN', 'XSRF-TOKEN')), None)
+    if not token:
+        raise ValueError('issuer anti-forgery token unavailable')
+    def fetch(day: str | None) -> dict:
+        body = json.dumps({'FundNo': fund, **({'Date': day} if day else {})}).encode()
+        request = urllib.request.Request(f'{ALLIANZ_API}/Fund/GetFundTradeInfo', data=body, method='POST',
+                                         headers={**agent, 'Content-Type': 'application/json', 'X-XSRF-TOKEN': token})
+        with opener.open(request, timeout=15) as response:
+            raw = json.loads(response.read(MAX_BYTES + 1).decode('utf-8'))
+        return parse_allianz(raw, code, f'{ALLIANZ_API}/Fund/GetFundTradeInfo (FundNo={fund}, Date={day or "latest"})')
+    current = fetch(None)
+    day = datetime.fromisoformat(current['effective_date'] or current['as_of'])
+    for _ in range(6):
+        day -= timedelta(days=1)
+        if day.weekday() >= 5:
+            continue
+        try:
+            previous = fetch(day.date().isoformat())
+            if previous['as_of'] < current['as_of']:
+                return current, previous
+        except Exception:
+            continue
+    return current, None
+
+
 def compare_holdings(previous: dict | None, current: dict) -> dict:
     """Weight changes and raw shares; never infer trade notional from weights."""
     if not previous:
@@ -891,7 +1029,7 @@ def active_digest(top: int = 3, min_move_pp: float = 0.05) -> dict:
 
 
 def supported_issuer(code: str) -> bool:
-    return any(code in group for group in (EZMONEY, FH, AB, YUANTA, CAPITAL, NOMURA, CATHAY, FUBON))
+    return any(code in group for group in (EZMONEY, FH, AB, YUANTA, CAPITAL, NOMURA, CATHAY, FUBON, KGI, ALLIANZ))
 
 
 def fetch_pair(code: str) -> tuple[dict, dict | None]:
@@ -910,6 +1048,10 @@ def fetch_pair(code: str) -> tuple[dict, dict | None]:
         return cathay_pair(code)
     if code in FUBON:
         return fubon_pair(code)
+    if code in KGI:
+        return kgi_pair(code)
+    if code in ALLIANZ:
+        return allianz_pair(code)
     current = ezmoney_snapshot(code)
     previous = None
     # PCF effective date follows the underlying holdings/NAV date.
