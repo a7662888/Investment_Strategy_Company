@@ -40,6 +40,16 @@ FH = {'00991A': 'ETF23', '00409A': 'ETF26', '00986D': 'ETF25', '00998A': 'ETF24'
 AB = {'00404A': 'TW00000404A5', '00980D': 'TW00000980D8', '00984D': 'TW00000984D0'}
 AB_URL = 'https://webapi.alliancebernstein.com/v2/funds/tw/zh-tw/investor/'
 YUANTA = {'00990A'}
+# 群益投信：官方「申購買回清單」頁面使用的 JSON 端點（2026-10-14 由頁面網路請求確認）。
+# fundId 是群益內部基金編號（同站 /CFWeb/api/etf/items 的 fundNo），date 為 PCF 生效日；
+# 回應 pcf.date2 為持股／淨值基準日、date1 為生效日，nav 為基金淨資產、pUnit 為每單位淨值。
+CAPITAL = {'00982A': '399', '00992A': '500', '00997A': '502'}
+CAPITAL_URL = 'https://www.capitalfund.com.tw/CFWeb/api/etf/buyback'
+# 野村投信：官方「申購買回清單 PCF」頁面使用的 JSON 端點（2026-10-14 確認）；FundNo 即股票代號，
+# Date 為 PCF 日。Entries.CNavDt 為持股／淨值基準日、CPcfdate 為 PCF 日；Stocks 為完整持股
+# （以 2330 股數 × 價格對照基金淨資產驗算），Futures 另列。
+NOMURA = {'00980A', '00985A', '00999A'}
+NOMURA_URL = 'https://www.nomurafunds.com.tw/API/ETFAPI/api/Fund/GetFundTradeInfo'
 YUANTA_URL = 'https://etfapi.yuantaetfs.com/ectranslation/api/bridge?APIType=ETFAPI&CompanyName=YUANTAFUNDS&PageName=%2FtradeInfo%2Fpcf%2F00990A&DeviceId=null&FuncId=PCF%2FDaily&ticker=00990A&AppName=ETF&Platform=ETF&Device=3'
 
 
@@ -69,8 +79,12 @@ def date_iso(value) -> str | None:
         return None
 
 
-def read_public(url: str) -> bytes:
-    request = urllib.request.Request(url, headers={'User-Agent': 'ETFResearch/1.0', 'Accept': '*/*'})
+def read_public(url: str, body: dict | None = None) -> bytes:
+    data = json.dumps(body).encode('utf-8') if body is not None else None
+    headers = {'User-Agent': 'ETFResearch/1.0', 'Accept': '*/*'}
+    if data is not None:
+        headers['Content-Type'] = 'application/json'
+    request = urllib.request.Request(url, data=data, headers=headers, method='POST' if data is not None else 'GET')
     # Some public issuer downloads establish an anonymous session by redirecting
     # to the same URL. Retain those cookies only for this single public read.
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -290,7 +304,7 @@ def catalog() -> dict:
         elif holder_data['rows']:
             row.update(holders=None, ranking_as_of=None, ranking_status='missing_official_total', popularity_rank=None)
         row['category'] = category(row)
-        row['holdings_supported'] = code in EZMONEY or code in FH or code in AB or code in YUANTA
+        row['holdings_supported'] = code in EZMONEY or code in FH or code in AB or code in YUANTA or code in CAPITAL or code in NOMURA
         row['ranking_age_days'] = (datetime.now(TAIPEI).date() - datetime.fromisoformat(row['ranking_as_of']).date()).days if row.get('ranking_as_of') else None
         row['recommendation_status'] = '分類研究候選；尚未完成費用與同期間含息績效比較，無買賣判定'
         rows.append(row)
@@ -594,6 +608,91 @@ def yuanta_pair(code: str) -> tuple[dict, dict | None]:
     return current, None
 
 
+def parse_capital(raw: dict, code: str, fund_id: str) -> dict:
+    data = (raw or {}).get('data') or {}
+    meta = data.get('pcf') or {}
+    as_of, effective = date_iso(meta.get('date2')), date_iso(meta.get('date1'))
+    if raw.get('code') != 200 or not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('invalid issuer response or date')
+    positions, derivatives = [], []
+    for key, asset, unit in [('stocks', 'stock', '股數'), ('bonds', 'bond', '面額'), ('futures', 'futures', '口數')]:
+        for item in data.get(key) or []:
+            code_key = next((k for k in item if k.lower().endswith('no')), None)
+            name_key = next((k for k in item if k.lower().endswith('name') and not k.lower().endswith('ename')), None)
+            weight = number(item.get('weight'))
+            if weight is None or not code_key:
+                raise ValueError('missing official weight')
+            row = {'code': str(item.get(code_key) or '').strip(), 'name': str(item.get(name_key) or ''), 'weight_pct': weight,
+                   'shares': number(item.get('share')), 'quantity_unit': unit, 'asset_type': asset}
+            (derivatives if asset == 'futures' else positions).append(row)
+    if not positions or len({p['code'] for p in positions}) != len(positions) or any(p['weight_pct'] < 0 or p['weight_pct'] > 100 for p in positions) or sum(p['weight_pct'] for p in positions) > 102:
+        raise ValueError('invalid issuer holdings')
+    return {'code': code, 'as_of': as_of, 'effective_date': effective, 'units': number(meta.get('totUnit')),
+            'aum_twd': number(meta.get('nav')), 'nav': number(meta.get('pUnit')), 'holdings': positions,
+            'derivatives': derivatives, 'source': f'{CAPITAL_URL} (fundId={fund_id})', 'fetched_at': now_iso(),
+            'scope': '官方PCF現貨股票／債券部位；期貨另列；現金、應收付款與附買回未列入本表'}
+
+
+def capital_pair(code: str) -> tuple[dict, dict | None]:
+    fund_id = CAPITAL[code]
+    current = parse_capital(json.loads(read_public(CAPITAL_URL, {'fundId': fund_id, 'date': None})), code, fund_id)
+    for gap in range(1, 6):
+        day = datetime.fromisoformat(current['effective_date']) - timedelta(days=gap)
+        if day.weekday() >= 5:
+            continue
+        try:
+            previous = parse_capital(json.loads(read_public(CAPITAL_URL, {'fundId': fund_id, 'date': day.date().isoformat()})), code, fund_id)
+            if previous['as_of'] < current['as_of']:
+                return current, previous
+        except Exception:
+            continue
+    return current, None
+
+
+def parse_nomura(raw: dict, code: str) -> dict:
+    entries = (raw or {}).get('Entries') or {}
+    if raw.get('StatusCode') != 0 or entries.get('CFundId') != code:
+        raise ValueError('invalid issuer product')
+    as_of, effective = (date_iso(str(entries.get(k) or '')[:10]) for k in ('CNavDt', 'CPcfdate'))
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('invalid issuer date')
+    positions, derivatives = [], []
+    for key, asset, unit in [('Stocks', 'stock', '股數'), ('Bonds', 'bond', '面額'), ('Etfs', 'fund', '單位數'), ('Futures', 'futures', '口數')]:
+        for item in entries.get(key) or []:
+            code_key = next((k for k in item if k.endswith('Code')), None)
+            name_key = next((k for k in item if k.endswith('Name')), None)
+            weight = number(item.get('CWeightsPct'))
+            if weight is None or not code_key:
+                raise ValueError('missing official weight')
+            row = {'code': str(item.get(code_key) or '').strip(), 'name': str(item.get(name_key) or ''), 'weight_pct': weight,
+                   'shares': number(item.get('CQuantity')), 'quantity_unit': unit, 'asset_type': asset}
+            (derivatives if asset == 'futures' else positions).append(row)
+    if not positions or len({p['code'] for p in positions}) != len(positions) or any(p['weight_pct'] < 0 or p['weight_pct'] > 100 for p in positions) or sum(p['weight_pct'] for p in positions) > 102:
+        raise ValueError('invalid issuer holdings')
+    return {'code': code, 'as_of': as_of, 'effective_date': effective, 'units': number(entries.get('CAnceTotalIssues')),
+            'aum_twd': number(entries.get('CAnceTotalAv')), 'nav': number(entries.get('CAnceNav')), 'holdings': positions,
+            'derivatives': derivatives, 'source': f'{NOMURA_URL} (FundNo={code})', 'fetched_at': now_iso(),
+            'scope': '官方PCF現貨股票／債券／ETF部位；期貨另列；現金未列入本表'}
+
+
+def nomura_pair(code: str) -> tuple[dict, dict | None]:
+    def fetch(day: str) -> dict:
+        body = {'Type': 1, 'Keyword': '', 'FundNo': code, 'Date': day}
+        return parse_nomura(json.loads(read_public(NOMURA_URL, body)), code)
+    current = fetch(datetime.now(TAIPEI).date().isoformat())
+    for gap in range(1, 6):
+        day = datetime.fromisoformat(current['effective_date']) - timedelta(days=gap)
+        if day.weekday() >= 5:
+            continue
+        try:
+            previous = fetch(day.date().isoformat())
+            if previous['as_of'] < current['as_of']:
+                return current, previous
+        except Exception:
+            continue
+    return current, None
+
+
 def compare_holdings(previous: dict | None, current: dict) -> dict:
     """Weight changes and raw shares; never infer trade notional from weights."""
     if not previous:
@@ -663,7 +762,7 @@ def holdings(code: str) -> dict:
     allowed = {r['code']: r for r in catalog()['rows']}
     if code not in allowed or not allowed[code]['active']:
         raise ValueError('只接受已收錄的主動式ETF')
-    if code not in EZMONEY and code not in FH and code not in AB and code not in YUANTA:
+    if code not in EZMONEY and code not in FH and code not in AB and code not in YUANTA and code not in CAPITAL and code not in NOMURA:
         return {'code': code, 'status': 'not_connected', 'source': allowed[code]['official_url'], 'holdings': [], 'note': '此投信官方持股資料尚未串接；請前往官方商品頁查詢，不以其他基金成分代填。'}
     def load():
         token = _DEADLINE.set(time.monotonic() + 35)
@@ -674,6 +773,10 @@ def holdings(code: str) -> dict:
                 current, previous = ab_pair(code)
             elif code in YUANTA:
                 current, previous = yuanta_pair(code)
+            elif code in CAPITAL:
+                current, previous = capital_pair(code)
+            elif code in NOMURA:
+                current, previous = nomura_pair(code)
             else:
                 current = ezmoney_snapshot(code)
                 previous = None

@@ -120,7 +120,7 @@ def test_public_etf_api_and_bad_inputs():
             with pytest.raises(urllib.error.HTTPError) as exc:
                 urllib.request.urlopen(base + '/api/etf/holdings?code=../../positions')
             assert exc.value.code == 400
-            payload = e.holdings('00982A')
+            payload = e.holdings('00400A')   # 國泰：仍未串接（00982A 已於 2026-10-14 接上群益）
             assert payload['status'] == 'not_connected' and payload['holdings'] == []
     finally:
         server.shutdown(); server.server_close()
