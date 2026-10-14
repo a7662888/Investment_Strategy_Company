@@ -284,9 +284,9 @@
       if (version !== state.holdingsVersion || code !== $('activeSelect').value) return;
       state.holdingsLoadedAt = Date.now();
       const unavailable = ['not_connected', 'unavailable'].includes(data.status);
-      const old = data.freshness === 'stale' || data.status === 'baseline_official';
+      const old = data.freshness === 'stale' || data.status === 'baseline_official' || data.status === 'stored_official';
       $('holdingsStatus').classList.toggle('warning', unavailable || old);
-      $('holdingsStatus').textContent = unavailable ? `${code} · ${data.status === 'not_connected' ? '此投信尚未串接' : '官方資料讀取失敗'} · ${data.note || '沒有有效資料'}` : `${code} · ${data.status === 'baseline_official' ? '官方快照備援，最新讀取失敗' : '投信官方快照'} · 基準日 ${datumDate(data.as_of)}${data.freshness === 'stale' ? ` · 距今 ${data.age_days ?? 'NA'} 天，資料已降級` : ''}${data.note ? ` · ${data.note}` : ''}。每 30 分鐘重讀，非盤中交易流。`;
+      $('holdingsStatus').textContent = unavailable ? `${code} · ${data.status === 'not_connected' ? '此投信尚未串接' : '官方資料讀取失敗'} · ${data.note || '沒有有效資料'}` : `${code} · ${data.status === 'baseline_official' ? '官方快照備援，最新讀取失敗' : data.status === 'stored_official' ? `每日批次存下的官方快照（${clock(data.stored_at)}）` : '投信官方快照'} · 基準日 ${datumDate(data.as_of)}${data.freshness === 'stale' ? ` · 距今 ${data.age_days ?? 'NA'} 天，資料已降級` : ''}${data.note ? ` · ${data.note}` : ''}。每 30 分鐘重讀，非盤中交易流。`;
       renderHoldings(data);
     } catch (error) {
       if (version === state.holdingsVersion) {
