@@ -3706,6 +3706,24 @@ class Handler(SimpleHTTPRequestHandler):
                     document, storage = load_positions()
                     self.send_json({**document, "storage": storage})
                 return
+            if parsed.path == "/api/daily-refresh/manual-status":
+                # 手動觸發 GitHub Actions 後，前端用這支追蹤是否跑完，跑完才重新載入資料。
+                from company.model import daily_jobs as jobs
+                from company.model.positions import expected_sync_token, is_authorized
+                if expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                    return
+                job = query.get("job", [""])[0]
+                workflow = {"broker": jobs.BROKER_WORKFLOW, "postclose": jobs.POSTCLOSE_WORKFLOWS[0]}.get(job)
+                try:
+                    since = datetime.fromisoformat(query.get("since", [""])[0].replace("Z", "+00:00"))
+                except ValueError:
+                    since = None
+                if workflow is None or since is None or since.tzinfo is None:
+                    self.send_json({"error": "invalid job or since"}, HTTPStatus.BAD_REQUEST)
+                    return
+                self.send_json({"job": job, "run": jobs.latest_workflow_run(workflow, since)})
+                return
             if parsed.path == "/api/timing-research":
                 # 關注清單含個人持股、成交價分析含個人買進紀錄 → 需同步密鑰。
                 from company.model.durable_document import load_document
