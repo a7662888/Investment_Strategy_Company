@@ -87,6 +87,15 @@ jobs:
         continue-on-error: true
         run: python run_etf_metrics.py
 
+      # 主動 ETF 官方持股存檔：部分投信 API 擋國外主機，網站即時讀取失敗時用這份。
+      - name: Store official active-ETF holdings
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        continue-on-error: true
+        run: python run_etf_holdings.py
+
       - name: Read broker inventory (never replace manual portfolio)
         env:
           SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}

@@ -304,7 +304,7 @@ def catalog() -> dict:
         elif holder_data['rows']:
             row.update(holders=None, ranking_as_of=None, ranking_status='missing_official_total', popularity_rank=None)
         row['category'] = category(row)
-        row['holdings_supported'] = code in EZMONEY or code in FH or code in AB or code in YUANTA or code in CAPITAL or code in NOMURA
+        row['holdings_supported'] = supported_issuer(code)
         row['ranking_age_days'] = (datetime.now(TAIPEI).date() - datetime.fromisoformat(row['ranking_as_of']).date()).days if row.get('ranking_as_of') else None
         row['recommendation_status'] = '分類研究候選；尚未完成費用與同期間含息績效比較，無買賣判定'
         rows.append(row)
@@ -758,50 +758,85 @@ def active_digest(top: int = 3, min_move_pp: float = 0.05) -> dict:
     }
 
 
+def supported_issuer(code: str) -> bool:
+    return any(code in group for group in (EZMONEY, FH, AB, YUANTA, CAPITAL, NOMURA))
+
+
+def fetch_pair(code: str) -> tuple[dict, dict | None]:
+    """依投信分派到各自的官方 PCF 讀取；回傳（本期, 前一期）。"""
+    if code in FH:
+        return fh_pair(code)
+    if code in AB:
+        return ab_pair(code)
+    if code in YUANTA:
+        return yuanta_pair(code)
+    if code in CAPITAL:
+        return capital_pair(code)
+    if code in NOMURA:
+        return nomura_pair(code)
+    current = ezmoney_snapshot(code)
+    previous = None
+    # PCF effective date follows the underlying holdings/NAV date.
+    for gap in range(1, 5):
+        day = datetime.fromisoformat(current['effective_date']) - timedelta(days=gap)
+        if day.weekday() >= 5:
+            continue
+        try:
+            candidate = ezmoney_snapshot(code, day.date().isoformat())
+            if candidate['as_of'] < current['as_of']:
+                previous = candidate
+                break
+        except Exception:
+            continue
+    return current, previous
+
+
+STORED_REMOTE = 'etf/holdings/{code}.json'
+
+
+def stored_pair(code: str) -> dict | None:
+    """每日批次（run_etf_holdings.py，GitHub Actions）存下的官方快照。
+    部分投信 API 擋國外主機（實測 2026-10-14 野村：本機 0.2 秒、Render 連線失敗），
+    網站即時讀取失敗時以此為備援，並標明存檔時間。"""
+    try:
+        from company.model.durable_document import load_document
+
+        doc, _ = load_document(ROOT / 'data' / 'etf' / 'holdings' / f'{code}.json', STORED_REMOTE.format(code=code))
+    except Exception:
+        return None
+    return doc if doc and doc.get('current') else None
+
+
+def _summarise(current: dict, previous: dict | None, status: str, **extra) -> dict:
+    age = (datetime.now(TAIPEI).date() - datetime.fromisoformat(current['as_of']).date()).days
+    return {**current, 'status': status, 'age_days': age, 'freshness': 'recent' if 0 <= age <= 4 else 'stale',
+            'comparison': compare_holdings(previous, current), **extra,
+            'top10_weight_pct': round(sum(s['weight_pct'] or 0 for s in sorted(current['holdings'], key=lambda s: s['weight_pct'] or 0, reverse=True)[:10]), 2)}
+
+
 def holdings(code: str) -> dict:
     allowed = {r['code']: r for r in catalog()['rows']}
     if code not in allowed or not allowed[code]['active']:
         raise ValueError('只接受已收錄的主動式ETF')
-    if code not in EZMONEY and code not in FH and code not in AB and code not in YUANTA and code not in CAPITAL and code not in NOMURA:
+    if not supported_issuer(code):
         return {'code': code, 'status': 'not_connected', 'source': allowed[code]['official_url'], 'holdings': [], 'note': '此投信官方持股資料尚未串接；請前往官方商品頁查詢，不以其他基金成分代填。'}
     def load():
         token = _DEADLINE.set(time.monotonic() + 35)
         try:
-            if code in FH:
-                current, previous = fh_pair(code)
-            elif code in AB:
-                current, previous = ab_pair(code)
-            elif code in YUANTA:
-                current, previous = yuanta_pair(code)
-            elif code in CAPITAL:
-                current, previous = capital_pair(code)
-            elif code in NOMURA:
-                current, previous = nomura_pair(code)
-            else:
-                current = ezmoney_snapshot(code)
-                previous = None
-                # PCF effective date follows the underlying holdings/NAV date.
-                for gap in range(1, 5):
-                    day = datetime.fromisoformat(current['effective_date']) - timedelta(days=gap)
-                    if day.weekday() >= 5:
-                        continue
-                    try:
-                        candidate = ezmoney_snapshot(code, day.date().isoformat())
-                        if candidate['as_of'] < current['as_of']:
-                            previous = candidate
-                            break
-                    except Exception:
-                        continue
-            age = (datetime.now(TAIPEI).date() - datetime.fromisoformat(current['as_of']).date()).days
-            return {**current, 'status': 'official_snapshot', 'age_days': age, 'freshness': 'recent' if 0 <= age <= 4 else 'stale', 'comparison': compare_holdings(previous, current), 'top10_weight_pct': round(sum(s['weight_pct'] or 0 for s in sorted(current['holdings'], key=lambda s: s['weight_pct'] or 0, reverse=True)[:10]), 2)}
+            current, previous = fetch_pair(code)
+            return _summarise(current, previous, 'official_snapshot')
         except Exception as exc:
+            stored = stored_pair(code)
+            if stored:
+                return _summarise(stored['current'], stored.get('previous'), 'stored_official', error=type(exc).__name__,
+                                  stored_at=stored.get('saved_at'),
+                                  note='網站即時讀取投信失敗，顯示每日批次存下的官方快照；請注意資料日期。')
             baseline_path = ROOT / 'web/etf-holdings.json'
             if baseline_path.exists():
                 baseline = json.loads(baseline_path.read_text(encoding='utf8')).get(code)
                 if baseline:
-                    current, previous = baseline['current'], baseline.get('previous')
-                    age = (datetime.now(TAIPEI).date() - datetime.fromisoformat(current['as_of']).date()).days
-                    return {**current, 'status': 'baseline_official', 'age_days': age, 'freshness': 'recent' if 0 <= age <= 4 else 'stale', 'comparison': compare_holdings(previous, current), 'error': type(exc).__name__, 'note': '官方即時讀取失敗，顯示已核對的官方快照；請注意資料日期。', 'top10_weight_pct': round(sum(s['weight_pct'] or 0 for s in sorted(current['holdings'], key=lambda s: s['weight_pct'] or 0, reverse=True)[:10]), 2)}
+                    return _summarise(baseline['current'], baseline.get('previous'), 'baseline_official', error=type(exc).__name__,
+                                      note='官方即時讀取失敗，顯示已核對的官方快照；請注意資料日期。')
             return {'code': code, 'status': 'unavailable', 'holdings': [], 'note': '官方持股讀取失敗；無有效快照，不推測補值。', 'error': type(exc).__name__}
         finally:
             _DEADLINE.reset(token)

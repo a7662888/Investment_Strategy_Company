@@ -61,3 +61,30 @@ class Nomura(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StoredFallback(unittest.TestCase):
+    def setUp(self):
+        e._CACHE.clear()
+
+    def test_live_failure_uses_the_daily_stored_snapshot(self):
+        from unittest.mock import patch
+        snap = e.parse_nomura(nomura(), "00980A")
+        catalog = {"rows": [{"code": "00980A", "active": True, "official_url": "x"}]}
+        with patch.object(e, "catalog", return_value=catalog), \
+                patch.object(e, "fetch_pair", side_effect=OSError("blocked")), \
+                patch.object(e, "stored_pair", return_value={"current": snap, "previous": None, "saved_at": "2026-10-14T08:00:00+00:00"}):
+            out = e.holdings("00980A")
+        self.assertEqual(out["status"], "stored_official")
+        self.assertEqual(out["stored_at"], "2026-10-14T08:00:00+00:00")
+        self.assertEqual(out["error"], "OSError")
+
+    def test_live_success_is_preferred(self):
+        from unittest.mock import patch
+        snap = e.parse_nomura(nomura(), "00980A")
+        catalog = {"rows": [{"code": "00980A", "active": True, "official_url": "x"}]}
+        with patch.object(e, "catalog", return_value=catalog), \
+                patch.object(e, "fetch_pair", return_value=(snap, None)), \
+                patch.object(e, "stored_pair") as stored:
+            self.assertEqual(e.holdings("00980A")["status"], "official_snapshot")
+            stored.assert_not_called()

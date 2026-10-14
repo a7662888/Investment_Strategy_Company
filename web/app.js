@@ -2093,7 +2093,7 @@ function renderActiveEtfDigest(digest) {
   const fmt = row => `${escapeHtml(row.name || row.code)} ${Number(row.weight_change_pp) > 0 ? "+" : ""}${Number(row.weight_change_pp).toFixed(2)}`;
   const lines = items.map(item => `<div style="padding:4px 0;border-top:1px dashed #c7d2fe;">
       <b>${escapeHtml(item.code)} ${escapeHtml(item.name || "")}</b>
-      <span style="color:var(--muted);">｜${escapeHtml(item.previous_as_of || "—")} → ${escapeHtml(item.as_of || "—")}${item.status === "baseline_official" ? "｜官方快照備援" : ""}${item.freshness === "stale" ? "｜資料偏舊" : ""}</span>
+      <span style="color:var(--muted);">｜${escapeHtml(item.previous_as_of || "—")} → ${escapeHtml(item.as_of || "—")}${item.status === "baseline_official" ? "｜官方快照備援" : item.status === "stored_official" ? "｜每日批次存檔" : ""}${item.freshness === "stale" ? "｜資料偏舊" : ""}</span>
       ${!asArray(item.increases).length && !asArray(item.decreases).length && !asArray(item.new).length && !asArray(item.dropped).length ? `<div style="color:var(--muted);">無明顯配置變化</div>` : ""}
       ${asArray(item.increases).length ? `<div style="color:#137333;">權重增：${asArray(item.increases).map(fmt).join("、")}</div>` : ""}
       ${asArray(item.decreases).length ? `<div style="color:#c5221f;">權重減：${asArray(item.decreases).map(fmt).join("、")}</div>` : ""}
