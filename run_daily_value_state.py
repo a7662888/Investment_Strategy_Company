@@ -23,7 +23,9 @@ def main() -> int:
     pool = json.loads((ROOT / "model_artifacts" / "active_pool.json").read_text(encoding="utf-8"))
     pool_codes = {s["symbol"].split(".")[0] for s in pool.get("stocks", [])}
     full_doc, load_meta = load_fundamentals()
-    batch_size = int(os.environ.get("VALUE_FUNDAMENTALS_BATCH", "5"))
+    # 業主 2026-10-14：母池基本面每天輪流更新 10 檔（原 5 檔），100 檔約 10 個交易日輪完一次。
+    # 每檔 5 個 FinMind 資料集，每日約 50 次請求。
+    batch_size = int(os.environ.get("VALUE_FUNDAMENTALS_BATCH", "10"))
     full_doc, refresh_meta = refresh_pool(pool, full_doc, batch_size=batch_size)
     fundamentals_saved = save_fundamentals(full_doc)
     fundamentals = dict(seed)

@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parent
 
 def issuer_of(code: str) -> str:
     for name, group in (("統一", e.EZMONEY), ("復華", e.FH), ("聯博", e.AB), ("元大", e.YUANTA),
-                        ("群益", e.CAPITAL), ("野村", e.NOMURA)):
+                        ("群益", e.CAPITAL), ("野村", e.NOMURA),
+                        ("國泰", e.CATHAY), ("富邦", e.FUBON)):
         if code in group:
             return name
     return "其他"

@@ -50,6 +50,16 @@ CAPITAL_URL = 'https://www.capitalfund.com.tw/CFWeb/api/etf/buyback'
 # （以 2330 股數 × 價格對照基金淨資產驗算），Futures 另列。
 NOMURA = {'00980A', '00985A', '00999A'}
 NOMURA_URL = 'https://www.nomurafunds.com.tw/API/ETFAPI/api/Fund/GetFundTradeInfo'
+# 國泰投信：商品頁 GetIndexStockWeights 提供官方權重（僅最新一天）；申購買回清單
+# GetBuySale／GetStocksList 提供發行單位數、每申購單位股數（可指定 PCF 日）。前一期權重
+# 無法向投信查詢，改用每日批次存下的前一天快照（stored_pair）。
+CATHAY = {'00400A': 'EA'}
+CATHAY_API = 'https://cwapi.cathaysite.com.tw/api'
+# 富邦投信：官方「基金資產」頁 Assets.aspx（由申購買回清單頁連結）是完整持股 HTML 表，
+# 股票／債券／期貨／基金分表，ddate 可指定日期，頁面「資料日期」為實際持股日。
+# 規模、單位數、淨值取自 Pcf.aspx。
+FUBON = {'00405A', '00982D', '00983D'}
+FUBON_BASE = 'https://websys.fsit.com.tw/FubonETF/Trade'
 YUANTA_URL = 'https://etfapi.yuantaetfs.com/ectranslation/api/bridge?APIType=ETFAPI&CompanyName=YUANTAFUNDS&PageName=%2FtradeInfo%2Fpcf%2F00990A&DeviceId=null&FuncId=PCF%2FDaily&ticker=00990A&AppName=ETF&Platform=ETF&Device=3'
 
 
@@ -693,6 +703,128 @@ def nomura_pair(code: str) -> tuple[dict, dict | None]:
     return current, None
 
 
+def cathay_snapshot(code: str) -> dict:
+    fund = CATHAY[code]
+    weights = json.loads(read_public(f'{CATHAY_API}/ETF/GetIndexStockWeights?FundCode={fund}')).get('result') or {}
+    as_of = date_iso(str(weights.get('date') or '').replace('/', '-'))
+    if not as_of:
+        raise ValueError('missing weights date')
+    # PCF 以「生效日」查詢，其 preDateC 才是持股日：從權重日往後找對應的那一份（盤後已公布次一交易日 PCF）。
+    meta = {}
+    day = datetime.fromisoformat(as_of)
+    for _ in range(6):
+        day += timedelta(days=1)
+        if day.weekday() >= 5:
+            continue
+        candidate = json.loads(read_public(f"{CATHAY_API}/BuySale/GetBuySale?FundCode={fund}&SearchDate={day:%Y/%m/%d}&IsTest=false&status=1")).get('result') or {}
+        if date_iso(str(candidate.get('preDateC') or '').replace('/', '-')) == as_of:
+            meta = candidate
+            break
+    if meta.get('stockCode') != code:
+        raise ValueError('no PCF matching the weights date')
+    basket = json.loads(read_public(f"{CATHAY_API}/BuySale/GetStocksList?FundCode={fund}&SearchDate={meta.get('date')}&IsTest=false&status=1")).get('result') or []
+    units, basket_unit = number(meta.get('totUnit')), number(meta.get('basketUnit'))
+    per_basket = {str(b.get('prod')): number(b.get('basketShares')) for b in basket}
+    positions = []
+    for item in weights.get('stockWeights') or []:
+        weight = number(item.get('weights'))
+        if weight is None:
+            raise ValueError('missing official weight')
+        shares = per_basket.get(str(item.get('stockCode')))
+        positions.append({'code': str(item.get('stockCode') or '').strip(), 'name': str(item.get('stockName') or ''),
+                          'weight_pct': weight,
+                          'shares': round(shares * units / basket_unit) if shares and units and basket_unit else None,
+                          'quantity_unit': '股數', 'asset_type': 'stock'})
+    if not positions or len({p['code'] for p in positions}) != len(positions) or sum(p['weight_pct'] for p in positions) > 102:
+        raise ValueError('invalid issuer holdings')
+    return {'code': code, 'as_of': as_of, 'effective_date': date_iso(str(meta.get('date') or '').replace('/', '-')),
+            'units': units, 'aum_twd': number(meta.get('aum')), 'nav': number(meta.get('nav')), 'holdings': positions,
+            'derivatives': [], 'source': f'{CATHAY_API}/ETF/GetIndexStockWeights?FundCode={fund}', 'fetched_at': now_iso(),
+            'scope': '官方權重（商品頁）＋申購買回清單股數（每申購單位股數 × 發行單位數 ÷ 申購單位）；期貨、現金未列入'}
+
+
+def cathay_pair(code: str) -> tuple[dict, dict | None]:
+    current = cathay_snapshot(code)
+    stored = stored_pair(code) or {}
+    for candidate in (stored.get('current'), stored.get('previous')):
+        if candidate and candidate.get('as_of') and candidate['as_of'] < current['as_of']:
+            return current, candidate
+    return current, None
+
+
+def _html_cells(fragment: str) -> list[list[str]]:
+    rows = re.findall(r'<tr[^>]*>(.*?)</tr>', fragment, re.S)
+    out = [[re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', c)).strip() for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', r, re.S)] for r in rows]
+    return [r for r in out if any(r)]
+
+
+def parse_fubon_assets(page: str, code: str, source: str) -> dict:
+    match = re.search(r'資料日期[^0-9]{0,200}?(20\d\d/\d\d/\d\d)', page, re.S)
+    as_of = date_iso(match.group(1).replace('/', '-')) if match else None
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('missing issuer date')
+    kinds = {'股票代碼': ('stock', '股數'), '債券代碼': ('bond', '面額'), '期貨代碼': ('futures', '口數'), '基金代碼': ('fund', '單位數')}
+    positions, derivatives = [], []
+    for table in re.findall(r'<table[^>]*>(.*?)</table>', page, re.S):
+        rows = _html_cells(table)
+        if not rows or rows[0][0] not in kinds or not any('權重' in h for h in rows[0]):
+            continue
+        asset, unit = kinds[rows[0][0]]
+        weight_col = next(i for i, h in enumerate(rows[0]) if '權重' in h)
+        for row in rows[1:]:
+            # 表尾有「合計」列（權重約 95%），不排除會讓權重加總變成兩倍（實測 191.55%）。
+            if len(row) <= weight_col or not row[1] or re.match(r'(合計|總計|小計)', row[0] + row[1]):
+                continue
+            weight = number(row[weight_col])
+            if weight is None:
+                raise ValueError('missing official weight')
+            item = {'code': row[0], 'name': row[1], 'weight_pct': weight, 'shares': number(row[2]),
+                    'quantity_unit': unit, 'asset_type': asset}
+            (derivatives if asset == 'futures' else positions).append(item)
+    if not positions or len({p['code'] for p in positions}) != len(positions) or any(p['weight_pct'] < 0 or p['weight_pct'] > 100 for p in positions) or sum(p['weight_pct'] for p in positions) > 102:
+        raise ValueError('invalid issuer holdings')
+    return {'code': code, 'as_of': as_of, 'effective_date': None, 'units': None, 'aum_twd': None, 'nav': None,
+            'holdings': positions, 'derivatives': derivatives, 'source': source, 'fetched_at': now_iso(),
+            'scope': '官方基金資產頁現貨股票／債券／基金部位；期貨另列；現金與保證金未列入本表'}
+
+
+def fubon_meta(code: str) -> dict:
+    text = re.sub(r'<[^>]+>', ' ', read_public(f'{FUBON_BASE}/Pcf.aspx?stkId={code}&lan=TW').decode('utf-8', 'replace'))
+    def grab(label):
+        m = re.search(label + r'\s*(?:NT\$|US\$)?\s*([0-9,.\-]+)', text)
+        return number(m.group(1)) if m else None
+    pcf = re.search(r'申購買回清單\s*(20\d\d/\d\d/\d\d)', text)
+    return {'aum_twd': grab('基金淨資產價值'), 'units': grab('已發行受益權單位總數'), 'nav': grab('每受益權單位淨資產價值'),
+            'effective_date': date_iso(pcf.group(1).replace('/', '-')) if pcf else None}
+
+
+def fubon_pair(code: str) -> tuple[dict, dict | None]:
+    today = datetime.now(TAIPEI).date()
+    def fetch(day) -> dict:
+        source = f'{FUBON_BASE}/Assets.aspx?stkId={code}&ddate={day:%Y/%m/%d}&lan=TW'
+        return parse_fubon_assets(read_public(source).decode('utf-8', 'replace'), code, source)
+    current = fetch(today)
+    try:
+        meta = fubon_meta(code)
+        # 申購買回清單頁的淨值對應「前一營業日」＝本期持股日；只有在日期對得上時才採用。
+        if meta.get('effective_date') and meta['effective_date'] > current['as_of']:
+            current.update({k: v for k, v in meta.items() if v is not None})
+    except Exception:
+        pass
+    day = datetime.fromisoformat(current['as_of'])
+    for _ in range(6):
+        day -= timedelta(days=1)
+        if day.weekday() >= 5:
+            continue
+        try:
+            previous = fetch(day)
+            if previous['as_of'] < current['as_of']:
+                return current, previous
+        except Exception:
+            continue
+    return current, None
+
+
 def compare_holdings(previous: dict | None, current: dict) -> dict:
     """Weight changes and raw shares; never infer trade notional from weights."""
     if not previous:
@@ -759,7 +891,7 @@ def active_digest(top: int = 3, min_move_pp: float = 0.05) -> dict:
 
 
 def supported_issuer(code: str) -> bool:
-    return any(code in group for group in (EZMONEY, FH, AB, YUANTA, CAPITAL, NOMURA))
+    return any(code in group for group in (EZMONEY, FH, AB, YUANTA, CAPITAL, NOMURA, CATHAY, FUBON))
 
 
 def fetch_pair(code: str) -> tuple[dict, dict | None]:
@@ -774,6 +906,10 @@ def fetch_pair(code: str) -> tuple[dict, dict | None]:
         return capital_pair(code)
     if code in NOMURA:
         return nomura_pair(code)
+    if code in CATHAY:
+        return cathay_pair(code)
+    if code in FUBON:
+        return fubon_pair(code)
     current = ezmoney_snapshot(code)
     previous = None
     # PCF effective date follows the underlying holdings/NAV date.
