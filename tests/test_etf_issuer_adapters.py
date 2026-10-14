@@ -131,3 +131,46 @@ class Cathay(unittest.TestCase):
         self.assertEqual((out["as_of"], out["effective_date"]), ("2026-10-14", "2026-10-15"))
         self.assertEqual(out["holdings"][0]["shares"], round(281 * 1949140000 / 500000))
         self.assertEqual(out["holdings"][0]["weight_pct"], 8.85)
+
+
+KGI_PAGE = """<div>主動凱基台灣(00407A)</div><div>2026/10/15 現金申購買回清單公告</div>
+<div>基金淨資產價值(元) TWD$22,353,414,631</div><div>已發行受益權單位總數 2,175,739,000</div>
+<div>(2026/10/14)每受益權單位淨資產價值(元) TWD$10.27</div>
+<table><tr><th>&#x80A1;&#x7968;&#x4EE3;&#x865F;</th><th>&#x80A1;&#x7968;&#x540D;&#x7A31;</th><th>&#x80A1;&#x6578;</th><th>&#x6B0A;&#x91CD;(%)</th></tr>
+<tr><td>2330</td><td>&#x53F0;&#x7A4D;&#x96FB;</td><td>830,000</td><td>9.25</td></tr></table>"""
+
+
+class Kgi(unittest.TestCase):
+    def test_entities_dates_and_meta(self):
+        out = e.parse_kgi(KGI_PAGE, "00407A", "src")
+        self.assertEqual((out["as_of"], out["effective_date"]), ("2026-10-14", "2026-10-15"))
+        self.assertEqual(out["holdings"][0]["name"], "台積電")
+        self.assertEqual((out["units"], out["nav"]), (2175739000.0, 10.27))
+
+    def test_wrong_product_rejected(self):
+        with self.assertRaises(ValueError):
+            e.parse_kgi(KGI_PAGE, "00999A", "src")
+
+
+def allianz(code="00984A"):
+    return {"StatusCode": 0, "Entries": {"CSecuritiesCode": code, "CNavDt": "2026-10-14T00:00:00", "CPcfdate": "2026-10-15T00:00:00",
+            "CAnceTotalAv": 10648028944.0, "CAnceTotalIssues": 652458000.0, "CAnceNav": 16.32,
+            "DynamicTableData": [
+                {"TableTitle": "股票 (97.66%)", "Columns": [{"Name": "序號"}, {"Name": "股票代號"}, {"Name": "股票名稱"}, {"Name": "股數"}, {"Name": "權重(%)"}],
+                 "Rows": [["1", "2881", "富邦金控", "2,784,000", "4.20%"], ["2", "2330", "台積電", "180,000", "4.19%"]]},
+                {"TableTitle": "期貨", "Columns": [{"Name": "期貨代號"}, {"Name": "期貨名稱"}, {"Name": "口數"}, {"Name": "權重(%)"}],
+                 "Rows": [["TX", "台指期", "3", "1.10%"]]}]}}
+
+
+class Allianz(unittest.TestCase):
+    def test_dynamic_tables(self):
+        out = e.parse_allianz(allianz(), "00984A", "src")
+        self.assertEqual([h["code"] for h in out["holdings"]], ["2881", "2330"])
+        self.assertEqual(out["holdings"][0]["weight_pct"], 4.2)
+        self.assertEqual(out["holdings"][0]["shares"], 2784000)
+        self.assertEqual(out["derivatives"][0]["code"], "TX")
+        self.assertEqual(out["as_of"], "2026-10-14")
+
+    def test_securities_code_must_match(self):
+        with self.assertRaises(ValueError):
+            e.parse_allianz(allianz("00993A"), "00984A", "src")
