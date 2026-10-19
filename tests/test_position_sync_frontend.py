@@ -49,14 +49,14 @@ function harness() {
   const elements = Object.fromEntries([
     "homePositionInput", "positionInput", "homePositionCloudStatus",
     "brokerPositionPanel", "brokerPositionAdopt", "myHoldingsPanel",
-  ].map(id => [id, {value: "", textContent: "", innerHTML: "", disabled: true, style: {}}]));
+  ].map(id => [id, {value: "", textContent: "", innerHTML: "", disabled: true, style: {}, appendChild() {}}]));
   elements.homePositionInput.value = "1111.TW:1@10";
   elements.positionInput.value = "1111.TW:1@10";
   const requests = [];
   const context = vm.createContext({
     console: {warn() {}},
     $: id => elements[id] || null,
-    document: {querySelector: () => null},
+    document: {querySelector: () => null, createElement: () => ({textContent: ""})},
     localStorage: {
       getItem: key => store.get(key) ?? null,
       setItem: (key, value) => store.set(key, String(value)),
@@ -67,6 +67,7 @@ function harness() {
     updatePositionSaveStatus() {},
     renderMyHoldings() {},
     renderLedger() {},
+    renderBrokerAdoptBanner() {},
     syncFailureMessage: () => "synthetic sync failure",
     readJson: async response => {
       const data = await response.json();
@@ -85,10 +86,15 @@ function harness() {
   vm.runInContext(`
     const POSITION_STORAGE_KEY = "investment_strategy_positions";
     const POSITION_SYNC_TOKEN_KEY = "investment_strategy_positions_sync_token";
+    const POSITION_SYNC_EXPIRY_KEY = "investment_strategy_positions_sync_expires";
+    const browserStore = localStorage;
     let positionCloudVersion = 0, positionSyncGeneration = 0, brokerSyncGeneration = 0;
     let holdingsRenderVersion = 0, brokerInventory = null, brokerPositionsEnabled = false;
+    let brokerLastReadable = null;
     let _heldSet = null;
     const ledgerSignals = [];
+    async function reloadBrokerViews() { return []; }
+    function requireOwnerReconnect() {}
     ${functions.map(capture).join("\n")}
     globalThis.inspect = () => ({version: positionCloudVersion,
       enabled: brokerPositionsEnabled, broker: brokerInventory});

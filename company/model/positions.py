@@ -172,7 +172,12 @@ def is_authorized(authorization: str | None) -> bool:
         return False
     prefix = "Bearer "
     supplied = authorization[len(prefix):].strip() if authorization.startswith(prefix) else ""
-    return bool(supplied) and hmac.compare_digest(supplied, expected)
+    if not supplied:
+        return False
+    if hmac.compare_digest(supplied.encode('utf-8'), expected.encode('utf-8')):
+        return True
+    from owner_access import valid_device_token
+    return valid_device_token(supplied, expected)
 
 
 def _document(raw: object) -> dict:

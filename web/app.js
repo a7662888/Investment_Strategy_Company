@@ -1,5 +1,62 @@
 const $ = (id) => document.getElementById(id);
 
+// Safari 私密模式、停用網站儲存或配額不足都不應中斷整頁啟動。
+// 每次寫入先保留本頁副本，再依 local → session → memory 降級。
+const browserStore = (() => {
+  const memory = new Map();
+  let mode = "memory", sequence = 0;
+  const stores = ["localStorage", "sessionStorage"];
+  function decode(raw) {
+    if (raw === null) return null;
+    try {
+      const item = JSON.parse(raw);
+      if (item && item.storage_format === "investment-v1" && Number.isSafeInteger(item.revision) && item.revision > 0 && (typeof item.value === "string" || item.value === null)) return item;
+    } catch (_) { /* 相容原有純字串值。 */ }
+    return {revision: 0, value: raw};
+  }
+  function readStored(key) {
+    const candidates = [];
+    let available = null;
+    for (const name of stores) {
+      try {
+        const item = decode(window[name].getItem(key));
+        if (!available) available = name;
+        if (item) { candidates.push({...item, mode: name}); sequence = Math.max(sequence, item.revision); }
+      } catch (_) { /* 使用下一層儲存。 */ }
+    }
+    candidates.sort((a, b) => b.revision - a.revision || (a.mode === "sessionStorage" ? -1 : 1));
+    return candidates[0] || {value: null, mode: available || "memory"};
+  }
+  function write(key, value) {
+    readStored(key);
+    sequence = Math.max(Date.now(), sequence + 1);
+    const record = JSON.stringify({storage_format: "investment-v1", revision: sequence, value});
+    for (const name of stores) {
+      try {
+        window[name].setItem(key, record);
+        mode = name;
+        memory.set(key, {value, mode});
+        return;
+      } catch (_) { /* 新版 session 記錄可覆蓋唯讀 local 的舊版。 */ }
+    }
+    mode = "memory";
+    memory.set(key, {value, mode});
+  }
+  window.addEventListener("storage", event => { if (event.key) memory.delete(event.key); else memory.clear(); });
+  return {
+    getItem(key) {
+      const item = memory.get(key) || readStored(key);
+      mode = item.mode;
+      memory.set(key, item);
+      return item.value;
+    },
+    setItem(key, value) { write(key, String(value)); },
+    // 寫入有版本的 tombstone，不能 removeItem 的唯讀舊值也不會復活。
+    removeItem(key) { write(key, null); },
+    get mode() { return mode; }
+  };
+})();
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -19,22 +76,26 @@ function taipeiDateString(date = new Date()) {
 }
 const POSITION_STORAGE_KEY = "investment_strategy_positions";
 const POSITION_SYNC_TOKEN_KEY = "investment_strategy_positions_sync_token";
+const POSITION_SYNC_EXPIRY_KEY = "investment_strategy_positions_sync_expires";
 let positionCloudVersion = 0;
 let positionSyncGeneration = 0;
 let brokerSyncGeneration = 0;
 let holdingsRenderVersion = 0;
 let brokerInventory = null;
-let brokerPositionsEnabled = localStorage.getItem("investment_strategy_broker_enabled") === "true";
+let brokerLastReadable = null; // 僅供核對舊日期與數量，永不直接送入 effectiveHoldings。
+let brokerPositionsEnabled = browserStore.getItem("investment_strategy_broker_enabled") === "true";
 
 function positionSyncToken() {
-  try { return localStorage.getItem(POSITION_SYNC_TOKEN_KEY) || ""; }
+  try { return browserStore.getItem(POSITION_SYNC_TOKEN_KEY) || ""; }
   catch (err) { return ""; }
 }
 
 function setPositionCloudStatus(message, ok = null) {
   const status = $("homePositionCloudStatus");
   if (!status) return;
-  status.textContent = message;
+  const connected = Boolean(positionSyncToken());
+  const hint = browserStore.mode === "sessionStorage" ? " · 此分頁暫存，關閉後須重連" : browserStore.mode === "memory" ? " · 僅此頁暫存，重整須重連" : "";
+  status.textContent = message + (connected ? hint : "");
   status.style.color = ok === true ? "#137333" : ok === false ? "#c5221f" : "var(--muted)";
 }
 
@@ -44,10 +105,10 @@ function positionsToRaw(items) {
 
 function applyCloudPositions(items, brokerEnabled = brokerPositionsEnabled) {
   brokerPositionsEnabled = brokerEnabled === true;
-  localStorage.setItem("investment_strategy_broker_enabled", String(brokerPositionsEnabled));
+  browserStore.setItem("investment_strategy_broker_enabled", String(brokerPositionsEnabled));
   const raw = positionsToRaw(items);
-  if (raw) localStorage.setItem(POSITION_STORAGE_KEY, raw);
-  else localStorage.removeItem(POSITION_STORAGE_KEY);
+  if (raw) browserStore.setItem(POSITION_STORAGE_KEY, raw);
+  else browserStore.removeItem(POSITION_STORAGE_KEY);
   const home = $("homePositionInput"), lab = $("positionInput");
   if (home) home.value = raw;
   if (lab) lab.value = raw;
@@ -64,7 +125,7 @@ function syncFailureMessage(status, errorText) {
   const text = String(errorText || "");
   if (status === 503 && text.includes("temporarily disabled")) return "雲端同步未啟用：伺服器端閘門關閉中";
   if (status === 503 && text.includes("not configured")) return "伺服器尚未設定同步憑證";
-  if (status === 401) return "同步密鑰不正確";
+  if (status === 401) return "連接已到期或憑證無效，請重新連接";
   return "同步失敗，保留本機";
 }
 
@@ -74,8 +135,11 @@ async function loadCloudPositions() {
   const draft = $("homePositionInput")?.value;
   if (!token) { setPositionCloudStatus("僅此瀏覽器"); return false; }
   setPositionCloudStatus("同步中…");
+  // 手動清單與券商快照各自驗證；一項失敗不能擋住其他私有區塊讀取。
+  const brokerReload = reloadBrokerViews();
   try {
-    const response = await fetch("/api/positions", {headers: {Authorization: `Bearer ${token}`}});
+    const response = await fetch("/api/positions", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
+    if (response.status === 401) { requireOwnerReconnect(token); return false; }
     const data = await response.json();
     if (generation !== positionSyncGeneration || token !== positionSyncToken()) return false;
     if (!response.ok || data.error) {
@@ -97,17 +161,17 @@ async function loadCloudPositions() {
     if (positionCloudVersion > 0) applyCloudPositions(data.positions || [], data.broker_enabled);
     else {
       setPositionCloudStatus("雲端尚無持股；本機清單未上傳，請核對後按儲存", false);
-      await loadBrokerInventory();
       return false;
     }
     setPositionCloudStatus(`私有同步 v${positionCloudVersion} · 已從雲端載入 · ${data.updated_at ? new Date(data.updated_at).toLocaleString("zh-TW", {timeZone: "Asia/Taipei"}) : "未記錄日期"} · 手動清單`, true);
-    await loadBrokerInventory();
     return true;
   } catch (err) {
     if (generation !== positionSyncGeneration || token !== positionSyncToken()) return false;
     console.warn("Private position sync failed:", err);
     setPositionCloudStatus("同步失敗，保留本機", false);
     return false;
+  } finally {
+    await brokerReload;
   }
 }
 
@@ -124,6 +188,7 @@ async function saveCloudPositions(items, brokerEnabled = brokerPositionsEnabled)
     });
     const data = await response.json();
     if (generation !== positionSyncGeneration || token !== positionSyncToken()) return false;
+    if (response.status === 401) { requireOwnerReconnect(token); return false; }
     if (response.status === 409) {
       setPositionCloudStatus("雲端已有較新版本，未覆蓋目前草稿；請核對後重新連接同步", false);
       return false;
@@ -154,17 +219,96 @@ async function configurePositionCloud() {
   const input = $("homePositionSyncKey");
   const key = input?.value.trim() || "";
   if (!key) { setPositionCloudStatus("請輸入同步密鑰", false); return; }
-  localStorage.setItem(POSITION_SYNC_TOKEN_KEY, key);
+  acceptPositionToken(key);
   input.value = "";
   await loadCloudPositions();
+  resumePendingWorkflows();
   if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
+}
+
+function acceptPositionToken(token, expiresIn = null) {
+  positionSyncGeneration++;
+  brokerSyncGeneration++;
+  brokerInventory = null;
+  brokerLastReadable = null;
+  positionCloudVersion = 0;
+  browserStore.setItem(POSITION_SYNC_TOKEN_KEY, token);
+  if (Number.isFinite(expiresIn) && expiresIn > 0) browserStore.setItem(POSITION_SYNC_EXPIRY_KEY, String(Date.now() + expiresIn * 1000));
+  else browserStore.removeItem(POSITION_SYNC_EXPIRY_KEY);
+}
+
+function requireOwnerReconnect(token) {
+  if (token && token !== positionSyncToken()) return;
+  browserStore.removeItem(POSITION_SYNC_TOKEN_KEY);
+  browserStore.removeItem(POSITION_SYNC_EXPIRY_KEY);
+  brokerInventory = null;
+  brokerSyncGeneration++;
+  setPositionCloudStatus("連接已到期或憑證無效，請用 8 位連接碼重新連接", false);
+  if ($("ownerPairingStatus")) $("ownerPairingStatus").textContent = "請在已連接的裝置重新產生 8 位連接碼，或使用原同步密鑰連接。";
+  if ($("brokerPositionPanel")) $("brokerPositionPanel").textContent = "授權已失效，請重新連接；手動持股仍保留。";
+  if ($("brokerLedgerPanel")) $("brokerLedgerPanel").textContent = "授權已失效，請重新連接後讀取帳務。";
+  if ($("timingResearchPanel")) $("timingResearchPanel").textContent = "授權已失效，請重新連接後讀取時機研究。";
+  if ($("ownerPairingCode")) { $("ownerPairingCode").textContent = ""; $("ownerPairingCode").hidden = true; }
+  clearInterval(pairingTimer);
+  for (const pending of Object.values(manualPending)) pending.text = "連接已失效；重新連接後續查本輪，不會重派。";
+  persistManualPending();
+  if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
+}
+
+let pairingTimer = null;
+async function createOwnerPairing() {
+  const token = positionSyncToken(), status = $("ownerPairingStatus"), output = $("ownerPairingCode"), button = $("ownerPairingCreate");
+  if (!token) { if (status) status.textContent = "此裝置須先連接，才能產生手機連接碼。"; return; }
+  if (button) button.disabled = true;
+  clearInterval(pairingTimer);
+  if (output) { output.textContent = ""; output.hidden = true; }
+  if (status) status.textContent = "正在產生一次性連接碼…";
+  try {
+    const response = await fetch("/api/owner/pairing", {method: "POST", headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}, body: "{}", cache: "no-store"});
+    if (response.status === 401) { requireOwnerReconnect(token); return; }
+    const data = await response.json();
+    if (token !== positionSyncToken()) return;
+    if (!response.ok || !/^\d{8}$/.test(String(data.code || "")) || !(Number(data.expires_in) > 0 && Number(data.expires_in) <= 300)) throw new Error("目前無法產生連接碼，請稍後再試。");
+    const expires = Date.now() + Number(data.expires_in) * 1000;
+    if (output) { output.textContent = String(data.code); output.hidden = false; }
+    const tick = () => {
+      const seconds = Math.max(0, Math.ceil((expires - Date.now()) / 1000));
+      if (status) status.textContent = seconds ? `請在手機輸入此碼；剩 ${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒，只能使用一次。請勿轉傳。` : "連接碼已到期，請重新產生。";
+      if (!seconds) { clearInterval(pairingTimer); if (output) { output.textContent = ""; output.hidden = true; } }
+    };
+    tick(); pairingTimer = setInterval(tick, 1000);
+  } catch (error) { if (status) status.textContent = "無法產生連接碼，請確認連線後重試。"; }
+  finally { if (button) button.disabled = false; }
+}
+
+async function claimOwnerPairing() {
+  const input = $("ownerPairingInput"), status = $("ownerPairingStatus"), button = $("ownerPairingClaim");
+  const code = String(input?.value || "").replace(/\s/g, "");
+  if (!/^\d{8}$/.test(code)) { if (status) status.textContent = "請輸入完整 8 位數連接碼。"; return; }
+  if (button) button.disabled = true;
+  if (status) status.textContent = "正在連接此裝置…";
+  try {
+    const response = await fetch("/api/owner/pairing/claim", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({code}), cache: "no-store"});
+    const data = await response.json();
+    if (!response.ok || typeof data.token !== "string" || !data.token || !(Number(data.expires_in) > 0)) {
+      if (status) status.textContent = response.status === 429 ? "嘗試次數過多，請稍後再試。" : "連接碼無效、已使用或已到期，請重新產生。";
+      return;
+    }
+    acceptPositionToken(data.token, Number(data.expires_in));
+    if (input) input.value = "";
+    if (status) status.textContent = "此裝置已連接，授權最長 30 天；正在讀取各項資料。";
+    await loadCloudPositions();
+    resumePendingWorkflows();
+    if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
+  } catch (error) { if (status) status.textContent = "連線未完成，請確認網路後再試；若代碼已使用請重新產生。"; }
+  finally { if (button) button.disabled = false; }
 }
 
 function restorePositionInput() {
   const input = $("positionInput");
   if (!input) return;
   try {
-    const saved = localStorage.getItem(POSITION_STORAGE_KEY);
+    const saved = browserStore.getItem(POSITION_STORAGE_KEY);
     if (saved && !input.value.trim()) input.value = saved;
     updatePositionSaveStatus();
   } catch (err) {
@@ -177,8 +321,8 @@ function persistPositionInput() {
   if (!input) return;
   try {
     const value = input.value.trim();
-    if (value) localStorage.setItem(POSITION_STORAGE_KEY, value);
-    else localStorage.removeItem(POSITION_STORAGE_KEY);
+    if (value) browserStore.setItem(POSITION_STORAGE_KEY, value);
+    else browserStore.removeItem(POSITION_STORAGE_KEY);
     updatePositionSaveStatus();
   } catch (err) {
     console.warn("Unable to save positions in this browser:", err);
@@ -1250,8 +1394,8 @@ function bindActions() {
     catch (err) { setPositionCloudStatus(err.message, false); return; }
     const canonical = positionsToRaw(parsed);
     input.value = canonical;
-    if (canonical) localStorage.setItem(POSITION_STORAGE_KEY, canonical);
-    else localStorage.removeItem(POSITION_STORAGE_KEY);
+    if (canonical) browserStore.setItem(POSITION_STORAGE_KEY, canonical);
+    else browserStore.removeItem(POSITION_STORAGE_KEY);
     if ($("positionInput")) $("positionInput").value = canonical;
     _heldSet = null;                    // 讓卡片的 💼 標記重算
     renderMyHoldings();
@@ -1259,7 +1403,10 @@ function bindActions() {
     if (ledgerSignals) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
   });
   safeBind("homePositionCloudSync", configurePositionCloud);
-  safeBind("brokerPositionRefresh", loadBrokerInventory);
+  safeBind("ownerPairingCreate", createOwnerPairing);
+  safeBind("ownerPairingClaim", claimOwnerPairing);
+  $("ownerPairingInput")?.addEventListener("keydown", event => { if (event.key === "Enter") claimOwnerPairing(); });
+  safeBind("brokerPositionRefresh", reloadBrokerViews);
   $("brokerLedgerDetails")?.addEventListener("toggle", e => { if (e.target.open) loadBrokerLedger(); });
   $("timingResearchDetails")?.addEventListener("toggle", e => { if (e.target.open) loadTimingResearch(); });
   safeBind("brokerPositionAdopt", adoptBrokerInventory);
@@ -1516,10 +1663,10 @@ function saveSnapshot(actionType) {
       _deprecated: true
     };
     let list = [];
-    const saved = localStorage.getItem("quant_snapshots");
+    const saved = browserStore.getItem("quant_snapshots");
     if (saved) list = JSON.parse(saved);
     list.unshift(snapshot);
-    localStorage.setItem("quant_snapshots", JSON.stringify(list));
+    browserStore.setItem("quant_snapshots", JSON.stringify(list));
     // renderSnapshots() and fetch(/api/save-snapshots) removed — see DEPRECATED note above.
   } catch (err) {
     console.error("Failed to save snapshot:", err);
@@ -1535,11 +1682,11 @@ function renderSnapshots() {
 }
 
 window.deleteSnapshot = function(idx) {
-  const saved = localStorage.getItem("quant_snapshots");
+  const saved = browserStore.getItem("quant_snapshots");
   if (saved) {
     const list = JSON.parse(saved);
     list.splice(idx, 1);
-    localStorage.setItem("quant_snapshots", JSON.stringify(list));
+    browserStore.setItem("quant_snapshots", JSON.stringify(list));
     renderSnapshots();
     fetch("/api/save-snapshots", {
       method: "POST",
@@ -1872,7 +2019,7 @@ async function syncSnapshotsFromServer() {
     if (response.ok) {
       const data = await response.json();
       if (data.snapshots && data.snapshots.length > 0) {
-        const local = localStorage.getItem("quant_snapshots");
+        const local = browserStore.getItem("quant_snapshots");
         let localList = [];
         if (local) {
           try {
@@ -1893,7 +2040,7 @@ async function syncSnapshotsFromServer() {
         
         if (mergedCount > 0) {
           localList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-          localStorage.setItem("quant_snapshots", JSON.stringify(localList));
+          browserStore.setItem("quant_snapshots", JSON.stringify(localList));
           renderSnapshots();
           console.log(`Successfully synced ${mergedCount} snapshots from cloud archive.`);
         }
@@ -2223,8 +2370,43 @@ const REFRESH_ITEMS = [
 ];
 
 // 手動觸發 GitHub Actions 的項目（盤後、庫存）：記住觸發時間，輪詢到跑完再重新載入。
-const manualPending = {};
+const MANUAL_PENDING_KEY = "investment_strategy_pending_workflows";
+const manualPending = restoreManualPending();
+const workflowFollowers = new Map();
+const manualDispatching = new Set();
 let cooldownTimer = null;
+
+function restoreManualPending() {
+  try {
+    const saved = JSON.parse(browserStore.getItem("investment_strategy_pending_workflows") || "{}");
+    const restored = {};
+    for (const job of ["broker", "postclose"]) {
+      const item = saved?.[job];
+      if (!item || !Number.isFinite(Date.parse(item.since)) || !Number.isFinite(Date.parse(item.requestedAt))) continue;
+      restored[job] = {since: item.since, requestedAt: item.requestedAt, startedAt: Number.isFinite(item.startedAt) ? item.startedAt : Date.parse(item.requestedAt), completed: item.completed === true, text: "正在恢復本輪進度，不會重新派送…"};
+    }
+    return restored;
+  } catch (_) { return {}; }
+}
+
+function persistManualPending() {
+  const saved = {};
+  for (const [job, item] of Object.entries(manualPending)) saved[job] = {since: item.since, requestedAt: item.requestedAt, startedAt: item.startedAt, completed: item.completed === true};
+  if (Object.keys(saved).length) browserStore.setItem(MANUAL_PENDING_KEY, JSON.stringify(saved));
+  else browserStore.removeItem(MANUAL_PENDING_KEY);
+}
+
+function resumePendingWorkflows() {
+  if (document.hidden) return;
+  for (const [job, item] of Object.entries(manualPending)) {
+    if (positionSyncToken()) {
+      if (workflowFollowers.has(job)) item.resumeAfterAuth = true;
+      followWorkflow(job, item.since, item.requestedAt);
+    }
+    else item.text = "請重新連接後續查本輪；不會重派任務。";
+  }
+  if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
+}
 
 function renderRefreshPanel(data) {
   const panel = $("refreshPanel");
@@ -2276,11 +2458,15 @@ function renderRefreshPanel(data) {
 async function manualRefresh(job, button) {
   const token = positionSyncToken();
   if (!token) return;
+  if (manualPending[job]) { followWorkflow(job, manualPending[job].since, manualPending[job].requestedAt); return; }
+  if (manualDispatching.has(job)) return;
   const note = ((lastDailyRefresh?.manual?.allowed || {})[job] || {}).reason || "";
   if (job === "postclose" && !window.confirm(`盤後重評會重算母池、凍結判定改變的決策卡；每日 Email 當天未寄過才會寄出。
 ${note}
 確定觸發？`)) return;
   if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "更新中…"; }
+  manualDispatching.add(job);
+  const requestedAt = new Date().toISOString();
   let result = {};
   try {
     const res = await fetch("/api/daily-refresh/manual", {
@@ -2289,8 +2475,9 @@ ${note}
       body: JSON.stringify({job}),
     });
     result = await res.json().catch(() => ({}));
-    if (res.status === 401) result.reason = "同步密鑰不正確，無法手動更新";
+    if (res.status === 401) { requireOwnerReconnect(token); result.reason = "連接已到期或無效，請重新連接；未派送任務"; }
   } catch (err) { result = {reason: `連線失敗：${err.message}`}; }
+  finally { manualDispatching.delete(job); }
   const noteEl = $("refreshNote");
   if (noteEl) noteEl.textContent = `${REFRESH_ITEMS.find(i => i.job === job)?.title || job}：${result.reason || (result.started ? "已開始" : "未執行")}`;
   if (!result.started) { refreshRefreshPanel(); return; }
@@ -2309,46 +2496,99 @@ ${note}
     }
     if (noteEl) noteEl.textContent += "｜已重新載入";
   } else {
-    followWorkflow(job, new Date(Date.now() - 5000).toISOString());
+    const dispatchedAt = Number.isFinite(Date.parse(result.started_at)) ? result.started_at : Number.isFinite(Date.parse(result.dispatched_at)) ? result.dispatched_at : requestedAt;
+    const since = Number.isFinite(Date.parse(result.since)) ? result.since : new Date(Date.parse(dispatchedAt) - 5000).toISOString();
+    followWorkflow(job, since, dispatchedAt);
   }
 }
 
 // 盤後重評、永豐庫存在 GitHub Actions 執行：每 15 秒查一次進度（最多 25 分鐘），
 // 跑完自動重新載入受影響的區塊。之前只觸發不追蹤，手機上看起來就像「按了沒反應」。
-async function followWorkflow(job, since) {
+function followWorkflow(job, since, requestedAt = since) {
+  if (!["broker", "postclose"].includes(job)) return Promise.resolve();
+  if (!manualPending[job]) manualPending[job] = {since, requestedAt, startedAt: Date.now(), completed: false, text: "已送出，等待 GitHub Actions 開始…"};
+  persistManualPending();
+  if (document.hidden || !positionSyncToken()) return Promise.resolve();
+  if (workflowFollowers.has(job)) return workflowFollowers.get(job);
+  const following = trackWorkflow(job).catch(() => {
+    if (manualPending[job]) manualPending[job].text = "暫時無法確認進度；返回此頁時續查，不會重派。";
+    if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
+  }).finally(() => {
+    if (workflowFollowers.get(job) === following) workflowFollowers.delete(job);
+    // 追蹤在換憑證時結束，而重新連接可能已在同一個事件回合完成。
+    if (manualPending[job] && !document.hidden && positionSyncToken() && manualPending[job].resumeAfterAuth) {
+      delete manualPending[job].resumeAfterAuth;
+      queueMicrotask(resumePendingWorkflows);
+    }
+  });
+  workflowFollowers.set(job, following);
+  return following;
+}
+
+function waitWorkflowPoll() {
+  return new Promise(resolve => {
+    const finish = () => { clearTimeout(timer); document.removeEventListener("visibilitychange", finish); resolve(); };
+    const timer = setTimeout(finish, 15000);
+    document.addEventListener("visibilitychange", finish, {once: true});
+  });
+}
+
+async function trackWorkflow(job) {
   const token = positionSyncToken();
   const title = REFRESH_ITEMS.find(i => i.job === job)?.title || job;
   const noteEl = $("refreshNote");
-  manualPending[job] = {since, text: "已送出，等待 GitHub Actions 開始…"};
+  const pending = manualPending[job];
+  const since = pending.since;
   if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
-  const started = Date.now();
-  let finished = null;
-  while (Date.now() - started < 25 * 60 * 1000) {
-    await new Promise(r => setTimeout(r, 15000));
-    let run = null;
-    try {
-      const res = await fetch(`/api/daily-refresh/manual-status?job=${encodeURIComponent(job)}&since=${encodeURIComponent(since)}`,
-        {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
-      run = (await res.json()).run;
-    } catch (err) { /* 暫時連不上就下一輪再試 */ }
-    const minutes = Math.floor((Date.now() - started) / 60000);
-    if (run && run.status === "completed") { finished = run; break; }
-    manualPending[job].text = run ? `GitHub Actions ${run.status === "queued" ? "排隊中" : "執行中"}（已 ${minutes} 分鐘）…` : `等待 GitHub Actions 開始（已 ${minutes} 分鐘）…`;
+  while (Date.now() - pending.startedAt < 25 * 60 * 1000) {
+    if (document.hidden || token !== positionSyncToken()) return;
+    let run = pending.completed ? {status: "completed", conclusion: "success"} : null;
+    if (!run) {
+      try {
+        const res = await fetch(`/api/daily-refresh/manual-status?job=${encodeURIComponent(job)}&since=${encodeURIComponent(since)}`,
+          {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
+        if (res.status === 401) { requireOwnerReconnect(token); return; }
+        if (res.ok) run = (await res.json()).run;
+      } catch (_) { /* 保留 pending，網路恢復後續查同一輪。 */ }
+    }
+    if (token !== positionSyncToken() || manualPending[job] !== pending) return;
+    const minutes = Math.floor((Date.now() - pending.startedAt) / 60000);
+    if (run?.status === "completed") {
+      if (run.conclusion !== "success") {
+        if (noteEl) noteEl.textContent = `${title}：GitHub Actions 結果為 ${run.conclusion || "未提供"}，未確認新資料。`;
+        delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
+      }
+      pending.completed = true;
+      persistManualPending();
+      if (job === "broker") {
+        const [inventoryResult] = await reloadBrokerViews();
+        if (token !== positionSyncToken()) return;
+        const inventory = inventoryResult?.status === "fulfilled" ? inventoryResult.value : null;
+        const attemptAt = inventory?.public_status?.last_attempt_at || inventory?.last_attempt_at || inventory?.last_attempt?.at;
+        const attemptNew = Date.parse(attemptAt) >= Date.parse(pending.requestedAt);
+        const snapshotNew = Date.parse(inventory?.as_of) >= Date.parse(pending.requestedAt);
+        if (inventory?.status === "ok" && inventory.storage?.durable === true && attemptNew && snapshotNew) {
+          if (noteEl) noteEl.textContent = `${title}：本輪新庫存已驗證並載入；已另行重讀帳務與買賣時機（${new Date().toLocaleTimeString("zh-TW", {timeZone: "Asia/Taipei", hour12: false})}）。`;
+          delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
+        }
+        if (attemptNew && inventory?.status !== "ok") {
+          if (noteEl) noteEl.textContent = `${title}：流程已結束，但本輪券商庫存讀取未成功驗證；未宣稱已更新，手動清單仍保留。`;
+          delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
+        }
+        pending.text = "流程已結束，尚未讀到晚於本輪派送時間的有效庫存；持續確認，不重派…";
+      } else {
+        await loadDailyValueState();
+        await Promise.allSettled([loadPremarketBrief(), loadEtfScreen(), loadMarketResearch(), loadDecisionLedger(), loadRegulatory()]);
+        if (noteEl) noteEl.textContent = `${title}：流程完成，已重讀相關區塊。`;
+        delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
+      }
+    } else pending.text = run ? `GitHub Actions ${run.status === "queued" ? "排隊中" : "執行中"}（已 ${minutes} 分鐘）…` : `等待 GitHub Actions 開始（已 ${minutes} 分鐘）…`;
     if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
+    await waitWorkflowPoll();
   }
   delete manualPending[job];
-  if (!finished) {
-    if (noteEl) noteEl.textContent = `${title}：超過 25 分鐘仍未完成，請稍後重新整理頁面確認。`;
-  } else if (finished.conclusion !== "success") {
-    if (noteEl) noteEl.textContent = `${title}：GitHub Actions 結果為 ${finished.conclusion}，資料未更新。`;
-  } else {
-    if (job === "broker") await loadCloudPositions();       // 會接著讀永豐庫存並重算持股
-    if (job === "postclose") {
-      await loadDailyValueState();
-      loadPremarketBrief(); loadEtfScreen(); loadMarketResearch(); loadDecisionLedger(); loadRegulatory();
-    }
-    if (noteEl) noteEl.textContent = `${title}：完成並已重新載入（${new Date().toLocaleTimeString("zh-TW", {timeZone: "Asia/Taipei", hour12: false})}）`;
-  }
+  persistManualPending();
+  if (noteEl) noteEl.textContent = `${title}：超過 25 分鐘仍未確認本輪新資料；未重新派送，請稍後核對庫存日期。`;
   refreshRefreshPanel();
 }
 
@@ -2510,8 +2750,11 @@ function renderEntryEvidence(e) {
     b.volume_ratio != null ? `量比 ${Number(b.volume_ratio).toFixed(2)}` : null,
   ].filter(Boolean).join("｜") : "";
   const warn = asArray(liq.warnings);
+  const missingLiquidity = asArray(liq.missing_fields).map(field => ({spread_pct: "價差", total_volume: "成交量"})[field] || "必要欄位");
+  const liquidityIncomplete = liq.status === "insufficient" || liq.tradable === null;
   return `<div style="font-size:12px;margin-top:6px;padding:5px 7px;background:#f8fafc;border:1px solid var(--line);border-radius:5px;">
     ${b ? `<b style="color:${color};">${escapeHtml(label)}</b>${metrics ? `<span style="color:#475569;">｜${metrics}</span>` : ""}` : ""}
+    ${liquidityIncomplete ? `<div style="color:#64748b;margin-top:2px;">流動性資料不足：缺${escapeHtml(missingLiquidity.length ? missingLiquidity.join("／") : "價差／成交量")}</div>` : ""}
     ${warn.length ? `<div style="color:#b91c1c;margin-top:2px;">⚠ ${escapeHtml(warn.join("；"))}</div>` : ""}
     ${e.hint ? `<div style="color:#1e3a8a;margin-top:2px;">→ ${escapeHtml(e.hint)}</div>` : ""}
     <div style="color:var(--muted);font-size:11px;margin-top:2px;">${escapeHtml(e.trade_date || "")} 量價佐證，未進排序、未改判定（尚未驗證預測力）</div>
@@ -3076,7 +3319,9 @@ async function loadBrokerInventory() {
   const panel = $("brokerPositionPanel"), token = positionSyncToken();
   const generation = ++brokerSyncGeneration;
   if (!panel) return;
+  if (brokerInventory) brokerLastReadable = brokerInventory;
   brokerInventory = null;
+  renderBrokerAdoptBanner(null);
   if ($("brokerPositionAdopt")) $("brokerPositionAdopt").disabled = true;
   if (!token) {
     panel.textContent = "請先連接私有同步，才可讀取永豐庫存。";
@@ -3087,13 +3332,18 @@ async function loadBrokerInventory() {
   panel.textContent = "讀取永豐盤後庫存…";
   try {
     const res = await fetch("/api/broker-positions", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
-    const data = await readJson(res);
+    if (res.status === 401) { requireOwnerReconnect(token); return; }
+    const data = await res.json();
     if (generation !== brokerSyncGeneration || token !== positionSyncToken()) return;
-    const rows = asArray(data.positions);
-    const stale = data.status !== "ok" || data.storage?.durable !== true;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const hasPositions = Array.isArray(data.positions) && Number.isFinite(Date.parse(data.as_of));
+    const stale = data.status !== "ok" || data.storage?.durable !== true || Boolean(data.error) || !hasPositions;
     brokerInventory = stale ? null : data;
-    const date = data.as_of || data.updated_at || data.fetched_at || "未取得";
-    panel.innerHTML = `<p style="font-size:12px;">來源：永豐券商庫存｜更新 ${escapeHtml(date)}｜${rows.length} 檔${stale ? "｜尚未成功驗證，禁止採用" : "｜唯讀，不會自動改寫手動清單"}</p>`
+    if (hasPositions) brokerLastReadable = data;
+    const readable = hasPositions ? data : brokerLastReadable;
+    const rows = asArray(readable?.positions);
+    const date = readable?.as_of || readable?.fetched_at || "未取得";
+    panel.innerHTML = `<p style="font-size:12px;">來源：永豐券商庫存｜${stale ? "上次可讀快照" : "更新"} ${escapeHtml(date)}｜${readable ? `${rows.length} 檔` : "檔數未驗證"}${stale ? "｜庫存讀取未完成，不代表零庫存；舊資料僅供核對，禁止採用" : "｜唯讀，不會自動改寫手動清單"}</p>`
       + (data.error ? `<p style="color:#b91c1c;">庫存讀取未完成：${escapeHtml(data.error)}。行情權限不等於帳務權限，需確認永豐 API 帳務授權。</p>` : "")
       + rows.map(row => `<div style="font-size:12px; padding:3px 0;">${escapeHtml(row.symbol)}｜${Number(row.shares)} 股｜平均成本 ${Number(row.cost).toFixed(2)}</div>`).join("");
     panel.innerHTML += `<p>${brokerPositionsEnabled ? "已啟用永豐庫存合併；手動輸入僅代表其他券商持股。" : "尚未啟用合併，現有手動持股維持原樣。"}</p>`;
@@ -3102,8 +3352,21 @@ async function loadBrokerInventory() {
     _heldSet = null;
     renderMyHoldings();
     if (ledgerSignals.length) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
+    return data;
   } catch (err) {
-    if (generation === brokerSyncGeneration && token === positionSyncToken()) panel.textContent = `未能取得券商庫存：${err.message}；手動持股未變。`;
+    if (generation === brokerSyncGeneration && token === positionSyncToken()) {
+      panel.textContent = `永豐庫存讀取未完成，不代表零庫存；暫停依其產生操作建議。手動持股未變。（${err.message}）`;
+      if (brokerLastReadable) {
+        const label = document.createElement("p");
+        label.textContent = `上次可讀快照：${brokerLastReadable.as_of || brokerLastReadable.fetched_at || "未提供日期"}；僅供核對，不納入持股分析。`;
+        panel.appendChild(label);
+        for (const row of asArray(brokerLastReadable.positions)) {
+          const item = document.createElement("div");
+          item.textContent = `${row.symbol}｜${Number(row.shares)} 股｜平均成本 ${Number(row.cost).toFixed(2)}`;
+          panel.appendChild(item);
+        }
+      }
+    }
   }
   finally {
     if (generation !== brokerSyncGeneration || token !== positionSyncToken()) return;
@@ -3111,6 +3374,16 @@ async function loadBrokerInventory() {
     renderMyHoldings();
     if (ledgerSignals.length) renderLedger(document.querySelector(".ledger-filter.active")?.dataset.filter || "all");
   }
+}
+
+let brokerViewsLoading = null;
+function reloadBrokerViews() {
+  const token = positionSyncToken();
+  if (brokerViewsLoading?.token === token) return brokerViewsLoading.promise;
+  const promise = Promise.allSettled([loadBrokerInventory(), loadBrokerLedger(), loadTimingResearch()]);
+  brokerViewsLoading = {token, promise};
+  promise.finally(() => { if (brokerViewsLoading?.promise === promise) brokerViewsLoading = null; });
+  return promise;
 }
 
 // 永豐庫存已可讀但尚未採用時，把「一次性採用」放到持股區最上方：
@@ -3137,8 +3410,10 @@ async function loadBrokerLedger() {
   panel.textContent = "讀取中…";
   try {
     const res = await fetch("/api/broker-ledger", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
-    if (res.status === 401) { panel.textContent = "同步密鑰不正確。"; return; }
+    if (token !== positionSyncToken()) return;
+    if (res.status === 401) { requireOwnerReconnect(token); panel.textContent = "連接已失效，請重新連接。"; return; }
     const d = await readJson(res);
+    if (token !== positionSyncToken()) return;
     const trades = asArray(d.trades);
     const money = v => v == null ? "—" : `${Number(v) >= 0 ? "+" : ""}${Math.round(Number(v)).toLocaleString()}`;
     const pct = v => v == null ? "—" : `${Number(v) >= 0 ? "+" : ""}${Number(v).toFixed(2)}%`;
@@ -3166,9 +3441,11 @@ async function loadTimingResearch() {
   panel.textContent = "讀取中…";
   try {
     const res = await fetch("/api/timing-research", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
-    if (res.status === 401) { panel.textContent = "同步密鑰不正確。"; return; }
+    if (token !== positionSyncToken()) return;
+    if (res.status === 401) { requireOwnerReconnect(token); panel.textContent = "連接已失效，請重新連接。"; return; }
     if (res.status === 404) { panel.textContent = "尚未產生；盤後批次或按「讀取最新庫存」後產生。"; return; }
     const d = await readJson(res);
+    if (token !== positionSyncToken()) return;
     const n = v => v == null ? "—" : Number(v).toFixed(2);
     const s = x => x && x.n ? `${n(x.mean)}%（中位 ${n(x.median)}%，${x.n} 次）` : "—";
     const fb = Object.entries(d.false_breaks || {}).map(([key, v]) => `<tr><td>${escapeHtml(TIMING_LEVEL_LABEL[key] || key)}</td><td>${v.events}</td>`
@@ -3213,7 +3490,7 @@ async function adoptBrokerInventory() {
 }
 
 function effectiveHoldings() {
-  const manual = parsePositionsRaw(localStorage.getItem(POSITION_STORAGE_KEY) || "");
+  const manual = parsePositionsRaw(browserStore.getItem(POSITION_STORAGE_KEY) || "");
   if (!brokerPositionsEnabled || !brokerInventory) return manual;
   const sums = new Map();
   for (const row of [...manual, ...asArray(brokerInventory.positions)]) {
@@ -3230,20 +3507,25 @@ async function renderMyHoldings() {
   const status = $("myHoldingsStatus");
   if (!panel) return;
   const requestVersion = ++holdingsRenderVersion;
-  const raw = localStorage.getItem(POSITION_STORAGE_KEY) || "";
-  const input = $("homePositionInput");
-  if (input && !input.value) input.value = raw;
+  // 庫存或行情重畫不能把使用者正在清空／修改的手動草稿填回舊值。
+  // 初次還原只在 bundle 完成初始化時執行一次。
   const pos = effectiveHoldings();
+  if (brokerPositionsEnabled && !brokerInventory) {
+    if (status) status.textContent = "永豐庫存未驗證";
+    panel.textContent = "永豐庫存讀取未完成，不代表零庫存；暫停依其產生操作建議。其他券商手動持股仍保留。";
+    if (brokerLastReadable) {
+      const last = document.createElement("p");
+      last.textContent = `上次可讀快照：${brokerLastReadable.as_of || brokerLastReadable.fetched_at || "未提供日期"}；舊數量可於「永豐真實庫存核對」查看，不納入本次分析。`;
+      panel.appendChild(last);
+    }
+    return;
+  }
   if (!pos.length) {
     if (status) status.textContent = brokerPositionsEnabled && !brokerInventory ? "永豐庫存未驗證" : "尚未輸入";
     panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔損益、持股建議與可稽核的 Exit Score 獲利保護提醒。</p>`;
     return;
   }
   if (status) status.textContent = `${pos.length} 檔 · ${brokerPositionsEnabled ? brokerInventory ? "永豐＋其他券商" : "永豐庫存未驗證，僅列手動持股" : "手動清單"}`;
-  if (brokerPositionsEnabled && !brokerInventory) {
-    panel.textContent = "永豐庫存尚未成功驗證，整體持股分析暫停；其他券商手動持股仍保留。請先讀取有效庫存快照。";
-    return;
-  }
   panel.innerHTML = `<p style="color:var(--muted); font-size:13px;">分析中…</p>`;
   let valueActions = {};
   let sellTiming = {};
@@ -3529,4 +3811,11 @@ function renderOutcomeCells(signal) {
 
 // Private positions are restored after every function/constant in this shared
 // two-page bundle has initialized. Without a pairing key the browser remains local-only.
-loadCloudPositions();
+const homePositionRestore = $("homePositionInput");
+if (homePositionRestore && !homePositionRestore.value) homePositionRestore.value = browserStore.getItem(POSITION_STORAGE_KEY) || "";
+loadCloudPositions().finally(resumePendingWorkflows);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) return;
+  resumePendingWorkflows();
+  if (positionSyncToken() && !manualPending.broker) reloadBrokerViews();
+});

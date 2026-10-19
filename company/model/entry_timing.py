@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import math
+
 # 台股常見的可成交性門檻：價差超過 0.5% 時，一買一賣光滑價就吃掉約 1%。
 WIDE_SPREAD_PCT = 0.5
 # 成交量過低時，數百張的部位就足以推動價格，買進區形同紙上談兵。
@@ -24,8 +26,17 @@ THIN_VOLUME_LOTS = 500
 
 def grade_liquidity(snapshot: dict) -> dict:
     """可成交性檢查。客觀且立即可用，不需要預測力驗證。"""
-    spread = snapshot.get("spread_pct")
-    volume = snapshot.get("total_volume")
+    def finite_nonnegative(value):
+        if isinstance(value, bool):
+            return None
+        try:
+            n = float(value)
+            return n if math.isfinite(n) and n >= 0 else None
+        except (ValueError, TypeError):
+            return None
+
+    spread = finite_nonnegative(snapshot.get("spread_pct"))
+    volume = finite_nonnegative(snapshot.get("total_volume"))
     problems = []
     if spread is not None and float(spread) > WIDE_SPREAD_PCT:
         problems.append(f"買賣價差 {float(spread):.2f}%（>{WIDE_SPREAD_PCT}%，進出成本偏高）")
@@ -34,7 +45,9 @@ def grade_liquidity(snapshot: dict) -> dict:
     return {
         "spread_pct": spread,
         "total_volume": volume,
-        "tradable": not problems,
+        "tradable": False if problems else (True if spread is not None and volume is not None else None),
+        "status": 'restricted' if problems else ('sufficient' if spread is not None and volume is not None else 'insufficient'),
+        "missing_fields": [key for key, value in [('spread_pct', spread), ('total_volume', volume)] if value is None],
         "warnings": problems,
     }
 
@@ -78,7 +91,7 @@ def grade_entry(item: dict, snapshot: dict | None) -> dict | None:
         return None
     liquidity = grade_liquidity(snapshot)
     balance = grade_day_balance(snapshot)
-    if balance is None and liquidity["tradable"]:
+    if balance is None and not liquidity["warnings"]:
         return None
 
     decision = item.get("decision")

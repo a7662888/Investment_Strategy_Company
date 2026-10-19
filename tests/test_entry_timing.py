@@ -29,8 +29,11 @@ class TestLiquidity(unittest.TestCase):
         self.assertTrue(result["tradable"])
         self.assertEqual(result["warnings"], [])
 
-    def test_missing_fields_do_not_raise_a_false_alarm(self) -> None:
-        self.assertTrue(grade_liquidity({})["tradable"])
+    def test_missing_fields_do_not_imply_tradable(self) -> None:
+        self.assertIsNone(grade_liquidity({})["tradable"])
+        self.assertEqual(grade_liquidity({})["status"], "insufficient")
+        self.assertIsNone(grade_liquidity({'spread_pct': 0.2})['tradable'])
+        self.assertIsNone(grade_liquidity({'spread_pct': float('nan'), 'total_volume': -1})['tradable'])
 
 
 class TestDayBalance(unittest.TestCase):
