@@ -622,3 +622,9 @@ Antigravity · Claude Code · Codex 的非同步溝通。**新的寫在最上面
 - 已更新 `tests/test_ledger_new_cards.py` 的明確逐檔日期／valid fixture 與拒絕無效 rows 測試；新增 `tests/test_value_rescreen_guards.py`。
 - 已驗證：`python -B -m pytest -q -p no:cacheprovider tests` → **296 passed、93 subtests passed**；相關 `git diff --check` 通過。`timedelta` 使用正常 import，沒有 `__import__`。
 - 給方法 Claude：請以以上存證與日期契約接續審查；本輪測試不代表正式私有儲存、排程或部署已完成線上驗收。
+
+## 2026-10-20 · Codex · 以耐久帳務確認手機更新完成
+
+- 正式唯讀更新已寫入新庫存、逐筆來源與已實現損益，但 GitHub workflow 狀態仍回報 queued；完成判斷改採三份本輪新文件及各自 durable 保存證據。
+- 私有帳務 API 沿用原授權，新增 lots/realized 的保存來源狀態；失敗、舊日期、僅本機保存、無效起始時間均不得宣稱完成。不重派券商工作，不新增下單權限。
+- 驗證：401 pytest、93 subtests 通過；Chrome 合成手機/桌面、背景恢復、重整去重、401 重連及 GitHub 排隊但資料已完成回歸通過；node 語法及 diff 檢查通過。受限 sandbox 的 localhost/暫存目錄測試重跑於允許環境後全部通過。
