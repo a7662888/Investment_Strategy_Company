@@ -11,7 +11,7 @@ on:
 jobs:
   # 排程觸發時，若最新已完成交易日已由網站觸發的那次跑完，就不再重跑（見 run_postclose_guard.py）。
   guard:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 5
     outputs:
       skip: ${{ steps.check.outputs.skip }}
@@ -30,7 +30,7 @@ jobs:
   # Inventory is independent of the market/email catch-up guard. Even when today's
   # analysis is already complete, the scheduled private account read still runs.
   broker:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 12
     concurrency:
       group: daily-investment-analysis-email
@@ -53,7 +53,7 @@ jobs:
   email:
     needs: [guard, broker]
     if: always() && needs.guard.result == 'success' && needs.guard.outputs.skip != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     concurrency:
       group: daily-investment-analysis-email
