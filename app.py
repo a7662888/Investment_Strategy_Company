@@ -3458,6 +3458,12 @@ def manual_refresh(job: str) -> tuple[dict, int]:
     ok, reason = jobs.manual_check(job, now, state)
     if not ok:
         return {"job": job, "started": False, "reason": reason}, 409
+    if job == 'broker':
+        existing = jobs.latest_workflow_run(jobs.BROKER_WORKFLOW, now - timedelta(minutes=25))
+        if existing and existing.get('status') != 'completed':
+            return {'job': job, 'started': True, 'mode': 'workflow',
+                    'started_at': existing.get('created_at'),
+                    'reason': '庫存讀取已在排隊或執行，接續追蹤；不重複查詢券商'}, 202
     if job == "postclose":
         expected = jobs.latest_completed_session(now)
         existing = jobs.recent_workflow_run(jobs.POSTCLOSE_WORKFLOWS[0], jobs.session_close(expected)) if expected else None
@@ -3480,6 +3486,7 @@ def manual_refresh(job: str) -> tuple[dict, int]:
     if not result.get("dispatched"):
         return {"job": job, "started": False, "reason": "GitHub Actions 觸發失敗", "workflow": result}, 502
     return {"job": job, "started": True, "mode": "workflow", "workflow": workflow,
+            "started_at": now.isoformat(),
             "reason": "已觸發 GitHub Actions，約 2–10 分鐘完成"}, 202
 
 
@@ -3993,6 +4000,46 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            if self.path in ('/api/owner/pairing', '/api/owner/pairing/claim'):
+                from company.model.positions import expected_sync_token, is_authorized
+                from owner_access import create_pairing, claim_pairing, PairingError
+                origin = self.headers.get('Origin')
+                if origin and urllib.parse.urlsplit(origin).netloc.lower() != self.headers.get('Host', '').lower():
+                    self.send_json({'error': 'origin rejected'}, HTTPStatus.FORBIDDEN)
+                    return
+                if not self.headers.get('Content-Type', '').lower().startswith('application/json'):
+                    self.send_json({'error': 'JSON required'}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+                    return
+                try:
+                    length = int(self.headers.get('Content-Length', '0'))
+                except ValueError:
+                    length = -1
+                if length < 0 or length > 512 or self.headers.get('Transfer-Encoding'):
+                    self.close_connection = True
+                    self.send_json({'error': 'invalid pairing request size'}, HTTPStatus.BAD_REQUEST)
+                    return
+                if not positions_sync_enabled() or not (secret := expected_sync_token()):
+                    self.send_json({'error': 'private sync unavailable'}, HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
+                try:
+                    if self.path == '/api/owner/pairing':
+                        if not is_authorized(self.headers.get('Authorization')):
+                            self.send_json({'error': 'unauthorized'}, HTTPStatus.UNAUTHORIZED)
+                            return
+                        self.read_body()
+                        payload = create_pairing(secret)
+                    else:
+                        body = self.read_body()
+                        if not isinstance(body, dict):
+                            self.send_json({'error': 'JSON object required'}, HTTPStatus.BAD_REQUEST)
+                            return
+                        payload = claim_pairing(body.get('code'), secret, self.client_address[0])
+                    self.send_json(payload)
+                except PairingError as exc:
+                    self.send_json({'error': str(exc)}, HTTPStatus(exc.status))
+                except (ValueError, UnicodeError):
+                    self.send_json({'error': 'invalid JSON'}, HTTPStatus.BAD_REQUEST)
+                return
             if self.path in self.RETIRED_POST_ENDPOINTS:
                 # 先讀完請求內容再回 410：未讀的 body 留在 socket 時，Windows 關閉連線會送 RST，
                 # 客戶端偶發 ConnectionAbortedError（WinError 10053；test_legacy_decision_endpoints_are_retired 曾 1/4 失敗）。

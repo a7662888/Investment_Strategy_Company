@@ -102,14 +102,21 @@
         <button id="homePositionSave" class="primary" style="padding:8px 18px;">儲存並分析</button>
       </div>
       <div class="position-sync-row" style="display:flex; gap:8px; margin:-2px 0 10px; flex-wrap:wrap; align-items:center;">
-        <input id="homePositionSyncKey" type="password" autocomplete="off" placeholder="私有同步密鑰"
+        <input id="homePositionSyncKey" type="password" autocomplete="off" placeholder="原同步密鑰（相容舊方式）"
                style="width:220px; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font-size:12px;">
         <button id="homePositionCloudSync" type="button" title="連接私有持股同步" style="padding:7px 12px;">雲端同步</button>
         <span id="homePositionCloudStatus" style="font-size:12px; color:var(--muted);">僅此瀏覽器</span>
       </div>
       <p style="font-size:11.5px; color:var(--muted); margin:-4px 0 10px; line-height:1.5;">
-        其他裝置輸入同一把同步密鑰後按「雲端同步」，即可載入私有持股；儲存採版本衝突保護，不會靜默覆蓋較新的雲端資料。
+        原同步密鑰仍可使用；手機建議使用下方 8 位連接碼，避免複製長密鑰。儲存採版本衝突保護，不會靜默覆蓋較新的雲端資料。
       </p>
+      <div class="owner-pairing" aria-label="連接手機與其他裝置">
+        <div class="owner-pairing-head"><strong>連接手機與其他裝置</strong><button id="ownerPairingCreate" type="button">配對手機 · 產生連接碼</button></div>
+        <p class="owner-pairing-help">在已連接的裝置產生代碼，再於手機輸入。代碼 5 分鐘內有效、只能使用一次；此裝置授權最長 30 天。請勿把代碼轉傳他人。</p>
+        <output id="ownerPairingCode" class="owner-pairing-code" aria-label="一次性八位連接碼" hidden></output>
+        <div class="owner-pairing-entry"><label class="visually-hidden" for="ownerPairingInput">8 位連接碼</label><input id="ownerPairingInput" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{8}" maxlength="8" placeholder="8 位連接碼"><button id="ownerPairingClaim" type="button" class="primary">連接此裝置</button></div>
+        <p id="ownerPairingStatus" class="owner-pairing-help" role="status" aria-live="polite">尚未連接時，請先從已連接的裝置取得代碼。若手機限制網站儲存，將改用分頁或本頁暫存並提示。</p>
+      </div>
       <details style="margin:10px 0;">
         <summary style="cursor:pointer;font-size:13px;">永豐真實庫存核對</summary>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;">

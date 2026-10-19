@@ -6,11 +6,14 @@ on:
     paths:
       - "app.py"
       - "etf_research.py"
+      - "owner_access.py"
       - "requirements*.txt"
       - "company/**"
       - "web/**"
       - "tests/**"
       - ".github/workflows/web-smoke.yml"
+      - ".github/workflows/broker-research-refresh.yml"
+      - ".github/workflows/email-daily.yml"
   pull_request:
     branches: [main]
 

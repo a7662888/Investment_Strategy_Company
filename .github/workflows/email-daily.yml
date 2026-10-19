@@ -27,9 +27,32 @@ jobs:
           GITHUB_DATA_BRANCH: main
         run: python run_postclose_guard.py
 
+  # Inventory is independent of the market/email catch-up guard. Even when today's
+  # analysis is already complete, the scheduled private account read still runs.
+  broker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    concurrency:
+      group: daily-investment-analysis-email
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet shioaji
+      - name: Read private inventory, lots and realized P&L after close
+        env:
+          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
+          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+        run: python run_broker_positions.py --fetch --scheduled --require-ledger
+
   email:
-    needs: guard
-    if: needs.guard.outputs.skip != 'true'
+    needs: [guard, broker]
+    if: always() && needs.guard.result == 'success' && needs.guard.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     concurrency:
@@ -95,16 +118,6 @@ jobs:
           GITHUB_DATA_BRANCH: main
         continue-on-error: true
         run: python run_etf_holdings.py
-
-      - name: Read broker inventory (never replace manual portfolio)
-        env:
-          SHIOAJI_API_KEY: ${{ secrets.SHIOAJI_API_KEY }}
-          SHIOAJI_SECRET_KEY: ${{ secrets.SHIOAJI_SECRET_KEY }}
-          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
-          GITHUB_DATA_REPO: a7662888/investment-strategy-data
-          GITHUB_DATA_BRANCH: main
-        continue-on-error: true
-        run: python run_broker_positions.py --fetch
 
       # 關注清單分 K（盤後一次，只抓清單內標的）→ 假跌破與成交價研究；失敗不擋 Email。
       - name: Watchlist kbars and timing research

@@ -345,11 +345,15 @@ def latest_workflow_run(workflow: str, since: datetime) -> dict | None:
     except Exception:  # noqa: BLE001
         return None
     for run in runs:   # GitHub 依建立時間新到舊排序
+        if run.get('event') and run['event'] != 'workflow_dispatch':
+            continue
+        if workflow == BROKER_WORKFLOW and run.get('display_title') and not run['display_title'].startswith('refresh '):
+            continue
         try:
             created = datetime.fromisoformat(str(run.get("created_at")).replace("Z", "+00:00"))
         except ValueError:
             continue
-        if created >= since - timedelta(seconds=60):
+        if created >= since - timedelta(seconds=2):
             return {"status": run.get("status"), "conclusion": run.get("conclusion"),
                     "created_at": run.get("created_at"), "updated_at": run.get("updated_at")}
     return None

@@ -1,5 +1,12 @@
 # Shared Resources
 
+## 手機私有帳務配對（2026-10-19）
+
+- 延用既有雲端私有庫存／帳務資料，不以手機本機清單替代券商庫存。
+- `owner_access.py`：已授權裝置可POST `/api/owner/pairing` 產生5分鐘單次短碼；手機POST `/api/owner/pairing/claim`換取30日簽署憑證，原密鑰仍相容。短碼只存行程記憶體，服務重啟後須重新產生；不放URL、log或公開資料檔。
+- 裝置遺失時，輪替既有私有同步密鑰會使其簽出的全部裝置憑證失效；正常登出僅移除此瀏覽器的授權。沒有新增雲端資源、券商權限或自動交易。
+- 盤後讀取沿用 `email-daily.yml` 台北16:35排程，庫存job獨立於市場完成guard；交易後的手動讀取沿用 `broker-research-refresh.yml`。
+
 ## ETF research candidate — 2026-10-06 (Codex)
 
 - Candidate branch: `codex/etf-research-20261006`; no commit/push/deployment yet.

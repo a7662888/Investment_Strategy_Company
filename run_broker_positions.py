@@ -212,7 +212,15 @@ def main(argv=None) -> int:
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--fetch", action="store_true", help="Explicitly authorize one production inventory query and private snapshot write")
     modes.add_argument("--diagnose", action="store_true", help="Read account metadata only, without inventory queries or storage writes")
+    parser.add_argument("--require-ledger", action="store_true", help="Fail if lots or realized P&L were not durably refreshed")
+    parser.add_argument("--scheduled", action="store_true", help="Skip automatic reads outside a completed trading session")
     args = parser.parse_args(argv)
+    if args.scheduled:
+        from company.model.daily_jobs import is_trading_weekday, is_after_close, taipei_now
+        now = taipei_now()
+        if not is_trading_weekday(now) or not is_after_close(now):
+            print(json.dumps({'skipped': True, 'reason': 'not_after_trading_session'}))
+            return 0
     if args.diagnose:
         try:
             result = _diagnose()
@@ -238,7 +246,11 @@ def main(argv=None) -> int:
         ledger_report = {"error_code": "LEDGER_SAVE_FAILED"}
     print(json.dumps({"position_count": len(snapshot["positions"]) if snapshot is not None else 0,
                       "error_code": code, "storage": storage, "ledger": ledger_report}))
-    return 0 if snapshot is not None and storage.get("durable") and not storage.get("error_code") else 1
+    ledger_ok = not args.require_ledger or all(
+        ledger_report.get(name, {}).get('durable') is True
+        and not ledger_report.get(name, {}).get('error_code')
+        for name in ('lots', 'realized'))
+    return 0 if snapshot is not None and storage.get("durable") and not storage.get("error_code") and ledger_ok else 1
 
 
 if __name__ == "__main__":
