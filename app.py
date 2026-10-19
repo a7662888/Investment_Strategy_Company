@@ -3249,13 +3249,19 @@ def annotate_entry_evidence(state: dict) -> dict:
 
 def load_private_ledger(name: str) -> dict:
     """私有帳務文件（broker_lots／realized_pnl）。只在已驗證同步密鑰的請求中呼叫。"""
+    doc, _ = load_private_ledger_with_storage(name)
+    return doc
+
+
+def load_private_ledger_with_storage(name: str) -> tuple[dict, dict]:
+    """Keep durability evidence so workflow progress cannot impersonate a data refresh."""
     from company.data import broker_ledger
     from company.model.durable_document import load_document
 
     remote = broker_ledger.LOTS_REMOTE if name == "lots" else broker_ledger.REALIZED_REMOTE
     local = PROJECT / "data" / "daily_audit" / "broker_positions" / ("lots.json" if name == "lots" else "realized.json")
-    doc, _ = load_document(local, remote)
-    return doc or {}
+    doc, storage = load_document(local, remote)
+    return doc or {}, storage
 
 
 def realized_return_pct(trade: dict) -> float | None:
@@ -3750,8 +3756,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
                     self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
                     return
-                lots = load_private_ledger("lots")
-                realized = load_private_ledger("realized")
+                lots, lots_storage = load_private_ledger_with_storage("lots")
+                realized, realized_storage = load_private_ledger_with_storage("realized")
                 trades = list(realized.get("trades") or [])
                 context = decisions_before([t["date"] for t in trades if t.get("date")])
                 total = dict(realized.get("total") or {})
@@ -3768,6 +3774,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "realized_as_of": realized.get("as_of"), "range": realized.get("range"),
                     "trades": trades, "summary": realized.get("summary") or [], "total": total or None,
                     "note": realized.get("note"),
+                    "storage": {"lots": lots_storage, "realized": realized_storage},
                 })
                 return
             if parsed.path == "/api/broker-positions":

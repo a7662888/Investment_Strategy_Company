@@ -2533,6 +2533,27 @@ function waitWorkflowPoll() {
   });
 }
 
+function brokerRefreshProof(inventory, ledger, since) {
+  const cutoff = Date.parse(since);
+  const fresh = value => Number.isFinite(cutoff) && Number.isFinite(Date.parse(value)) && Date.parse(value) >= cutoff;
+  return inventory?.status === "ok" && inventory.storage?.durable === true
+    && fresh(inventory.last_attempt_at) && fresh(inventory.as_of)
+    && ledger?.storage?.lots?.durable === true && ledger.storage.realized?.durable === true
+    && fresh(ledger.lots_as_of) && fresh(ledger.realized_as_of);
+}
+
+async function probeBrokerRefresh(since, token) {
+  try {
+    const replies = await Promise.all(["/api/broker-positions", "/api/broker-ledger"].map(path =>
+      fetch(path, {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"})));
+    if (token !== positionSyncToken()) return false;
+    if (replies.some(reply => reply.status === 401)) { requireOwnerReconnect(token); return false; }
+    if (replies.some(reply => !reply.ok)) return false;
+    const [inventory, ledger] = await Promise.all(replies.map(reply => reply.json()));
+    return token === positionSyncToken() && brokerRefreshProof(inventory, ledger, since);
+  } catch (_) { return false; }
+}
+
 async function trackWorkflow(job) {
   const token = positionSyncToken();
   const title = REFRESH_ITEMS.find(i => i.job === job)?.title || job;
@@ -2542,6 +2563,15 @@ async function trackWorkflow(job) {
   if (lastDailyRefresh) renderRefreshPanel(lastDailyRefresh);
   while (Date.now() - pending.startedAt < 25 * 60 * 1000) {
     if (document.hidden || token !== positionSyncToken()) return;
+    // GitHub's status API can lag its actual job by many minutes. Verified new
+    // durable account documents are the completion criterion, not that status.
+    if (job === "broker" && await probeBrokerRefresh(pending.requestedAt, token)) {
+      await reloadBrokerViews();
+      if (token !== positionSyncToken() || manualPending[job] !== pending) return;
+      if (noteEl) noteEl.textContent = `${title}：本輪新庫存已驗證；逐筆來源與已實現損益均已確認保存，已重新讀取各區塊（GitHub進度可能延遲）。`;
+      delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
+    }
+    if (token !== positionSyncToken() || manualPending[job] !== pending) return;
     let run = pending.completed ? {status: "completed", conclusion: "success"} : null;
     if (!run) {
       try {
@@ -2561,21 +2591,7 @@ async function trackWorkflow(job) {
       pending.completed = true;
       persistManualPending();
       if (job === "broker") {
-        const [inventoryResult] = await reloadBrokerViews();
-        if (token !== positionSyncToken()) return;
-        const inventory = inventoryResult?.status === "fulfilled" ? inventoryResult.value : null;
-        const attemptAt = inventory?.public_status?.last_attempt_at || inventory?.last_attempt_at || inventory?.last_attempt?.at;
-        const attemptNew = Date.parse(attemptAt) >= Date.parse(pending.requestedAt);
-        const snapshotNew = Date.parse(inventory?.as_of) >= Date.parse(pending.requestedAt);
-        if (inventory?.status === "ok" && inventory.storage?.durable === true && attemptNew && snapshotNew) {
-          if (noteEl) noteEl.textContent = `${title}：本輪新庫存已驗證並載入；已另行重讀帳務與買賣時機（${new Date().toLocaleTimeString("zh-TW", {timeZone: "Asia/Taipei", hour12: false})}）。`;
-          delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
-        }
-        if (attemptNew && inventory?.status !== "ok") {
-          if (noteEl) noteEl.textContent = `${title}：流程已結束，但本輪券商庫存讀取未成功驗證；未宣稱已更新，手動清單仍保留。`;
-          delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
-        }
-        pending.text = "流程已結束，尚未讀到晚於本輪派送時間的有效庫存；持續確認，不重派…";
+        pending.text = "流程已結束，尚未核對三份本輪新帳務文件的雲端保存；持續確認，不重派…";
       } else {
         await loadDailyValueState();
         await Promise.allSettled([loadPremarketBrief(), loadEtfScreen(), loadMarketResearch(), loadDecisionLedger(), loadRegulatory()]);
