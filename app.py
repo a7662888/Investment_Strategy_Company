@@ -3148,7 +3148,8 @@ def load_market_doc(name: str, ttl: float = 1800.0) -> dict:
     """盤後批次寫入的 market/<name>.json（籌碼研究表、除息行事曆）；讀不到回空字典。"""
     now = time.time()
     cached = _MARKET_DOC_CACHE.get(name)
-    if cached and now - cached["at"] < ttl:
+    # 空結果只快取 60 秒：批次剛寫入時不必等 30 分鐘才看得到。
+    if cached and now - cached["at"] < (ttl if cached["doc"] else 60.0):
         return cached["doc"]
     try:
         from company.model.durable_document import load_document
