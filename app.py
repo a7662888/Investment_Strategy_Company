@@ -3141,6 +3141,26 @@ _REGULATORY_CACHE: dict = {}
 _REGULATORY_TTL = 1800.0
 
 
+_MARKET_DOC_CACHE: dict[str, dict] = {}
+
+
+def load_market_doc(name: str, ttl: float = 1800.0) -> dict:
+    """盤後批次寫入的 market/<name>.json（籌碼研究表、除息行事曆）；讀不到回空字典。"""
+    now = time.time()
+    cached = _MARKET_DOC_CACHE.get(name)
+    if cached and now - cached["at"] < ttl:
+        return cached["doc"]
+    try:
+        from company.model.durable_document import load_document
+
+        doc, _ = load_document(PROJECT / "data" / f"{name}.json", f"market/{name}.json")
+    except Exception as exc:  # noqa: BLE001
+        print(f"[{name}] unavailable: {exc}")
+        doc = None
+    _MARKET_DOC_CACHE[name] = {"at": now, "doc": doc or {}}
+    return doc or {}
+
+
 def load_regulatory() -> dict:
     """處置股／注意股清單（盤後批次 run_regulatory.py 寫入）。讀不到回空字典。"""
     now = time.time()
@@ -3822,6 +3842,13 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({**build_market_research(state or {}, load_market_snapshots(), scanners,
                                                         load_regulatory()),
                                 "freshness": current_state_freshness(state), "storage": storage})
+                return
+            if parsed.path in ("/api/chips", "/api/dividends"):
+                doc = load_market_doc("chip_report" if parsed.path == "/api/chips" else "dividend_calendar")
+                if not doc:
+                    self.send_json({"error": "尚未產生（每日盤後批次）"}, HTTPStatus.NOT_FOUND)
+                else:
+                    self.send_json(doc)
                 return
             if parsed.path == "/api/regulatory":
                 from company.model.market_research import regulatory_flags

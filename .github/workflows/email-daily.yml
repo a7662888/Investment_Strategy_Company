@@ -151,6 +151,17 @@ jobs:
         continue-on-error: true
         run: python run_regulatory.py
 
+      # 籌碼與動能研究表（母池＋節目觀察清單）與除息行事曆：官方免費資料，僅研究脈絡；失敗不擋 Email。
+      - name: Chip flow research table and dividend calendar
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        continue-on-error: true
+        timeout-minutes: 12
+        run: python run_chip_flow.py
+
       - name: Freeze changed decisions after fresh analysis
         env:
           GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
