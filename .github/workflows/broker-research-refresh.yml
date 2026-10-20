@@ -8,7 +8,7 @@ on:
       mode:
         description: Read-only account diagnosis, inventory/rankings refresh, or one market snapshot
         type: choice
-        options: [market, refresh, diagnose, kbars, etf-holdings]
+        options: [market, refresh, diagnose, kbars, etf-holdings, chips]
         default: refresh
 
 permissions:
@@ -78,3 +78,11 @@ jobs:
           GITHUB_DATA_REPO: a7662888/investment-strategy-data
           GITHUB_DATA_BRANCH: main
         run: python run_etf_holdings.py
+      - name: Chip flow research table and dividend calendar
+        if: inputs.mode == 'chips'
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+        run: python run_chip_flow.py

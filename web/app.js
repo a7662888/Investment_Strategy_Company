@@ -1451,6 +1451,8 @@ loadDecisionLedger();
 runDailyJobs();
 loadEtfScreen();
 loadRegulatory();
+loadChips();
+loadDividends();
 
 // 處置股／注意股（永豐 punish／notice，盤後批次）：只作風險標記，不改任何判定。
 let regulatoryFlags = {};
@@ -1464,6 +1466,93 @@ async function loadRegulatory() {
 function regBadge(symbol) {
   const flags = asArray(regulatoryFlags[String(symbol || "").split(".")[0]]);
   return flags.map(f => ` <span class="pill" style="font-size:11px;color:#b91c1c;border-color:#fecaca;" title="公開監理資訊，僅作風險提示">⚠ ${escapeHtml(f)}</span>`).join("");
+}
+
+// 籌碼與動能研究表（盤後批次 run_chip_flow.py）：只作研究脈絡，不改任何判定。
+let chipReport = null;
+async function loadChips() {
+  const section = $("chipSection");
+  if (!section) return;
+  try {
+    const res = await fetch("/api/chips", {cache: "no-store"});
+    if (!res.ok) { section.style.display = "none"; return; }
+    chipReport = await res.json();
+  } catch (err) { section.style.display = "none"; return; }
+  section.style.display = "";
+  const filter = $("chipFilter");
+  const groups = [...new Set(asArray(chipReport.rows).flatMap(r => asArray(r.watch_groups)))];
+  const keep = filter.value;
+  filter.innerHTML = `<option value="all">全部</option><option value="pool">母池</option><option value="watch">節目觀察清單（全部）</option>`
+    + groups.map(g => `<option value="g:${escapeHtml(g)}">節目：${escapeHtml(g)}</option>`).join("");
+  if (keep) filter.value = keep;
+  filter.onchange = renderChips;
+  $("chipSort").onchange = renderChips;
+  renderChips();
+}
+function renderChips() {
+  const d = chipReport;
+  if (!d) return;
+  const panel = $("chipPanel"), status = $("chipStatus");
+  const f = $("chipFilter").value || "all", key = $("chipSort").value || "trust20";
+  let rows = asArray(d.rows).filter(r => f === "all" || (f === "pool" && r.in_pool)
+    || (f === "watch" && asArray(r.watch_groups).length) || (f.startsWith("g:") && asArray(r.watch_groups).includes(f.slice(2))));
+  const dir = key === "discount_pct" ? 1 : -1;
+  rows = rows.slice().sort((a, b) => (a[key] == null) - (b[key] == null) || dir * ((a[key] ?? 0) - (b[key] ?? 0)));
+  const win = d.flow_window || {};
+  if (status) status.textContent = `${d.as_of || "—"} · 法人 ${win.days || 0}/20 日 · ${rows.length} 檔`;
+  const sgn = (v, digits = 2) => v == null ? "—" : `<span style="color:${v > 0 ? "#c62828" : v < 0 ? "#137333" : "inherit"};">${v > 0 ? "+" : ""}${Number(v).toFixed(digits)}</span>`;
+  const ma = s => s ? `${sgn(s.cagr_pct, 1)}<span style="color:var(--muted);">／${Number(s.hold_cagr_pct).toFixed(1)}</span>` : "—";
+  const both = rows.filter(r => r.revenue_high_12m && (r.revenue_yoy_pct ?? 0) > 20 && (r.foreign20 ?? 0) > 0 && (r.trust20 ?? 0) > 0);
+  const month = (asArray(d.rows).find(r => r.revenue_month) || {}).revenue_month || "";
+  const body = rows.map(r => `<tr>
+      <td style="white-space:nowrap;">${escapeHtml(r.code)} ${escapeHtml(r.name || "")}${r.in_pool ? ' <span class="pill" style="font-size:10.5px;">母池</span>' : ""}${typeof regBadge === "function" ? regBadge(r.code) : ""}</td>
+      <td>${r.close ?? "—"}</td><td>${sgn(r.discount_pct, 1)}</td>
+      <td style="white-space:nowrap;">${sgn(r.vs_ma20_pct, 1)} / ${sgn(r.vs_ma60_pct, 1)}</td>
+      <td>${sgn(r.revenue_yoy_pct, 1)}${r.revenue_high_12m ? " ⭐" : ""}</td>
+      <td style="white-space:nowrap;">${sgn(r.foreign5)} / ${sgn(r.foreign20)}</td><td style="white-space:nowrap;">${sgn(r.trust5)} / ${sgn(r.trust20)}</td>
+      <td>${sgn(r.trust_streak, 0)}</td>
+      <td style="white-space:nowrap;">${r.big400_pct == null ? "—" : Number(r.big400_pct).toFixed(1)}${r.big400_change_pp == null ? "" : `（${sgn(r.big400_change_pp)}）`}</td>
+      <td style="white-space:nowrap;">${ma(r.ma20_strategy)}</td><td style="white-space:nowrap;">${ma(r.ma60_strategy)}</td></tr>`).join("");
+  panel.innerHTML = `
+    ${both.length ? `<p style="font-size:12.5px;margin:0 0 8px;"><b>營收創 12 月新高（年增 &gt;20%）＋外資、投信 20 日同步買超：</b>${escapeHtml(both.map(r => `${r.code} ${r.name || ""}`).join("、"))}<span style="color:var(--muted);">（研究篩選，未經回測驗證，不是買進訊號）</span></p>` : ""}
+    <div style="overflow:auto;max-height:560px;"><table style="font-size:12.5px;"><thead><tr>
+      <th>代號／名稱</th><th>收盤</th><th title="距 252 日最高價">折扣%</th><th>月線/季線乖離%</th><th title="⭐ = 創 12 個月新高">${escapeHtml(month)} 營收 YoY%</th>
+      <th>外本比 5日/20日%</th><th>投本比 5日/20日%</th><th>投信連買(+)/賣(−)</th><th>≥400張%（週變化）</th>
+      <th title="近 5 年，含息、扣成本；斜線後為買進持有年化">MA20 進出／持有 年化%</th><th title="近 5 年，含息、扣成本；斜線後為買進持有年化">MA60 進出／持有 年化%</th></tr></thead>
+      <tbody>${body}</tbody></table></div>
+    <p style="font-size:11.5px;color:var(--muted);margin:10px 0 0;line-height:1.6;">${escapeHtml(d.disclaimer || "")}<br>
+      ${escapeHtml(Object.values(d.definitions || {}).join("；"))}<br>
+      資料來源：${escapeHtml(Object.values(d.sources || {}).join("；"))}。觀察清單來源：${escapeHtml(d.watchlist_source || "")}。紅 = 正／買超，綠 = 負／賣超。</p>`;
+}
+
+let dividendDoc = null;
+async function loadDividends() {
+  const section = $("dividendSection");
+  if (!section) return;
+  try {
+    const res = await fetch("/api/dividends", {cache: "no-store"});
+    if (!res.ok) { section.style.display = "none"; return; }
+    dividendDoc = await res.json();
+  } catch (err) { section.style.display = "none"; return; }
+  section.style.display = "";
+  $("dividendAll").onchange = renderDividends;
+  renderDividends();
+}
+function renderDividends() {
+  const d = dividendDoc;
+  if (!d) return;
+  const all = $("dividendAll").checked;
+  const rows = asArray(d.rows).filter(r => all || r.is_etf || r.tracked);
+  $("dividendStatus").textContent = `${String(d.as_of || "").slice(0, 10)} · ${rows.length} 筆`;
+  $("dividendPanel").innerHTML = rows.length ? `<div style="overflow:auto;max-height:420px;"><table style="font-size:12.5px;"><thead><tr>
+      <th>除息日</th><th>最後買進日</th><th>代號／名稱</th><th>類別</th><th>現金股利（元）</th><th>市場</th></tr></thead><tbody>`
+    + rows.map(r => `<tr><td>${escapeHtml(r.ex_date)}</td><td>${escapeHtml(r.last_buy_date || "")}</td>
+        <td>${escapeHtml(r.code)} ${escapeHtml(r.name || "")}${r.tracked ? ' <span class="pill" style="font-size:10.5px;">關注</span>' : ""}</td>
+        <td>${escapeHtml(r.kind || "")}${r.is_etf ? "（ETF）" : ""}</td>
+        <td>${r.cash_dividend == null ? '<span style="color:var(--muted);">待公告</span>' : Number(r.cash_dividend).toFixed(3)}</td>
+        <td>${escapeHtml(r.market || "")}</td></tr>`).join("")
+    + `</tbody></table></div><p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">最後買進日 = 除息日前一個交易日。配息率不等於報酬率：除息當天股價會扣掉配息。來源：${escapeHtml(d.sources || "")}。</p>`
+    : `<p style="font-size:12.5px;color:var(--muted);">近期沒有 ETF 或關注標的除息。</p>`;
 }
 
 async function loadEtfScreen() {
@@ -2594,7 +2683,7 @@ async function trackWorkflow(job) {
         pending.text = "流程已結束，尚未核對三份本輪新帳務文件的雲端保存；持續確認，不重派…";
       } else {
         await loadDailyValueState();
-        await Promise.allSettled([loadPremarketBrief(), loadEtfScreen(), loadMarketResearch(), loadDecisionLedger(), loadRegulatory()]);
+        await Promise.allSettled([loadPremarketBrief(), loadEtfScreen(), loadMarketResearch(), loadDecisionLedger(), loadRegulatory(), loadChips(), loadDividends()]);
         if (noteEl) noteEl.textContent = `${title}：流程完成，已重讀相關區塊。`;
         delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
       }
