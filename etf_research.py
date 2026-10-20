@@ -43,7 +43,7 @@ YUANTA = {'00990A'}
 # 群益投信：官方「申購買回清單」頁面使用的 JSON 端點（2026-10-14 由頁面網路請求確認）。
 # fundId 是群益內部基金編號（同站 /CFWeb/api/etf/items 的 fundNo），date 為 PCF 生效日；
 # 回應 pcf.date2 為持股／淨值基準日、date1 為生效日，nav 為基金淨資產、pUnit 為每單位淨值。
-CAPITAL = {'00982A': '399', '00992A': '500', '00997A': '502'}
+CAPITAL = {'00982A': '399', '00992A': '500', '00997A': '502', '00415A': '504'}
 CAPITAL_URL = 'https://www.capitalfund.com.tw/CFWeb/api/etf/buyback'
 # 野村投信：官方「申購買回清單 PCF」頁面使用的 JSON 端點（2026-10-14 確認）；FundNo 即股票代號，
 # Date 為 PCF 日。Entries.CNavDt 為持股／淨值基準日、CPcfdate 為 PCF 日；Stocks 為完整持股
@@ -69,6 +69,17 @@ KGI_URL = 'https://www.kgifund.com.tw/Fund/RedemptionVC'
 # FundNo 為內部編號（回應 CSecuritiesCode 為股票代號，用來核對）；Date 為 PCF 日。
 ALLIANZ = {'00984A': 'E0001', '00993A': 'E0002', '00402A': 'E0003', '00412A': 'E0004'}
 ALLIANZ_API = 'https://etf.allianzgi.com.tw/webapi/api'
+MEGA = {'00996A': '23'}
+MEGA_URL = 'https://www.megafunds.com.tw/MEGA/etf/trade_pcf.aspx'
+FSITC = {'00994A': '182', '00408A': '183'}
+FSITC_API = 'https://www.fsitc.com.tw/WebAPI.aspx'
+SINOPAC = {'00410A'}
+SINOPAC_URL = 'https://sitc.sinopac.com/SinopacEtfs/Etfs/Pcf'
+TAISHIN = {'00986A', '00987A', '00416A'}
+TAISHIN_URL = 'https://www.tsit.com.tw/ETF/Home/Pcf'
+JPM = {'00401A': 'TW00000401A1', '00989A': 'TW00000989A5'}
+JPM_URL = 'https://am.jpmorgan.com/FundsMarketingHandler/product-data'
+BLACKROCK = {'00985D': ('349339', '1480664180144')}
 YUANTA_URL = 'https://etfapi.yuantaetfs.com/ectranslation/api/bridge?APIType=ETFAPI&CompanyName=YUANTAFUNDS&PageName=%2FtradeInfo%2Fpcf%2F00990A&DeviceId=null&FuncId=PCF%2FDaily&ticker=00990A&AppName=ETF&Platform=ETF&Device=3'
 
 
@@ -963,6 +974,276 @@ def allianz_pair(code: str) -> tuple[dict, dict | None]:
     return current, None
 
 
+def _checked(positions: list[dict]) -> list[dict]:
+    if not positions or len({p['code'] for p in positions}) != len(positions) or any(p['weight_pct'] < 0 or p['weight_pct'] > 100 for p in positions) or sum(p['weight_pct'] for p in positions) > 102:
+        raise ValueError('invalid issuer holdings')
+    return positions
+
+
+def _previous_by_date(fetch, current: dict, fmt: str, use_effective: bool = True) -> dict | None:
+    """往前找前一期：以 PCF 生效日（或持股日）逐日回推，跳過週末，找到持股日較早的一份即停。"""
+    day = datetime.fromisoformat((current.get('effective_date') if use_effective else None) or current['as_of'])
+    for _ in range(6):
+        day -= timedelta(days=1)
+        if day.weekday() >= 5:
+            continue
+        try:
+            previous = fetch(day.strftime(fmt))
+            if previous['as_of'] < current['as_of']:
+                return previous
+        except Exception:
+            continue
+    return None
+
+
+def _post_form(url: str, fields: dict, opener=None) -> str:
+    request = urllib.request.Request(url, data=urllib.parse.urlencode(fields).encode(), method='POST', headers={
+        'User-Agent': 'Mozilla/5.0 ETFResearch/1.0', 'Content-Type': 'application/x-www-form-urlencoded'})
+    with (opener or urllib.request.build_opener()).open(request, timeout=15) as response:
+        return response.read(MAX_BYTES + 1).decode('utf-8', 'replace')
+
+
+def _text(page: str) -> str:
+    import html as _html
+    return re.sub(r'\s+', ' ', _html.unescape(re.sub(r'<[^>]+>', ' ', page)))
+
+
+def _table_positions(page: str, kinds: dict) -> tuple[list[dict], list[dict]]:
+    """HTML 表格 → 部位。kinds = {表頭第一欄: (asset_type, 數量欄名)}；跳過合計列。"""
+    import html as _html
+    positions, derivatives = [], []
+    for table in re.findall(r'<table[^>]*>(.*?)</table>', page, re.S):
+        rows = [[_html.unescape(c).strip() for c in r] for r in _html_cells(table)]
+        if len(rows) < 2 or rows[0][0] not in kinds or len(rows[0]) < 3 or rows[0][1] not in ('股票名稱', '證券名稱', '名稱', '期貨名稱'):
+            continue
+        weight_col = next((i for i, h in enumerate(rows[0]) if '權重' in h), None)
+        if weight_col is None:
+            continue
+        asset, unit = kinds[rows[0][0]]
+        qty_col = next((i for i, h in enumerate(rows[0]) if h in ('股數', '口數', '面額', '單位數')), None)
+        for row in rows[1:]:
+            if len(row) <= weight_col or re.search(r'(合計|總計|小計)', ''.join(row[:2])):
+                continue
+            weight = number(row[weight_col])
+            if weight is None:
+                raise ValueError('missing official weight')
+            item = {'code': re.sub(r'\s+TT$', '', row[0]), 'name': row[1], 'weight_pct': weight,
+                    'shares': number(row[qty_col]) if qty_col is not None else None, 'quantity_unit': unit, 'asset_type': asset}
+            (derivatives if asset == 'futures' else positions).append(item)
+    return positions, derivatives
+
+
+def _grab(text: str, label: str):
+    match = re.search(re.escape(label) + r'[^0-9\-(]{0,20}\(?([0-9,.\-]+)', text)
+    return number(match.group(1)) if match else None
+
+
+# ---------- 兆豐（ASP.NET postback；查詢日期 = PCF 公告日） ----------
+def parse_mega(page: str, code: str, source: str) -> dict:
+    text = _text(page)
+    if f'股票代號：{code}' not in text:
+        raise ValueError('invalid issuer product')
+    held = re.search(r'(20\d\d/\d\d/\d\d)\s*每基數實際申購總價金', text)
+    pcf = re.search(r'(20\d\d/\d\d/\d\d)\s*\S*\s*申購買回清單公告', text)
+    as_of = date_iso(held.group(1).replace('/', '-')) if held else None
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('missing issuer date')
+    positions, derivatives = _table_positions(page, {'股票代號': ('stock', '股數'), '期貨代號': ('futures', '口數')})
+    return {'code': code, 'as_of': as_of, 'effective_date': date_iso(pcf.group(1).replace('/', '-')) if pcf else None,
+            'units': _grab(text, '已發行受益權單位總數'), 'aum_twd': _grab(text, '基金淨資產價值(元)'),
+            'nav': _grab(text, '每受益權單位淨資產價值(元)'), 'holdings': _checked(positions), 'derivatives': derivatives,
+            'source': source, 'fetched_at': now_iso(), 'scope': '官方申購買回清單現貨部位；期貨另列；現金未列入本表'}
+
+
+def mega_pair(code: str) -> tuple[dict, dict | None]:
+    fund = MEGA[code]
+    def fetch(day: str) -> dict:
+        import html as _html
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+        with opener.open(urllib.request.Request(MEGA_URL, headers={'User-Agent': 'Mozilla/5.0 ETFResearch/1.0'}), timeout=15) as response:
+            first = response.read(MAX_BYTES + 1).decode('utf-8', 'replace')
+        form = {m.group(1): _html.unescape(m.group(2)) for m in re.finditer(r'<input[^>]*name="(__[A-Z]+)"[^>]*value="([^"]*)"', first)}
+        form.update({'ctl00$ContentPlaceHolder1$category_id': '', 'ctl00$ContentPlaceHolder1$fund_id': fund,
+                     'ctl00$ContentPlaceHolder1$qdt': day, 'ctl00$ContentPlaceHolder1$button1': '查詢'})
+        return parse_mega(_post_form(MEGA_URL, form, opener), code, f'{MEGA_URL} (fund_id={fund}, qdt={day or "latest"})')
+    current = fetch('')
+    return current, _previous_by_date(fetch, current, '%Y/%m/%d')
+
+
+# ---------- 第一金（WebAPI JSON；pStrDate = PCF 公告日，sdate = 持股日） ----------
+def parse_fsitc(meta_rows: list, holding_rows: list, code: str, fund: str, source: str) -> dict:
+    if not holding_rows or any(str(r.get('fundid')) != fund for r in holding_rows):
+        raise ValueError('invalid issuer product')
+    as_of = date_iso(str(holding_rows[0].get('sdate') or ''))
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('invalid issuer date')
+    meta = {str(r.get('A') or ''): r.get('B') for r in meta_rows or []}
+    pick = lambda prefix: next((number(re.sub(r'[A-Z$ ]', '', str(v))) for k, v in meta.items() if k.startswith(prefix)), None)  # noqa: E731
+    positions = []
+    for row in holding_rows:
+        if str(row.get('group')) != '1':        # 1 = 股票；4 = 現金、5 = 資產配置摘要
+            continue
+        weight = number(row.get('C'))
+        if weight is None:
+            raise ValueError('missing official weight')
+        positions.append({'code': str(row.get('A') or '').strip(), 'name': str(row.get('B') or ''), 'weight_pct': weight,
+                          'shares': number(row.get('D')), 'quantity_unit': '股數', 'asset_type': 'stock'})
+    return {'code': code, 'as_of': as_of, 'effective_date': date_iso(str((meta_rows or [{}])[0].get('sdate') or '')),
+            'units': pick('已發行受益權單位總數'), 'aum_twd': pick('基金淨資產價值'), 'nav': pick('每受益權單位淨資產價值'),
+            'holdings': _checked(positions), 'derivatives': [], 'source': source, 'fetched_at': now_iso(),
+            'scope': '官方申購買回清單股票部位；現金未列入本表'}
+
+
+def fsitc_pair(code: str) -> tuple[dict, dict | None]:
+    fund = FSITC[code]
+    def call(name: str, day: str) -> list:
+        raw = json.loads(read_public(f'{FSITC_API}/{name}', {'pStrFundID': fund, 'pStrDate': day})).get('d')
+        return json.loads(raw) if raw else []
+    def fetch(day: str) -> dict:
+        return parse_fsitc(call('Get_BuySellA', day), call('Get_hd', day), code, fund,
+                           f'{FSITC_API}/Get_hd (pStrFundID={fund}, pStrDate={day or "latest"})')
+    current = fetch('')
+    return current, _previous_by_date(fetch, current, '%Y-%m-%d')
+
+
+# ---------- 永豐（表單 POST；hDate = PCF 公告日） ----------
+def parse_sinopac(page: str, code: str, source: str) -> dict:
+    text = _text(page)
+    head = re.search(r'證[劵券]代碼：' + re.escape(code) + r'）\s*(20\d\d/\d\d/\d\d)', text)
+    held = re.search(r'(20\d\d/\d\d/\d\d)\s*基金淨資產價值', text)
+    if not head:
+        raise ValueError('invalid issuer product')
+    as_of = date_iso(held.group(1).replace('/', '-')) if held else None
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('missing issuer date')
+    positions, derivatives = _table_positions(page, {'證券代碼': ('stock', '股數'), '期貨代碼': ('futures', '口數')})
+    return {'code': code, 'as_of': as_of, 'effective_date': date_iso(head.group(1).replace('/', '-')),
+            'units': _grab(text, '已發行受益權單位總數'), 'aum_twd': _grab(text, '基金淨資產價值(元)'),
+            'nav': _grab(text, '每受益權單位淨資產價值(元)'), 'holdings': _checked(positions), 'derivatives': derivatives,
+            'source': source, 'fetched_at': now_iso(), 'scope': '官方現金申購買回清單現貨部位；期貨另列；現金未列入本表'}
+
+
+def sinopac_pair(code: str) -> tuple[dict, dict | None]:
+    def fetch(day: str) -> dict:
+        return parse_sinopac(_post_form(SINOPAC_URL, {'fundId': code, 'hDate': day, 'op': ''}), code,
+                             f'{SINOPAC_URL} (fundId={code}, hDate={day or "latest"})')
+    current = fetch('')
+    return current, _previous_by_date(fetch, current, '%Y-%m-%d')
+
+
+# ---------- 台新（GET；DataDate = PCF 公告日；台股代號帶 " TT"） ----------
+def parse_taishin(page: str, code: str, source: str) -> dict:
+    text = _text(page)
+    if f'({code})' not in text:
+        raise ValueError('invalid issuer product')
+    held = re.search(r'(20\d\d/\d\d/\d\d)\s*每基數實際申購總價金', text)
+    as_of = date_iso(held.group(1).replace('/', '-')) if held else None
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('missing issuer date')
+    pcf = re.search(r'id="PUB_DATE"[^>]*value="(20\d\d-\d\d-\d\d)"', page)
+    positions, derivatives = _table_positions(page, {'代號': ('stock', '股數'), '期貨代號': ('futures', '口數')})
+    return {'code': code, 'as_of': as_of, 'effective_date': date_iso(pcf.group(1)) if pcf else None,
+            'units': _grab(text, '已發行受益權單位總數'), 'aum_twd': _grab(text, '基金淨資產價值(元)'),
+            'nav': _grab(text, '每受益權單位淨資產價值(元)'), 'holdings': _checked(positions), 'derivatives': derivatives,
+            'source': source, 'fetched_at': now_iso(), 'scope': '官方申購買回清單現貨部位；期貨另列；現金未列入本表'}
+
+
+def taishin_pair(code: str) -> tuple[dict, dict | None]:
+    def fetch(day: str) -> dict:
+        url = f'{TAISHIN_URL}/{code}?FundType=&DataDate={day}'
+        return parse_taishin(read_public(url).decode('utf-8', 'replace'), code, url)
+    current = fetch('')
+    # 公告日不一定寫在頁面上：以持股日的次一個平日為起點回推。
+    if not current.get('effective_date'):
+        nxt = datetime.fromisoformat(current['as_of']) + timedelta(days=1)
+        while nxt.weekday() >= 5:
+            nxt += timedelta(days=1)
+        current['effective_date'] = nxt.date().isoformat()
+    return current, _previous_by_date(fetch, current, '%Y-%m-%d')
+
+
+# ---------- 摩根（product-data JSON，只有最新一期；前一期取自存檔） ----------
+def parse_jpm(raw: dict, code: str, cusip: str) -> dict:
+    holdings = ((raw or {}).get('fundData') or {}).get('holdings') or {}
+    equity = holdings.get('pcfEquityHoldings') or {}
+    as_of = date_iso(equity.get('effectiveDate'))
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('invalid issuer date')
+    positions, derivatives = [], []
+    for key, asset, unit in (('pcfEquityHoldings', 'stock', '股數'), ('pcfBondHoldings', 'bond', '面額'),
+                             ('pcfFutureHoldings', 'futures', '口數'), ('pcfOptionsHoldings', 'futures', '口數')):
+        for item in (holdings.get(key) or {}).get('data') or []:
+            weight = number(item.get('marketValuePercent'))
+            if weight is None:
+                raise ValueError('missing official weight')
+            row = {'code': str(item.get('securityTicker') or item.get('securityIsin') or '').strip(),
+                   'name': str(item.get('securityDescription') or ''), 'weight_pct': weight,
+                   'shares': number(item.get('shares')), 'quantity_unit': unit, 'asset_type': asset}
+            (derivatives if asset == 'futures' else positions).append(row)
+    total = sum(number(i.get('marketValue')) or 0 for k in ('pcfEquityHoldings', 'pcfBondHoldings', 'pcfCashHoldings', 'pcfFutureHoldings', 'pcfOptionsHoldings')
+                for i in (holdings.get(k) or {}).get('data') or [])
+    return {'code': code, 'as_of': as_of, 'effective_date': None, 'units': None, 'aum_twd': round(total) if total else None,
+            'nav': None, 'holdings': _checked(positions), 'derivatives': derivatives,
+            'source': f'{JPM_URL}?cusip={cusip}', 'fetched_at': now_iso(),
+            'scope': '官方申購買回清單（市值占比）現貨部位；期貨與選擇權另列；現金未列入本表'}
+
+
+def jpm_pair(code: str) -> tuple[dict, dict | None]:
+    cusip = JPM[code]
+    url = f'{JPM_URL}?cusip={cusip}&country=tw&role=twetf&language=zh&userLoggedIn=false'
+    current = parse_jpm(json.loads(read_public(url)), code, cusip)
+    stored = stored_pair(code) or {}
+    for candidate in (stored.get('current'), stored.get('previous')):
+        if candidate and candidate.get('as_of') and candidate['as_of'] < current['as_of']:
+            return current, candidate
+    return current, None
+
+
+# ---------- 貝萊德（持股 CSV；asOfDate = 持股日；債券以 代號＋到期日＋票息 區分） ----------
+def parse_blackrock(body: bytes, code: str, source: str) -> dict:
+    import csv as _csv
+    lines = body.decode('utf-8-sig', 'replace').splitlines()
+    head = re.search(r'(\d{4})年(\d{1,2})月(\d{1,2})日', lines[0] if lines else '')
+    as_of = datetime(*map(int, head.groups())).date().isoformat() if head else None
+    if not as_of or as_of > datetime.now(TAIPEI).date().isoformat():
+        raise ValueError('invalid issuer date')
+    start = next((i for i, line in enumerate(lines) if line.startswith('Ticker,')), None)
+    if start is None:
+        raise ValueError('invalid issuer holdings')
+    positions, derivatives, seen = [], [], set()
+    for row in _csv.DictReader(lines[start:]):
+        cls = row.get('Asset Class') or ''
+        weight = number(row.get('Weight (%)'))
+        if weight is None or not row.get('Ticker'):
+            continue
+        if cls in ('Futures', 'Other Derivatives'):
+            derivatives.append({'code': row['Ticker'], 'name': row.get('Name') or '', 'weight_pct': weight,
+                                'shares': number(row.get('Shares')), 'quantity_unit': '口數', 'asset_type': 'futures'})
+            continue
+        if cls not in ('Fixed Income', 'Equity'):
+            continue                                  # 現金、保證金不列入
+        key = row['Ticker'] if row.get('Maturity') in (None, '', '-') else f"{row['Ticker']} {row['Maturity']} {row.get('Coupon (%)') or ''}%".strip()
+        while key in seen:
+            key += '*'
+        seen.add(key)
+        positions.append({'code': key, 'name': row.get('Name') or '', 'weight_pct': weight, 'shares': number(row.get('Par Value')),
+                          'quantity_unit': '面額' if row.get('Sector') != 'ETF(指數股票型基金)' else '股數',
+                          'asset_type': 'fund' if row.get('Sector') == 'ETF(指數股票型基金)' else 'bond'})
+    return {'code': code, 'as_of': as_of, 'effective_date': None, 'units': None, 'aum_twd': None, 'nav': None,
+            'holdings': _checked(positions), 'derivatives': derivatives, 'source': source, 'fetched_at': now_iso(),
+            'scope': '官方每日持股檔債券與 ETF 部位；期貨與其他衍生性商品另列；現金與保證金未列入本表'}
+
+
+def blackrock_pair(code: str) -> tuple[dict, dict | None]:
+    product, handler = BLACKROCK[code]
+    def fetch(day: str) -> dict:
+        url = (f'https://www.blackrock.com/tw/products/{product}/fund/{handler}.ajax?fileType=csv'
+               f'&fileName={code}_holdings&dataType=fund' + (f'&asOfDate={day}' if day else ''))
+        return parse_blackrock(read_public(url), code, url)
+    current = fetch('')
+    return current, _previous_by_date(fetch, current, '%Y%m%d', use_effective=False)
+
+
 def compare_holdings(previous: dict | None, current: dict) -> dict:
     """Weight changes and raw shares; never infer trade notional from weights."""
     if not previous:
@@ -1029,7 +1310,8 @@ def active_digest(top: int = 3, min_move_pp: float = 0.05) -> dict:
 
 
 def supported_issuer(code: str) -> bool:
-    return any(code in group for group in (EZMONEY, FH, AB, YUANTA, CAPITAL, NOMURA, CATHAY, FUBON, KGI, ALLIANZ))
+    return any(code in group for group in (EZMONEY, FH, AB, YUANTA, CAPITAL, NOMURA, CATHAY, FUBON, KGI, ALLIANZ,
+                                                 MEGA, FSITC, SINOPAC, TAISHIN, JPM, BLACKROCK))
 
 
 def fetch_pair(code: str) -> tuple[dict, dict | None]:
@@ -1052,6 +1334,10 @@ def fetch_pair(code: str) -> tuple[dict, dict | None]:
         return kgi_pair(code)
     if code in ALLIANZ:
         return allianz_pair(code)
+    for group, pair in ((MEGA, mega_pair), (FSITC, fsitc_pair), (SINOPAC, sinopac_pair), (TAISHIN, taishin_pair),
+                        (JPM, jpm_pair), (BLACKROCK, blackrock_pair)):
+        if code in group:
+            return pair(code)
     current = ezmoney_snapshot(code)
     previous = None
     # PCF effective date follows the underlying holdings/NAV date.
