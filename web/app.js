@@ -1514,7 +1514,7 @@ function renderChips() {
       <td style="white-space:nowrap;">${r.big400_pct == null ? "—" : Number(r.big400_pct).toFixed(1)}${r.big400_change_pp == null ? "" : `（${sgn(r.big400_change_pp)}）`}</td>
       <td style="white-space:nowrap;">${ma(r.ma20_strategy)}</td><td style="white-space:nowrap;">${ma(r.ma60_strategy)}</td></tr>`).join("");
   panel.innerHTML = `
-    ${both.length ? `<p style="font-size:12.5px;margin:0 0 8px;"><b>營收創 12 月新高（年增 &gt;20%）＋外資、投信 20 日同步買超：</b>${escapeHtml(both.map(r => `${r.code} ${r.name || ""}`).join("、"))}<span style="color:var(--muted);">（研究篩選，未經回測驗證，不是買進訊號）</span></p>` : ""}
+    ${both.length ? `<p style="font-size:12.5px;margin:0 0 8px;"><b>營收創 12 月新高（年增 &gt;20%）＋外資、投信 20 日同步買超：</b>${escapeHtml(both.map(r => `${r.code} ${r.name || ""}`).join("、"))}<span style="color:var(--muted);">（2 年回測：新訊號 60 日平均超額 +11.9%，但中位數 −0.9%，靠少數大漲股拉高；不是買進訊號）</span></p>` : ""}
     <div style="overflow:auto;max-height:560px;"><table style="font-size:12.5px;"><thead><tr>
       <th>代號／名稱</th><th>收盤</th><th title="距 252 日最高價">折扣%</th><th>月線/季線乖離%</th><th title="⭐ = 創 12 個月新高">${escapeHtml(month)} 營收 YoY%</th>
       <th>外本比 5日/20日%</th><th>投本比 5日/20日%</th><th>投信連買(+)/賣(−)</th><th>≥400張%（週變化）</th>
