@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "source": "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule",
-  "fetched_at": "2026-09-22T11:58:13.782579+00:00",
-  "fetched_at_epoch": 1790078293.7825866,
+  "fetched_at": "2026-10-19T08:17:28.830558+00:00",
+  "fetched_at_epoch": 1792397848.8305645,
   "count": 24,
   "holidays": [
     {
