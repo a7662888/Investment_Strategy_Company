@@ -97,7 +97,8 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     elif pct is None:
         decision = "資料不足"
     elif quality_pass is False or action == "avoid":
-        decision = "排除／賣出檢查"
+        # 未過品質篩只代表不新增；是否處理持股由 Exit Engine 與「我的持股」另外判斷。
+        decision = "未過品質篩，不新增"
     elif fundamental["status"] == "insufficient":
         decision = "資料不足"
     elif fundamental["status"] == "pause_new":

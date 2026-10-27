@@ -40,6 +40,7 @@ _ITEM_FIELDS = (
     "valuation_observations", "valuation_source",
     "ma20", "ma60", "momentum20", "trend", "high_252",
     "distance_from_high_252", "price_pct_252", "chase_risk", "rank_score", "is_etf",
+    "quality_missing",
 )
 _PROVENANCE_FIELDS = ("price_date", "price_source", "financials_period", "revenue_month")
 
@@ -72,6 +73,26 @@ def latest_completed_market_date(now: datetime) -> str:
             return day.isoformat()
         day -= timedelta(days=1)
     raise ValueError("no completed trading day in calendar")
+
+
+def confirm_market_close(state_as_of: str | None, official_as_of: str | None,
+                         now: datetime) -> tuple[str | None, bool, str]:
+    """Return (expected date, complete, basis) for a freshly built state.
+
+    The exchange OpenAPI feeds can lag a full session (2026-10-26: prices were
+    10-23 while STOCK_DAY_ALL still reported 10-22). A state ahead of the official
+    feed is accepted only for the latest completed session and only from the next
+    calendar day on, when no provisional bar can remain.
+    """
+    if not official_as_of:
+        return official_as_of, True, "no_official_feed"
+    if state_as_of == official_as_of:
+        return official_as_of, True, "official"
+    if (state_as_of and state_as_of > official_as_of
+            and state_as_of == latest_completed_market_date(now)
+            and now.astimezone(TAIPEI).date().isoformat() > state_as_of):
+        return state_as_of, True, "calendar_next_day"
+    return official_as_of, False, "official_lag"
 
 
 def _item(item: dict) -> dict:
