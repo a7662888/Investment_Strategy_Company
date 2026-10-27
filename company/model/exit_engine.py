@@ -245,7 +245,9 @@ def score_exit(item: dict, gain: float | None, weight: float | None,
         status, label, fraction = "watch_profit", ("觀察獲利保護" if profitable else "風險觀察"), 0.0
     else:
         status, label, fraction = "hold", ("續抱，讓獲利奔跑" if profitable else "續抱觀察"), 0.0
-        if fundamental_assessment["status"] == "pause_new":
+        if fundamental_assessment["status"] == "thesis_review":
+            status, label = "watch_profit", "品質未通過，核對投資論點"
+        elif fundamental_assessment["status"] == "pause_new":
             label = "基本面待確認，暫停追加"
         elif fundamental_assessment["status"] == "observe":
             label = "續抱觀察，追蹤基本面警訊"

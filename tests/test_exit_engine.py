@@ -22,6 +22,14 @@ def item(**updates):
 
 
 class ExitEngineTests(unittest.TestCase):
+    def test_low_score_does_not_label_a_failed_quality_stock_as_safe_hold(self):
+        result = score_exit(item(quality_pass=False), gain=0.2, weight=0.1)
+        self.assertLess(result["score"], 30)
+        self.assertEqual(result["status"], "watch_profit")
+        self.assertEqual(result["label"], "品質未通過，核對投資論點")
+        self.assertEqual(result["suggested_fraction"], 0)
+        self.assertFalse(result["thesis_broken"])
+
     def test_no_data_never_means_safe_hold(self):
         result = score_exit({}, gain=None, weight=None)
         self.assertEqual(result["coverage"], 0)
