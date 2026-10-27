@@ -19,6 +19,19 @@ def make_rows(count: int = 30, high: float = 102.0, low: float = 100.0,
              "low": low, "close": close} for idx in range(count)]
 
 
+def complete_item(**updates):
+    value = {"as_of": "2026-08-30", "price": 101.0, "quality_pass": True,
+             "valuation_pct": 50.0, "ma20": 99.0, "ma60": 95.0, "high_252": 120.0}
+    value.update(updates)
+    return value
+
+
+def trusted_exit(**updates):
+    value = {"score": 10.0, "suggested_fraction": 0.0, "executable": True, "status": "hold"}
+    value.update(updates)
+    return value
+
+
 class TestATR(unittest.TestCase):
     def test_constant_range_gives_that_range(self) -> None:
         # 每日 H-L=2、收盤不動 → TR 恆為 2 → ATR 應為 2
@@ -65,11 +78,11 @@ class TestConfirmationDiscipline(unittest.TestCase):
 
     def _timing(self, last_close: float, live: float | None, score: float = 10.0) -> dict:
         rows = make_rows()
-        rows[-1] = dict(rows[-1], close=last_close)
+        rows[-1] = dict(rows[-1], close=last_close, high=max(102.0, last_close), low=min(100.0, last_close))
         quote = {"regularMarketPrice": live} if live is not None else None
         return compute_sell_timing(
-            item={"ma20": 99.0, "ma60": 95.0, "high_252": 120.0},
-            exit_result={"score": score, "suggested_fraction": 0.0},
+            item=complete_item(),
+            exit_result=trusted_exit(score=score),
             rows=rows, live_quote=quote, cost=90.0, gain=0.10, market_open=True,
         )
 
@@ -89,7 +102,7 @@ class TestConfirmationDiscipline(unittest.TestCase):
 
     def test_thesis_broken_overrides_technical_levels(self) -> None:
         timing = compute_sell_timing(
-            item={"ma20": 99.0}, exit_result={"score": 80.0, "thesis_broken": True},
+            item=complete_item(), exit_result=trusted_exit(score=80.0, thesis_broken=True),
             rows=make_rows(), live_quote=None, cost=90.0, gain=0.1, market_open=False,
         )
         self.assertEqual(timing["urgency"], "immediate")
@@ -100,18 +113,21 @@ class TestConfirmationDiscipline(unittest.TestCase):
         rows = make_rows()
         rows[-1] = dict(rows[-1], date="2026-09-01")
         timing = compute_sell_timing(
-            item={"ma20": 99.0, "as_of": "2026-08-31"}, exit_result={},
+            item=complete_item(as_of="2026-08-31"), exit_result=trusted_exit(),
             rows=rows, live_quote=None, cost=90.0, gain=0.1, market_open=False,
         )
         self.assertTrue(timing["basis_mismatch"])
         self.assertIn("2026-08-31", timing["basis_note"])
         self.assertIn("2026-09-01", timing["basis_note"])
+        self.assertFalse(timing["executable"])
+        self.assertEqual(timing["urgency"], "stale_data")
+        self.assertEqual(timing["plan"], [])
 
     def test_same_date_is_not_flagged(self) -> None:
         rows = make_rows()
         rows[-1] = dict(rows[-1], date="2026-09-01")
         timing = compute_sell_timing(
-            item={"ma20": 99.0, "as_of": "2026-09-01"}, exit_result={},
+            item=complete_item(as_of="2026-09-01"), exit_result=trusted_exit(),
             rows=rows, live_quote=None, cost=90.0, gain=0.1, market_open=False,
         )
         self.assertFalse(timing["basis_mismatch"])
@@ -121,13 +137,17 @@ class TestConfirmationDiscipline(unittest.TestCase):
         intraday = self._timing(last_close=101.0, live=100.0)
         self.assertEqual(intraday["price_basis"], "盤中即時成交價")
         closed = compute_sell_timing(
-            item={"ma20": 99.0}, exit_result={}, rows=make_rows(),
+            item=complete_item(), exit_result=trusted_exit(), rows=make_rows(),
             live_quote=None, cost=90.0, gain=0.1, market_open=False,
         )
         self.assertTrue(closed["price_basis"].startswith("日線收盤"))
 
 
 class TestPlan(unittest.TestCase):
+    def test_explicitly_blocked_exit_never_creates_protective_plan(self):
+        levels = build_levels(complete_item(), trusted_exit(), make_rows(), cost=None, gain=None)
+        self.assertEqual(build_plan({"executable": False}, levels, False), [])
+
     def test_stages_execute_exit_engine_fraction_when_trimming(self) -> None:
         levels = build_levels({"ma20": 99.0, "ma60": 95.0, "high_252": 120.0},
                               {"score": 65.0}, make_rows(), cost=None, gain=None)
@@ -198,10 +218,10 @@ class TestVolumePriceConfirmation(unittest.TestCase):
     def _timing(self, snapshot, last_close=94.0):
         from company.model.sell_timing import compute_sell_timing
         rows = make_rows()
-        rows[-1] = dict(rows[-1], close=last_close)
+        rows[-1] = dict(rows[-1], close=last_close, high=max(102.0, last_close), low=min(100.0, last_close))
         return compute_sell_timing(
-            item={"ma20": 99.0, "ma60": 95.0, "high_252": 120.0},
-            exit_result={"score": 10.0, "suggested_fraction": 0.0},
+            item=complete_item(),
+            exit_result=trusted_exit(),
             rows=rows, live_quote=None, cost=90.0, gain=0.10,
             market_open=False, market_snapshot=snapshot,
         )
@@ -235,3 +255,47 @@ class TestVolumePriceConfirmation(unittest.TestCase):
         strong = self._timing({"close_vs_vwap_pct": -1.5, "volume_ratio": 1.8})
         self.assertEqual([s["price"] for s in weak["plan"]], [s["price"] for s in strong["plan"]])
         self.assertEqual([s["fraction"] for s in weak["plan"]], [s["fraction"] for s in strong["plan"]])
+
+
+class TestTimingDataGates(unittest.TestCase):
+    def _timing(self, *, item=None, exit_result=None, rows=None):
+        return compute_sell_timing(
+            item=complete_item() if item is None else item,
+            exit_result=trusted_exit() if exit_result is None else exit_result,
+            rows=make_rows() if rows is None else rows,
+            live_quote=None, cost=90, gain=0.1, market_open=False)
+
+    def test_all_missing_does_not_say_untouched_and_hold(self):
+        result = self._timing(item={}, exit_result={}, rows=[])
+        self.assertEqual(result["urgency"], "insufficient_data")
+        self.assertFalse(result["executable"])
+        self.assertEqual(result["plan"], [])
+
+    def test_stale_exit_even_with_valid_price_blocks_plan(self):
+        result = self._timing(exit_result=trusted_exit(status="stale_data", executable=False))
+        self.assertEqual(result["urgency"], "stale_data")
+        self.assertEqual(result["levels"], [])
+
+    def test_legacy_exit_without_explicit_gate_is_not_executable(self):
+        result = self._timing(exit_result={"score": 80, "suggested_fraction": 0.6})
+        self.assertEqual(result["urgency"], "insufficient_data")
+
+    def test_corrupt_nonfinite_or_unordered_ohlc_blocks_plan(self):
+        for mutation in ("nan", "reversed", "range"):
+            rows = make_rows()
+            if mutation == "nan":
+                rows[-1]["close"] = float("nan")
+            elif mutation == "reversed":
+                rows = list(reversed(rows))
+            else:
+                rows[-1]["high"] = 90
+            result = self._timing(rows=rows)
+            with self.subTest(mutation=mutation):
+                self.assertFalse(result["executable"])
+                self.assertEqual(result["plan"], [])
+
+    def test_snapshot_from_another_day_is_not_confirmation(self):
+        result = compute_sell_timing(
+            complete_item(), trusted_exit(), make_rows(), None, 90, 0.1, False,
+            {"trade_date": "2026-08-29", "close_vs_vwap_pct": -2, "volume_ratio": 2})
+        self.assertIsNone(result["confirmation"])

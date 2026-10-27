@@ -6,6 +6,28 @@
 """
 from __future__ import annotations
 
+from company.model.reliability import assessment, finite_number
+from company.model.fundamental_policy import evaluate_fundamentals
+
+
+def _numeric_inputs(item: dict) -> dict:
+    """Reject non-finite values before comparisons or coverage accounting."""
+    cleaned = dict(item)
+    for key in ("price", "ma20", "ma60", "valuation_pct", "distance_from_high_252"):
+        cleaned[key] = finite_number(item.get(key))
+    if not isinstance(item.get("quality_pass"), bool):
+        cleaned["quality_pass"] = None
+    trend = dict(item.get("fundamental_trend") or {})
+    for key in ("monthly_revenue_yoy_latest", "monthly_revenue_negative_streak",
+                "quarterly_revenue_yoy", "quarterly_eps_yoy",
+                "earnings_quality_ttm", "debt_ratio_change_yoy"):
+        trend[key] = finite_number(trend.get(key))
+    for key in ("gross_margin_decline_2q", "operating_margin_decline_2q"):
+        if not isinstance(trend.get(key), bool):
+            trend[key] = None
+    cleaned["fundamental_trend"] = trend
+    return cleaned
+
 
 def _cap(value: float, maximum: float) -> float:
     return round(max(0.0, min(maximum, value)), 1)
@@ -171,8 +193,18 @@ def _position_score(item: dict, weight: float | None) -> tuple[float, list[str],
     return 0.0, [f"持倉權重 {pct:.1f}% 未觸發集中度門檻"], 10
 
 
-def score_exit(item: dict, gain: float | None, weight: float | None) -> dict:
+def score_exit(item: dict, gain: float | None, weight: float | None,
+               *, expected_as_of: str | None = None) -> dict:
     """Return a transparent, non-executing exit recommendation."""
+    reliability = assessment(item, expected_as_of)
+    item = _numeric_inputs(item)
+    fundamental_assessment = evaluate_fundamentals(item)
+    if fundamental_assessment["status"] == "insufficient" and reliability["status"] != "stale":
+        reliability = {**reliability, "status": "insufficient", "executable": False,
+                       "reasons": [*reliability["reasons"], *fundamental_assessment["reasons"]]}
+    gain, weight = finite_number(gain), finite_number(weight)
+    if weight is not None and not 0 <= weight <= 1:
+        weight = None
     valuation, valuation_reasons, valuation_ok = _valuation_score(item)
     fundamental, fundamental_reasons, fundamental_coverage, deterioration_flags = _fundamental_score(item)
     momentum, momentum_reasons, momentum_coverage = _momentum_score(item)
@@ -212,22 +244,42 @@ def score_exit(item: dict, gain: float | None, weight: float | None) -> dict:
     elif score >= 30:
         status, label, fraction = "watch_profit", ("觀察獲利保護" if profitable else "風險觀察"), 0.0
     else:
-        status, label, fraction = "hold", "續抱，讓獲利奔跑", 0.0
+        status, label, fraction = "hold", ("續抱，讓獲利奔跑" if profitable else "續抱觀察"), 0.0
+        if fundamental_assessment["status"] == "thesis_review":
+            status, label = "watch_profit", "品質未通過，核對投資論點"
+        elif fundamental_assessment["status"] == "pause_new":
+            label = "基本面待確認，暫停追加"
+        elif fundamental_assessment["status"] == "observe":
+            label = "續抱觀察，追蹤基本面警訊"
 
-    if coverage < 70 and status not in ("hold", "watch_profit"):
-        status, label, fraction = "watch_profit", "資料覆蓋不足，先觀察不執行", 0.0
+    # ETF does not have the individual-company valuation or accounting inputs.
+    # Its portfolio allocation policy remains separate from this stock score.
+    if item.get("is_etf") and reliability["executable"]:
+        status, label, fraction = "hold", "ETF 配置觀察", 0.0
+    if reliability["status"] == "stale":
+        status, label, fraction = "stale_data", "資料過期，無法判定", 0.0
+    elif not reliability["executable"] or (not item.get("is_etf") and coverage < 70):
+        status, label, fraction = "insufficient_data", "資料不足，無法判定", 0.0
+        if coverage < 70 and not item.get("is_etf"):
+            reliability = {**reliability, "status": "insufficient", "executable": False,
+                           "reasons": [*reliability["reasons"], "Exit Score 資料覆蓋未達 70/100"]}
+
+    executable = status not in ("stale_data", "insufficient_data")
 
     return {
         "schema_version": 1,
         "score": score,
         "status": status,
+        "executable": executable,
+        "reliability": reliability,
+        "fundamental_assessment": fundamental_assessment,
         "label": label,
         "suggested_fraction": fraction,
         "components": components,
         "component_maxima": maxima,
         "coverage": coverage,
         "coverage_by_component": coverage_by_component,
-        "thesis_broken": thesis_broken,
+        "thesis_broken": thesis_broken and executable,
         "reasons": {
             "valuation": valuation_reasons,
             "fundamentals": fundamental_reasons,

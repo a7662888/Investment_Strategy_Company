@@ -15,6 +15,8 @@
 from __future__ import annotations
 
 import json
+import math
+import calendar
 from collections import Counter
 import os
 import statistics
@@ -25,6 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from company.model.value_policy import CYCLICAL
+from company.model.fundamental_policy import evaluate_fundamentals
 
 ROOT = Path(__file__).resolve().parents[2]
 FUNDAMENTALS = ROOT / "data" / "value_fundamentals.json"
@@ -261,24 +264,92 @@ def _finmind_per(symbol: str, years: int = 3, attempts: int = 3) -> list[dict]:
 
 
 # ---------- 指標 ----------
+def _finite_number(value: object) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _quarter_sequence_error(quarterly: list[dict], count: int) -> str | None:
+    """Validate complete chronological quarter-end dates for every TTM input."""
+    if len(quarterly) != count:
+        return "requires_four_quarters" if count == 4 else "requires_consecutive_quarters"
+    ordinals: list[int] = []
+    for row in quarterly:
+        try:
+            period = date.fromisoformat(str(row.get("period") or ""))
+            if period.month not in (3, 6, 9, 12) or period.day != calendar.monthrange(period.year, period.month)[1]:
+                return "invalid_quarter_period"
+            ordinals.append(period.year * 4 + (period.month // 3 - 1))
+        except (ValueError, TypeError):
+            return "invalid_quarter_period"
+    if any(right - left != 1 for left, right in zip(ordinals, ordinals[1:])):
+        return "nonconsecutive_quarters"
+    return None
+
+
 def _ttm(quarterly: list[dict], key: str):
-    vals = [q.get(key) for q in quarterly[-4:] if q.get(key) is not None]
-    return sum(vals) if len(vals) >= 3 else None
+    latest = quarterly[-4:]
+    if _quarter_sequence_error(latest, 4):
+        return None
+    vals = [_finite_number(q.get(key)) for q in latest]
+    if any(value is None for value in vals):
+        return None
+    total = sum(vals)
+    return total if math.isfinite(total) else None
 
 
 def _avg(quarterly: list[dict], key: str):
-    vals = [q.get(key) for q in quarterly[-4:] if q.get(key) is not None]
-    return sum(vals) / len(vals) if vals else None
+    total = _ttm(quarterly, key)
+    return total / 4 if total is not None else None
+
+
+def _earnings_quality_ttm(quarterly: list[dict]) -> tuple[float | None, str | None]:
+    """Ratio of four consecutive stand-alone quarterly OCF/NI sums.
+
+    Averaging quarter-level ratios weights a small-profit quarter as heavily as
+    a large-profit quarter and can invert the quality conclusion.
+    """
+    latest = quarterly[-4:]
+    sequence_error = _quarter_sequence_error(latest, 4)
+    if sequence_error:
+        return None, sequence_error
+    ocfs: list[float] = []
+    profits: list[float] = []
+    for row in latest:
+        try:
+            for field, values in (("operating_cash_flow", ocfs), ("net_income", profits)):
+                value = row.get(field)
+                if isinstance(value, bool) or value is None:
+                    return None, f"missing_{field}"
+                number = float(value)
+                if not math.isfinite(number):
+                    return None, f"nonfinite_{field}"
+                values.append(number)
+        except (ValueError, TypeError, OverflowError):
+            return None, "invalid_quarter_data"
+    denominator = sum(profits)
+    numerator = sum(ocfs)
+    if not math.isfinite(denominator) or not math.isfinite(numerator):
+        return None, "nonfinite_ttm_sums"
+    if denominator <= 0:
+        return None, "nonpositive_ttm_net_income"
+    ratio = numerator / denominator
+    if not math.isfinite(ratio):
+        return None, "nonfinite_ttm_ratio"
+    return ratio, None
 
 
 def _growth_pct(current: object, prior: object) -> float | None:
-    try:
-        current_f, prior_f = float(current), float(prior)
-    except (TypeError, ValueError):
+    current_f, prior_f = _finite_number(current), _finite_number(prior)
+    if current_f is None or prior_f is None or prior_f <= 0:
         return None
-    if prior_f <= 0:
-        return None
-    return round((current_f / abs(prior_f) - 1.0) * 100.0, 2)
+    result = (current_f / prior_f - 1.0) * 100.0
+    return round(result, 2) if math.isfinite(result) else None
 
 
 def _fundamental_trend(info: dict) -> dict:
@@ -286,29 +357,45 @@ def _fundamental_trend(info: dict) -> dict:
     quarterly = info.get("quarterly") or []
     monthly = info.get("monthly_revenue") or []
     latest = quarterly[-1] if quarterly else {}
-    year_ago = quarterly[-5] if len(quarterly) >= 5 else {}
+    # A missing quarter must not turn an 18-month comparison into a YoY label.
+    try:
+        period = date.fromisoformat(str(latest.get("period") or ""))
+        prior_period = period.replace(year=period.year - 1).isoformat()
+        year_ago = next((row for row in reversed(quarterly[:-1]) if row.get("period") == prior_period), {})
+    except ValueError:
+        year_ago = {}
 
     def declining_two_quarters(key: str) -> bool | None:
-        values = [row.get(key) for row in quarterly[-3:]]
-        if len(values) < 3 or any(value is None for value in values):
+        recent = quarterly[-3:]
+        values = [_finite_number(row.get(key)) for row in recent]
+        if _quarter_sequence_error(recent, 3) or any(value is None for value in values):
             return None
-        return float(values[0]) > float(values[1]) > float(values[2])
+        return values[0] > values[1] > values[2]
 
-    monthly_yoys = [float(row["yoy"]) for row in monthly if row.get("yoy") is not None]
+    monthly_yoys = [_finite_number(row.get("yoy")) for row in monthly]
     negative_streak = None
     if monthly_yoys:
         negative_streak = 0
         for value in reversed(monthly_yoys):
+            if value is None:
+                negative_streak = None
+                break
             if value >= 0:
                 break
             negative_streak += 1
-    earnings_quality = _avg(quarterly, "earnings_quality")
-    latest_debt = latest.get("debt_ratio")
-    prior_debt = year_ago.get("debt_ratio")
+    earnings_quality, earnings_quality_reason = _earnings_quality_ttm(quarterly)
+    latest_debt = _finite_number(latest.get("debt_ratio"))
+    prior_debt = _finite_number(year_ago.get("debt_ratio"))
     debt_change = (
         round(float(latest_debt) - float(prior_debt), 2)
         if latest_debt is not None and prior_debt is not None else None
     )
+    if debt_change is not None and not math.isfinite(debt_change):
+        debt_change = None
+    monthly_mean = (sum(monthly_yoys[-3:]) / 3
+                    if len(monthly_yoys) >= 3 and all(value is not None for value in monthly_yoys[-3:]) else None)
+    if monthly_mean is not None and not math.isfinite(monthly_mean):
+        monthly_mean = None
     result = {
         "latest_period": latest.get("period"),
         "quarterly_revenue_yoy": _growth_pct(latest.get("revenue"), year_ago.get("revenue")),
@@ -316,10 +403,12 @@ def _fundamental_trend(info: dict) -> dict:
         "gross_margin_decline_2q": declining_two_quarters("gross_profit_margin"),
         "operating_margin_decline_2q": declining_two_quarters("operating_income_margin"),
         "earnings_quality_ttm": round(float(earnings_quality), 4) if earnings_quality is not None else None,
+        "earnings_quality_method": "ttm_sum_ocf_over_sum_ni_v1",
+        "earnings_quality_unavailable_reason": earnings_quality_reason,
         "debt_ratio_change_yoy": debt_change,
-        "monthly_revenue_yoy_latest": round(monthly_yoys[-1], 2) if monthly_yoys else None,
+        "monthly_revenue_yoy_latest": round(monthly_yoys[-1], 2) if monthly_yoys and monthly_yoys[-1] is not None else None,
         "monthly_revenue_yoy_3m_mean": (
-            round(sum(monthly_yoys[-3:]) / 3, 2) if len(monthly_yoys) >= 3 else None
+            round(monthly_mean, 2) if monthly_mean is not None else None
         ),
         "monthly_revenue_negative_streak": negative_streak,
     }
@@ -473,6 +562,9 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         pe_pct = _pct_rank_quantiles(pe_quantiles, cur_pe) if cur_pe else None
         pb_pct = _pct_rank_quantiles(pb_quantiles, cur_pb) if cur_pb else None
         out["valuation_as_of"] = valuation_date
+        out["valuation_history_start"] = cached.get("history_start")
+        out["valuation_observations"] = cached.get("observations")
+        out["valuation_source"] = info.get("source") or "持久化估值快照"
     else:
         per_rows = _finmind_per(symbol)
         pes = [float(r["PER"]) for r in per_rows if r.get("PER") and float(r["PER"]) > 0]
@@ -481,6 +573,10 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         cur_pb = pbs[-1] if pbs else None
         pe_pct = _pct_rank(sorted(pes), cur_pe) if cur_pe else None
         pb_pct = _pct_rank(sorted(pbs), cur_pb) if cur_pb else None
+        out["valuation_as_of"] = per_rows[-1].get("date") if per_rows else None
+        out["valuation_history_start"] = per_rows[0].get("date") if per_rows else None
+        out["valuation_observations"] = len(per_rows)
+        out["valuation_source"] = "FinMind TaiwanStockPER"
     if not pes and not pbs:
         out["data_incomplete"] = "valuation_unavailable"
         out["action"] = None          # 交由呼叫端跳過，不得改判定
@@ -490,25 +586,45 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
 
     qs = info.get("quarterly") or []
     roe = _ttm(qs, "roe")
-    gpm, opm, eq = _avg(qs, "gross_profit_margin"), _avg(qs, "operating_income_margin"), _avg(qs, "earnings_quality")
-    debt = next((q.get("debt_ratio") for q in reversed(qs) if q.get("debt_ratio") is not None), None)
+    gpm, opm = _avg(qs, "gross_profit_margin"), _avg(qs, "operating_income_margin")
+    eq, eq_reason = _earnings_quality_ttm(qs)
+    # The current quarter is the debt observation; do not silently substitute an
+    # older valid quarter when the newest one is missing or non-finite.
+    debt = _finite_number(qs[-1].get("debt_ratio")) if qs else None
     out.update(roe_ttm=roe)
 
     # --- 硬篩（含 sector schema）---
     fails = []
+    missing_quality = []
+    schema = ("finhold" if code in FINHOLD else "cyclical" if code in CYCLICAL
+              else "retail" if code in RETAIL else "ems" if code in EMS
+              else "leasing" if code in LEASING else "generic")
+    if roe is None:
+        missing_quality.append("ROE 四季資料不足")
+    if schema in ("retail", "ems", "generic") and eq is None:
+        missing_quality.append(f"現金轉換不可判定（{eq_reason}）")
+    if schema in ("ems", "generic") and debt is None:
+        missing_quality.append("負債比資料不足")
+    if schema == "generic":
+        if gpm is None:
+            missing_quality.append("毛利率資料不足")
+        if opm is None:
+            missing_quality.append("營益率資料不足")
     if code in FINHOLD:
-        if roe is None or roe < TH["roe_ttm"]:
+        if roe is not None and roe < TH["roe_ttm"]:
             fails.append(f"金控 ROE_ttm {roe}<{TH['roe_ttm']}")
         valuation_pct, basis = pb_pct, "PBR"          # 金控走 PBR 主
     elif code in CYCLICAL:
         cheap = pb_pct is not None and pb_pct <= TH["cyc_pb"]
         trough = roe is not None and roe < TH["cyc_roe_floor"]
         ever_pos = any((q.get("roe") or 0) > 0 for q in qs)
-        if not (cheap and trough and ever_pos):
+        if pb_pct is None:
+            missing_quality.append("景氣子軌 PBR 位階資料不足")
+        elif roe is not None and not (cheap and trough and ever_pos):
             fails.append("景氣子軌未達（需 PB 低位＋ROE 谷底＋歷史有獲利力）")
         valuation_pct, basis = pb_pct, "PBR(景氣)"
     elif code in RETAIL:
-        if roe is None or roe < TH["ret_roe"]:
+        if roe is not None and roe < TH["ret_roe"]:
             fails.append(f"零售 ROE {roe}<{TH['ret_roe']}")
         if eq is not None and eq < TH["ret_ocfni"]:
             fails.append(f"零售 OCF/NI {eq:.2f}<{TH['ret_ocfni']}")
@@ -517,7 +633,7 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         # EMS/ODM is structurally low-margin and working-capital intensive.  Applying
         # the generic GPM/OPM/debt gates rejects the whole business model, so retain
         # ROE, cash conversion and a conservative high debt ceiling instead.
-        if roe is None or roe < TH["ems_roe"]:
+        if roe is not None and roe < TH["ems_roe"]:
             fails.append(f"EMS ROE {roe}<{TH['ems_roe']}")
         if eq is not None and eq < TH["ems_ocfni"]:
             fails.append(f"EMS OCF/NI {eq:.2f}<{TH['ems_ocfni']}")
@@ -528,11 +644,11 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         # Leasing is a credit-spread business: leverage is inventory, not a generic
         # industrial-company defect.  Use sustainable ROE plus PBR and leave asset
         # quality/funding-cost deterioration as explicit invalidation evidence.
-        if roe is None or roe < TH["lease_roe"]:
+        if roe is not None and roe < TH["lease_roe"]:
             fails.append(f"租賃 ROE {roe}<{TH['lease_roe']}")
         valuation_pct, basis = pb_pct, "PBR(租賃)"
     else:
-        if roe is None or roe < TH["roe_ttm"]:
+        if roe is not None and roe < TH["roe_ttm"]:
             fails.append(f"ROE_ttm {roe}<{TH['roe_ttm']}")
         if gpm is not None and gpm < TH["gpm"]:
             fails.append(f"GPM {gpm:.1f}<{TH['gpm']}")
@@ -544,12 +660,20 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
             fails.append(f"OCF/NI {eq:.2f}<{TH['eq']}")
         valuation_pct, basis = pe_pct, "PER"
 
-    out.update(quality_pass=not fails, failed=fails, valuation_basis=basis, valuation_pct=valuation_pct)
+    out.update(quality_pass=False if fails else None if missing_quality else True,
+               failed=fails, quality_missing=missing_quality, quality_schema=schema,
+               valuation_basis=basis, valuation_pct=valuation_pct)
+    if missing_quality:
+        out["fundamentals_complete"] = False
 
     # --- 估值 → action ---
     if fails:
         out["action"] = "avoid" if (valuation_pct or 0) > 80 else "watch"
         out["reasons"].append("品質硬篩未過：" + "；".join(fails))
+    elif missing_quality:
+        out["action"] = "watch"
+        out["data_incomplete"] = "quality_inputs_unavailable"
+        out["reasons"].extend(missing_quality)
     elif valuation_pct is None:
         out["action"] = "watch"
         out["reasons"].append("估值百分位無資料 → 依 §5.1 上限 watch")
@@ -559,6 +683,13 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
         out["action"] = "hold"
     else:
         out["action"] = "watch"
+
+    fundamental_assessment = evaluate_fundamentals(out)
+    out["fundamental_assessment"] = fundamental_assessment
+    if out["action"] == "accumulate" and not fundamental_assessment["allow_new"]:
+        out["source_action"] = out["action"]
+        out["action"] = "watch"
+        out["reasons"].extend(fundamental_assessment["reasons"])
 
     if code in LEASING and out["action"] == "accumulate":
         # The current normalized dataset does not yet carry delinquency/NPL,

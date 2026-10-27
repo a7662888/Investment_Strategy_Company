@@ -36,6 +36,8 @@ _ITEM_FIELDS = (
     "symbol", "name", "as_of", "price", "action", "decision", "eligible_pool",
     "quality_pass", "risk_tier", "fundamentals_complete", "roe_ttm",
     "valuation_basis", "valuation_pct", "valuation_zone", "entry_range",
+    "pe", "pb", "valuation_as_of", "valuation_history_start",
+    "valuation_observations", "valuation_source",
     "ma20", "ma60", "momentum20", "trend", "high_252",
     "distance_from_high_252", "price_pct_252", "chase_risk", "rank_score", "is_etf",
 )
