@@ -374,12 +374,28 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+// 舊版理由字串含未四捨五入的浮點數（例：現值 5.717323008849558）；帳本卡片不可改寫，顯示時再修整。
+function tidyNumbers(text) {
+  return String(text ?? "").replace(/-?\d+\.\d{4,}/g, match => Number(match).toFixed(2));
+}
+
 async function readJson(res) {
   const data = await res.json();
   if (!res.ok || data.error) {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   return data;
+}
+
+// value-current 未壓縮約 235 KB；同一次載入的各區塊共用一份回應，盤後流程完成時才重抓。
+// 宣告須早於檔案中段的頂層 loadDataFreshness()／loadDailyValueState() 呼叫。
+let valueCurrentRequest = null;
+function fetchValueCurrent(fresh = false) {
+  if (fresh || !valueCurrentRequest) {
+    valueCurrentRequest = fetch("/api/value-current").then(readJson);
+    valueCurrentRequest.catch(() => { valueCurrentRequest = null; });
+  }
+  return valueCurrentRequest;
 }
 
 function setBusy(buttonId, busy) {
@@ -963,7 +979,7 @@ async function recommendToday() {
         </strong>
         <p>截至 ${item.last_date}，收盤 ${item.last_close}</p>
         ${modelLine(item.model, riskLevel)}
-        <ul>${asArray(item.reasons).map(reason => `<li>${reason}</li>`).join("")}</ul>
+        <ul>${asArray(item.reasons).map(reason => `<li>${tidyNumbers(reason)}</li>`).join("")}</ul>
         ${aiPredictorLine(item.ai_predictor)}
         ${calibratedModelPanel(item.model, riskLevel)}
       </article>
@@ -1083,7 +1099,7 @@ async function recommendToday() {
             gradeBg = "rgba(245, 158, 11, 0.1)";
           }
           const scores = item.scores || {};
-          const reasonsHtml = asArray(item.reasons).map(r => `<div style="font-size: 11px; line-height: 1.35;">${r}</div>`).join("");
+          const reasonsHtml = asArray(item.reasons).map(r => `<div style="font-size: 11px; line-height: 1.35;">${tidyNumbers(r)}</div>`).join("");
           const warningsHtml = asArray(item.warnings).map(w => {
             const danger = w.includes("陷阱") || w.includes("不足") || w.includes("偏弱");
             return `<div style="font-size: 11px; line-height: 1.35; color: ${danger ? "#dc2626" : "var(--muted)"};">${w}</div>`;
@@ -1231,7 +1247,7 @@ function renderAgentCard(item, agentType) {
   const regimePill = item.regime_label
     ? `<span class="pill" style="background:#e0f2fe;color:#0369a1;border-color:#bae6fd;">${item.regime_label}</span>`
     : "";
-  const reasonsHtml = asArray(item.reasons).slice(0, 4).map(r => `<li>${r}</li>`).join("");
+  const reasonsHtml = asArray(item.reasons).slice(0, 4).map(r => `<li>${tidyNumbers(r)}</li>`).join("");
   const dateClose = item.last_date
     ? `<p style="margin:4px 0;font-size:12px;color:var(--muted)">截至 ${item.last_date}，收盤 ${item.last_close || "-"}</p>`
     : "";
@@ -1318,7 +1334,7 @@ async function nextDayPlan() {
         </strong>
         <p>截至 ${item.as_of}，收盤 ${item.last_close} ${gain}</p>
         ${modelLine(item.model, riskLevel)}
-        <ul>${asArray(item.reasons).map(reason => `<li>${reason}</li>`).join("")}</ul>
+        <ul>${asArray(item.reasons).map(reason => `<li>${tidyNumbers(reason)}</li>`).join("")}</ul>
         ${aiPredictorLine(item.ai_predictor)}
         ${calibratedModelPanel(item.model, riskLevel)}
       </article>`;
@@ -2260,8 +2276,7 @@ async function loadDataFreshness() {
   const badge = $("dataFreshness");
   if (!footer && !badge) return;
   try {
-    const res = await fetch("/api/value-current");
-    const data = await readJson(res);
+    const data = await fetchValueCurrent();
     const asOf = data.as_of || "";
     const generated = data.generated_at ? new Date(data.generated_at) : null;
     const gen = generated && !isNaN(generated)
@@ -2303,6 +2318,10 @@ function provenanceLine(item) {
   if (p.financials_period) parts.push(`財報 ${p.financials_period}`);
   if (p.revenue_month) parts.push(`月營收 ${p.revenue_month}`);
   if (p.price_source) parts[0] += `（${p.price_source}）`;
+  // 估值位階＝基準日的本益比／淨值比依收盤價等比換算；基準日較舊時要讓人看得到。
+  if (item.valuation_as_of && item.valuation_as_of !== p.price_date) {
+    parts.push(`估值基準 ${item.valuation_as_of}（依收盤價換算）`);
+  }
   return `<p style="font-size:11px;color:#64748b;margin:4px 0 0;border-top:1px dashed var(--line);padding-top:4px;">
     📅 ${parts.map(escapeHtml).join("｜")}</p>`;
 }
@@ -2366,13 +2385,22 @@ async function loadPremarketBrief() {
       <b style="color:${c};">${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%</b></span>`;
   }).join("");
 
+  // 簡報名單凍結在產生當時的盤後狀態；之後盤後重評若已改判，逐檔標出今日判定，
+  // 避免同一頁同時出現「可分批研究」與「排除」兩種說法。
+  let current = null;
+  try { current = await fetchValueCurrent(); } catch (err) { current = null; }
+  const superseded = Boolean(current && current.as_of && d.state_as_of && current.as_of > d.state_as_of);
+  const todayDecision = new Map(asArray(current && current.evaluations).map(item => [item.symbol, item.decision]));
   const rows = asArray(d.watchlist).map(w => {
     const b = (w.entry_evidence || {}).day_balance || {};
     const [bl] = BALANCE_LABEL[b.state] || ["—"];
     const flags = asArray(w.material_news);
+    const now = superseded ? todayDecision.get(w.symbol) : null;
+    const changed = Boolean(now && now !== w.decision);
     return `<div style="padding:4px 0;border-top:1px dashed #c7d2fe;">
       <b>${escapeHtml(String(w.symbol).split(".")[0])} ${escapeHtml(w.name || "")}</b>
-      <span style="color:var(--muted);">｜${escapeHtml(w.bucket_label)}｜${escapeHtml(w.decision || "")}</span>
+      <span style="color:var(--muted);${changed ? "text-decoration:line-through;" : ""}">｜${escapeHtml(w.bucket_label)}｜${escapeHtml(w.decision || "")}</span>
+      ${changed ? `<span style="color:#b45309;font-weight:600;">｜${escapeHtml(current.as_of)} 盤後已改判：${escapeHtml(now)}</span>` : ""}
       ${b.state ? `<span style="color:#475569;">｜${escapeHtml(bl)}</span>` : ""}
       ${flags.length ? `<div style="color:#b91c1c;margin-top:2px;">⚑ ${flags.map(f => escapeHtml(f.title || "")).join("；")}</div>` : ""}
     </div>`;
@@ -2381,7 +2409,7 @@ async function loadPremarketBrief() {
   const etfRows = asArray(d.etf_watch).map(e => `<div style="padding:4px 0;border-top:1px dashed #c7d2fe;">
       <b>${escapeHtml(String(e.symbol).split(".")[0])} ${escapeHtml(e.name || "")}</b>
       <span style="color:var(--muted);">｜${escapeHtml(e.decision || "")}</span>
-      <span style="color:#475569;">｜收盤 ${e.price != null ? Number(e.price).toFixed(2) : "—"}｜${etfMaText(e.ma240, e.ma240_deviation_pct, e.ma240_band)}</span>
+      <span style="color:#475569;">｜${escapeHtml(d.state_as_of || "")} 收盤 ${e.price != null ? Number(e.price).toFixed(2) : "—"}｜${etfMaText(e.ma240, e.ma240_deviation_pct, e.ma240_band)}</span>
     </div>`).join("");
   const etfBlock = etfRows ? `<div style="font-size:12.5px;margin-top:10px;">
       <div style="font-weight:700;color:#3730a3;">ETF 子軌（定期定額，年線僅供參考）</div>${etfRows}</div>` : "";
@@ -2396,6 +2424,8 @@ async function loadPremarketBrief() {
     </div>
     <div style="font-size:12.5px;color:#1e293b;margin-bottom:6px;">${escapeHtml(d.execution_note || "")}</div>
     <div style="font-size:12px;color:#334155;margin-bottom:6px;">${markets}</div>
+    ${superseded ? `<div style="font-size:12.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:4px 8px;margin-bottom:6px;">
+      名單依據 ${escapeHtml(d.state_as_of)} 盤後狀態；${escapeHtml(current.as_of)} 盤後已重評，以下方「今日優質股」為準。</div>` : ""}
     ${rows ? `<div style="font-size:12.5px;">${rows}</div>` : ""}
     ${etfBlock}
     ${activeBlock}
@@ -2682,8 +2712,8 @@ async function trackWorkflow(job) {
       if (job === "broker") {
         pending.text = "流程已結束，尚未核對三份本輪新帳務文件的雲端保存；持續確認，不重派…";
       } else {
-        await loadDailyValueState();
-        await Promise.allSettled([loadPremarketBrief(), loadEtfScreen(), loadMarketResearch(), loadDecisionLedger(), loadRegulatory(), loadChips(), loadDividends()]);
+        await loadDailyValueState(true);
+        await Promise.allSettled([loadDataFreshness(), loadPremarketBrief(), loadEtfScreen(), loadMarketResearch(), loadDecisionLedger(), loadRegulatory(), loadChips(), loadDividends()]);
         if (noteEl) noteEl.textContent = `${title}：流程完成，已重讀相關區塊。`;
         delete manualPending[job]; persistManualPending(); refreshRefreshPanel(); return;
       }
@@ -2787,12 +2817,11 @@ async function loadIntradayFlash(marketOpenNow = false) {
       + `</div><p style="font-size:11.5px;color:#92400e;margin:6px 0 0;">${escapeHtml(data.etf_method || "")}</p>` : "");
 }
 
-async function loadDailyValueState() {
+async function loadDailyValueState(fresh = false) {
   const panel = $("dailyValuePanel"), status = $("dailyValueStatus");
   if (!panel) return;
   try {
-    const res = await fetch("/api/value-current");
-    const data = await readJson(res);
+    const data = await fetchValueCurrent(fresh);
     dailyValueState = data;
     renderDailyValuePanel();
     loadDailyHistory();
@@ -2897,7 +2926,7 @@ function renderDailyValuePanel() {
       <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}${item.is_etf
         ? (item.dca ? `｜${etfMaText(item.ma240, item.ma240_deviation_pct, item.ma240_band)}` : "")
         : `｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}`}${highDistance}</p>
-      <p style="font-size:12px;color:var(--muted);margin:0;">${escapeHtml(asArray(item.reasons).slice(0, 2).join("；") || "—")}</p>
+      <p style="font-size:12px;color:var(--muted);margin:0;">${escapeHtml(tidyNumbers(asArray(item.reasons).slice(0, 2).join("；")) || "—")}</p>
       ${liveLine}
       ${renderEntryEvidence(item.entry_evidence)}
       ${renderFundamentalWarnings(item)}
@@ -3006,13 +3035,36 @@ async function loadDailyHistoryDay() {
   if ($("dailyHistoryDate").value !== day) return;
   const state = data.state || data;
   const rows = asArray(state.evaluations);
-  $("dailyHistoryPanel").innerHTML = `<p style="font-size:12px;">資料日 ${escapeHtml(state.as_of || day)}｜${rows.length} 檔｜重算 ${escapeHtml(state.generated_at || "—")}</p>`
+  $("dailyHistoryPanel").innerHTML = `<p style="font-size:12px;">資料日 ${escapeHtml(state.as_of || day)}｜${rows.length} 檔｜重算 ${escapeHtml(taipeiStamp(state.generated_at))}</p>`
     + `<div style="overflow:auto;max-height:360px;"><table><thead><tr><th>股票</th><th>收盤</th><th>該日判定</th><th title="本益比或股價淨值比相對自身歷史的百分位；不是股價高低或合理價折扣">估值歷史位階</th><th title="收盤在近 252 個交易日收盤價中的百分位">一年價格位階</th><th title="距近 252 交易日最高收盤；與盤中最高價不同">距一年最高收盤</th><th>趨勢</th></tr></thead><tbody>`
-    + rows.map(row => `<tr><td>${escapeHtml(row.symbol)} ${escapeHtml(row.name || "")}</td><td>${row.price == null ? "—" : Number(row.price).toFixed(2)}</td><td>${escapeHtml(row.decision || "—")}</td><td>${valuationPositionText(row)}</td><td>${row.price_pct_252 == null ? "—" : "P" + Number(row.price_pct_252).toFixed(1)}</td><td>${row.distance_from_high_252 == null ? "—" : (Number(row.distance_from_high_252) * 100).toFixed(1) + "%"}</td><td>${escapeHtml(row.trend || "—")}</td></tr>`).join("") + "</tbody></table></div>"
+    + rows.map(row => `<tr><td>${escapeHtml(row.symbol)} ${escapeHtml(row.name || "")}</td><td>${row.price == null ? "—" : Number(row.price).toFixed(2)}</td><td>${decisionCell(row)}</td><td>${valuationPositionText(row)}</td><td>${row.price_pct_252 == null ? "—" : "P" + Number(row.price_pct_252).toFixed(1)}</td><td>${row.distance_from_high_252 == null ? "—" : (Number(row.distance_from_high_252) * 100).toFixed(1) + "%"}</td><td>${escapeHtml(row.trend || "—")}</td></tr>`).join("") + "</tbody></table></div>"
     + `<p style="font-size:12px;color:var(--muted);">估值低位與股價高位可以同時存在，例如獲利成長快於股價。百分位是歷史比較，不能直接推定值得買進。</p>`;
   } catch (err) {
     if ($("dailyHistoryDate")?.value === day) $("dailyHistoryPanel").textContent = `每日紀錄讀取失敗：${err.message}`;
   }
+}
+
+function taipeiStamp(value) {
+  const moment = value ? new Date(value) : null;
+  return moment && !isNaN(moment)
+    ? new Intl.DateTimeFormat("zh-TW", {timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hour12: false}).format(moment) + " 台北"
+    : "—";
+}
+
+// 「資料不足」要說出是哪一項不足；內部代碼轉成白話，其他原因原樣顯示。
+const QUALITY_GAP_TEXT = {
+  nonpositive_ttm_net_income: "近四季淨利合計 ≤ 0，現金轉換率不適用",
+};
+function qualityGapText(reason) {
+  return String(reason || "").replace(/[a-z_]+/g, code => QUALITY_GAP_TEXT[code] || code);
+}
+function decisionCell(row) {
+  const decision = escapeHtml(row.decision || "—");
+  const gaps = String(row.decision || "").includes("資料不足") ? asArray(row.quality_missing) : [];
+  return gaps.length
+    ? `${decision}<div style="font-size:11px;color:#92400e;">${escapeHtml(gaps.map(qualityGapText).join("；"))}</div>`
+    : decision;
 }
 
 function valuationPositionText(row) {
@@ -3163,7 +3215,7 @@ function currentDecisionKind(signal) {
   if (!cur) return null;
   const action = String(cur.action || "").toLowerCase();
   const decision = String(cur.decision || "");
-  if (action.includes("avoid") || cur.quality_pass === false || /排除|賣出檢查/.test(decision)) return "avoid";
+  if (action.includes("avoid") || cur.quality_pass === false || /排除|賣出檢查|未過品質篩/.test(decision)) return "avoid";
   if (/等待|高檔|高風險|資料不足/.test(decision)) return "watch";
   if (action.includes("hold")) return "hold";
   if (action.includes("accumulate") || action.includes("buy_zone") || action.includes("buy")) return "accumulate";
@@ -3305,9 +3357,9 @@ function renderLedger(filterType) {
     const dqBadge = isMedium ? `<span style="font-size:10px; color:#d97706; background:#fffbeb; border:1px solid #fde68a; padding:1px 4px; border-radius:3px;">DQ: Med</span>` : `<span style="font-size:10px; color:#0f766e; background:#e6f4ea; border:1px solid #ceead6; padding:1px 4px; border-radius:3px;">DQ: High</span>`;
     
     const agentLabel = escapeHtml(s.agent_id || "unknown");
-    business = escapeHtml(business);
-    valuation = escapeHtml(valuation);
-    chips = escapeHtml(chips);
+    business = escapeHtml(tidyNumbers(business));
+    valuation = escapeHtml(tidyNumbers(valuation));
+    chips = escapeHtml(tidyNumbers(chips));
 
     const pillar1Title = isEtf ? "📈 追蹤指數與邏輯" : "💼 商業與品質";
     const pillar2Title = isEtf ? "💰 內扣費用與成本" : "📊 估值與百分位";
@@ -3984,12 +4036,13 @@ function presentDecision(signal, isHeld) {
       今日<b>沒有</b>此標的的最新判定（不在目前覆蓋池），<b>不可據此進出</b>。</div>`;
   }
   const changed = String(cur.action || "").toLowerCase() !== frozen;
-  const reasons = asArray(cur.reasons).slice(0, 2).join("；");
+  const reasons = tidyNumbers(asArray(cur.reasons).slice(0, 2).join("；"));
   const tone = changed ? ["#fffbeb", "#fde68a", "#92400e"] : ["#f0fdf4", "#bbf7d0", "#14532d"];
   return `<div style="margin:8px 0;padding:8px 10px;background:${tone[0]};border:1px solid ${tone[1]};border-radius:6px;font-size:12.5px;line-height:1.6;color:${tone[2]};">
     👉 <b>今日判定（${escapeHtml(cur.as_of || "")}）：${escapeHtml(cur.decision || "—")}</b>
     ${cur.price != null ? `｜現價 ${Number(cur.price).toFixed(2)}` : ""}
     ${isHeld ? "｜<b>你持有此檔</b>" : ""}
+    ${isHeld && cur.fundamental_assessment?.status === "thesis_review" ? `<div style="margin-top:3px;">🔎 <b>持股需複核</b>：品質硬篩未通過，請核對投資論點；這不是自動賣出指令。</div>` : ""}
     ${changed ? `<div style="margin-top:3px;">⚠️ 本卡凍結時為 <b>${escapeHtml(signal.action || "—")}</b>，與今日判定不同；
       <b>請以今日判定為準</b>，本卡僅供績效追蹤。</div>` : ""}
     ${reasons ? `<div style="margin-top:3px;color:#475569;">依據：${escapeHtml(reasons)}</div>` : ""}

@@ -65,6 +65,26 @@ class FundamentalPolicyTests(unittest.TestCase):
             self.assertEqual(result["action"], "watch")
             self.assertIn("ROE 四季資料不足", result["quality_missing"])
 
+    def test_banks_without_margins_use_financial_schema_not_missing_quality(self):
+        rows = quarters()
+        for row in rows:
+            row.update(roe=3.5, gross_profit_margin=None, operating_income_margin=None)
+        prices = [{"date": "2026-10-23", "close": 60.5, "adj_close": 60.5} for _ in range(60)]
+        for symbol in ("2880.TW", "2885.TW", "2887.TW", "2892.TW", "5880.TW"):
+            code = symbol.split(".")[0]
+            info = {code: {"quarterly": rows, "valuation": {
+                "date": "2026-10-23", "pe": 10, "pe_quantiles_5pct": [10, 15, 20],
+                "pb": 1.0, "pb_quantiles_5pct": [1, 2, 3]}}}
+            with self.subTest(symbol=symbol), patch(
+                    "company.screener.value_rescreen._yahoo_history", return_value=prices):
+                result = evaluate(symbol, info)
+                self.assertEqual(result["quality_schema"], "finhold")
+                self.assertEqual(result["quality_missing"], [])
+                self.assertTrue(result["quality_pass"])
+                self.assertEqual(result["valuation_basis"], "PBR")
+                self.assertEqual(evaluate_fundamentals(
+                    {"symbol": symbol, "quality_pass": True})["status"], "clear")
+
     def test_nonfinite_latest_debt_does_not_fall_back_or_pass_quality(self):
         prices = [{"date": "2026-10-23", "close": 60.5, "adj_close": 60.5} for _ in range(60)]
         for value in (float("nan"), float("inf"), None):

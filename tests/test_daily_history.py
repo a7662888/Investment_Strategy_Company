@@ -309,3 +309,30 @@ class DailyHistoryPipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfirmMarketCloseTests(unittest.TestCase):
+    def at(self, value):
+        return datetime.fromisoformat(value).replace(tzinfo=history.TAIPEI)
+
+    def test_lagging_official_feed_is_confirmed_by_calendar_the_next_day(self):
+        # 2026-10-26 was a holiday: prices were 10-23, the exchange feed still said 10-22.
+        expected, complete, basis = history.confirm_market_close(
+            "2026-10-23", "2026-10-22", self.at("2026-10-26T16:17"))
+        self.assertEqual((expected, complete, basis), ("2026-10-23", True, "calendar_next_day"))
+
+    def test_same_evening_lead_over_official_stays_unconfirmed(self):
+        expected, complete, basis = history.confirm_market_close(
+            "2026-10-23", "2026-10-22", self.at("2026-10-23T21:42"))
+        self.assertEqual((expected, complete, basis), ("2026-10-22", False, "official_lag"))
+
+    def test_state_behind_official_or_not_latest_session_is_not_complete(self):
+        self.assertFalse(history.confirm_market_close(
+            "2026-10-22", "2026-10-23", self.at("2026-10-26T16:00"))[1])
+        self.assertFalse(history.confirm_market_close(
+            "2026-10-22", "2026-10-21", self.at("2026-10-27T16:00"))[1])
+
+    def test_official_match_and_missing_feed_keep_previous_behaviour(self):
+        self.assertEqual(history.confirm_market_close(
+            "2026-10-27", "2026-10-27", self.at("2026-10-27T22:00")), ("2026-10-27", True, "official"))
+        self.assertTrue(history.confirm_market_close("2026-10-27", None, self.at("2026-10-27T22:00"))[1])

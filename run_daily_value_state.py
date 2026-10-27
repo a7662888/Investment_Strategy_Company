@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from company.data.value_fundamentals import load_fundamentals, refresh_pool, save_fundamentals
 from company.model.current_state import load_current_state, save_current_state
-from company.model.daily_history import record_daily_history
+from company.model.daily_history import confirm_market_close, record_daily_history
 from company.model.value_daily import build_daily_state
 from company.screener.value_rescreen import latest_official_close_date, rescreen_all
 
@@ -39,8 +39,12 @@ def main() -> int:
     results = rescreen_all(symbols, fundamentals=fundamentals)
     state = build_daily_state(results, pool_codes, int(pool.get("n") or len(pool_codes)))
     official_as_of = latest_official_close_date(symbols)
-    state["market_expected_as_of"] = official_as_of
-    state["market_data_complete"] = not official_as_of or state.get("as_of") == official_as_of
+    expected, complete, basis = confirm_market_close(state.get("as_of"), official_as_of,
+                                                     datetime.now(TAIPEI))
+    state["market_expected_as_of"] = expected
+    state["market_data_complete"] = complete
+    state["market_close_basis"] = basis
+    state["official_close_as_of"] = official_as_of
     # 原本只要資料未追平官方就 raise，整份拒存。但拒存的後果是網站繼續顯示**更舊**
     # 的資料——嚴格來說更糟，實測 2026-09-10、09-11 連續兩天因此完全停止更新。
     # 真正該防的是「用較舊的狀態覆蓋較新的狀態」，所以只在回頭時拒絕；

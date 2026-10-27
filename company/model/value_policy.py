@@ -14,3 +14,20 @@ CYCLICAL = {
     "3006",  # commodity memory
 }
 
+
+# Financial holdings and banks have no gross or operating margin, so the generic
+# industrial gates cannot be applied. They use ROE plus PBR instead.
+FINHOLD = {
+    "2880",  # Hua Nan Financial
+    "2881",  # Fubon Financial
+    "2882",  # Cathay Financial
+    "2883",  # KGI Financial
+    "2884",  # E.SUN Financial
+    "2885",  # Yuanta Financial
+    "2886",  # Mega Financial
+    "2887",  # Taishin Financial
+    "2890",  # SinoPac Financial
+    "2891",  # CTBC Financial
+    "2892",  # First Financial
+    "5880",  # Taiwan Cooperative Financial
+}

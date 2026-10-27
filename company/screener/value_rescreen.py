@@ -26,14 +26,13 @@ import urllib.request
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from company.model.value_policy import CYCLICAL
+from company.model.value_policy import CYCLICAL, FINHOLD
 from company.model.fundamental_policy import evaluate_fundamentals
 
 ROOT = Path(__file__).resolve().parents[2]
 FUNDAMENTALS = ROOT / "data" / "value_fundamentals.json"
 
 # v2.2 sector schema
-FINHOLD = {"2881", "2882", "2891", "2886", "2884"}
 RETAIL = {"1216", "2912"}
 EMS = {"2317", "4938", "2382", "3231", "2356", "6669"}
 LEASING = {"5871", "9941"}
@@ -716,7 +715,7 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
             lo = min(lo, cur_raw * 0.92)
         out["entry_range"] = [round(lo, 2), round(hi, 2)]
     if valuation_pct is not None:
-        out["reasons"].append(f"{basis} 位階：現值 {cur_v} 位於近 3 年第 {valuation_pct} 百分位")
+        out["reasons"].append(f"{basis} 位階：現值 {cur_v:.2f} 位於近 3 年第 {valuation_pct} 百分位")
     if roe is not None:
         out["reasons"].append(f"ROE_ttm {roe:.1f}%")
     if distance_from_high_252 is not None and distance_from_high_252 >= -0.02:

@@ -8,7 +8,7 @@ INDEX_HTML = Path(__file__).resolve().parents[1] / "web" / "index.html"
 def test_current_state_arrival_rerenders_an_already_loaded_ledger():
     """The two endpoints load concurrently; either completion order must be safe."""
     source = APP_JS.read_text(encoding="utf-8")
-    start = source.index("async function loadDailyValueState()")
+    start = source.index("async function loadDailyValueState(")
     end = source.index("\n}\n", start) + 3
     function_body = source[start:end]
 
@@ -42,7 +42,7 @@ def test_ledger_filters_use_current_state_and_real_holdings():
     assert 'data-filter="value-engine"' not in html
     assert "function currentDecisionKind(signal)" in source
     assert "cur.quality_pass === false" in source
-    assert "/排除|賣出檢查/.test(decision)" in source
+    assert "/排除|賣出檢查|未過品質篩/.test(decision)" in source
     assert 'filterType === "holdings"' in source
     assert "_heldSet.has" in source
 

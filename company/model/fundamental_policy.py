@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import math
 
+from company.model.value_policy import FINHOLD
+
 
 def quality_schema(item: dict) -> str:
     """Recover non-industrial schemas for persisted pre-versioned evaluations."""
     if item.get("quality_schema"):
         return str(item["quality_schema"])
     code = str(item.get("symbol") or "").split(".")[0]
-    if code in {"2881", "2882", "2891", "2886", "2884"}:
+    if code in FINHOLD:
         return "finhold"
     if code in {"5871", "9941"}:
         return "leasing"
