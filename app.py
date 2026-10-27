@@ -981,6 +981,8 @@ def build_version() -> dict:
             "single_value_engine": True,
             "value_portfolio_actions": True,
             "exit_engine_shadow": True,
+            "decision_reliability_v1": True,
+            "private_exit_progress": True,
             "automatic_trading": False,
             "legacy_agent_competition": False,
         },
@@ -1114,6 +1116,82 @@ def current_state_freshness(state: dict | None, now: datetime | None = None) -> 
             "expected_completed_date": expected, "generated_at": (state or {}).get("generated_at"),
             "message": "最新完整交易日資料" if current else
             f"每日分析未完整追平交易日 {expected}（目前 {as_of or '尚未產生'}）"}
+
+
+def prepare_decision_state(state: dict) -> dict:
+    """Re-evaluate cached classifications without rewriting historical artifacts.
+
+    The API must apply current guards even before the next batch rebuild. A
+    legacy ratio of averages is never silently relabelled as the new TTM ratio.
+    """
+    from company.model.value_daily import _daily_item
+    from company.model.reliability import assessment
+
+    freshness = current_state_freshness(state)
+    items = []
+    for raw in state.get("evaluations") or []:
+        item = _daily_item(raw, bool(raw.get("eligible_pool")))
+        context = assessment(item, expected_as_of=freshness["expected_completed_date"])
+        if freshness["status"] != "current":
+            context = {"status": "stale", "executable": False,
+                       "reasons": [freshness["message"]]}
+        elif (not item.get("is_etf") and item.get("quality_schema") not in ("finhold", "leasing")
+              and (item.get("fundamental_trend") or {}).get("earnings_quality_method")
+              != "ttm_sum_ocf_over_sum_ni_v1"):
+            context = {"status": "insufficient", "executable": False,
+                       "reasons": ["盈餘品質採舊計算口徑，須重建四季財報分析"]}
+        item["decision_context"] = context
+        if not context["executable"]:
+            item["source_decision"] = item["decision"]
+            item["decision"] = "資料過期，暫停判定" if context["status"] == "stale" else "資料不足，暫停判定"
+            item["action"] = "watch"
+            item["entry_range"] = None
+            item["reasons"] = list(context["reasons"]) + item.get("reasons", [])
+        items.append(item)
+    out = {**state, "evaluations": items, "freshness": freshness}
+    by_symbol = {item["symbol"]: item for item in items}
+    for key in ("top_picks", "waiting_list", "etf_candidates"):
+        out[key] = [by_symbol[row["symbol"]] for row in state.get(key) or []
+                    if row.get("symbol") in by_symbol
+                    and by_symbol[row["symbol"]]["decision_context"]["executable"]
+                    and (key != "top_picks" or by_symbol[row["symbol"]]["decision"] == "可分批研究")]
+    return out
+
+
+def private_progress_positions() -> list[dict]:
+    """Use durable owner inventory only; a browser draft cannot set plan size."""
+    from company.model.positions import load_positions, resolve_portfolio
+    from company.data.broker_positions import load_broker_positions
+    document, storage = load_positions()
+    if not storage.get("durable"):
+        raise ValueError("私人持股尚未確認持久化，請先同步持股")
+    snapshot, status = load_broker_positions() if document.get("broker_enabled") else (None, None)
+    result = resolve_portfolio(document, snapshot, status)
+    if result.get("status") != "ok":
+        raise ValueError("券商庫存未驗證，暫停建立出場計畫")
+    return result["positions"]
+
+
+def private_entry_summaries() -> dict | None:
+    """Use the same entry anchor for owner preview, freeze and completion checks."""
+    try:
+        return entry_summaries(load_private_ledger("lots"))
+    except Exception:
+        return None
+
+
+_EXIT_PROGRESS_WINDOW = {"at": 0.0, "count": 0}
+_EXIT_PROGRESS_LOCK = threading.Lock()
+
+
+def allow_exit_progress_write() -> bool:
+    """Bound this single-owner mutation endpoint to 30 requests per minute."""
+    with _EXIT_PROGRESS_LOCK:
+        now = time.monotonic()
+        if now - _EXIT_PROGRESS_WINDOW["at"] >= 60:
+            _EXIT_PROGRESS_WINDOW.update(at=now, count=0)
+        _EXIT_PROGRESS_WINDOW["count"] += 1
+        return _EXIT_PROGRESS_WINDOW["count"] <= 30
 
 
 _DURABLE_PROBE: dict = {"at": 0.0, "ok": None, "error": None, "running": False}
@@ -3352,6 +3430,8 @@ def build_sell_timing(normalized_positions: list[dict], entries: dict | None = N
     if state is None:
         return {"error": "每日價值狀態尚未產生", "storage": storage}
 
+    state = prepare_decision_state(state)
+
     # 與 /api/value-portfolio 相同的補漏：使用者的 ETF 不在母池，需即時套規則。
     covered = {item.get("symbol") for item in state.get("evaluations", [])}
     missing = [pos["symbol"] for pos in normalized_positions if pos["symbol"] not in covered]
@@ -3365,7 +3445,9 @@ def build_sell_timing(normalized_positions: list[dict], entries: dict | None = N
         except Exception as exc:
             print(f"[sell-timing] holdings fallback failed: {exc}")
 
-    actions = portfolio_actions(state, normalized_positions)
+    state = prepare_decision_state(state)
+    actions = portfolio_actions(state, normalized_positions,
+                                expected_as_of=state["freshness"]["expected_completed_date"])
     symbols = [action["symbol"] for action in actions]
 
     quotes_by_symbol: dict[str, dict] = {}
@@ -3399,6 +3481,10 @@ def build_sell_timing(normalized_positions: list[dict], entries: dict | None = N
             market_snapshot=market_snapshots.get(symbol),
             entry=(entries or {}).get(symbol),
         )
+        if timing.get("executable") and timing.get("urgency") == "immediate":
+            timing["plan"] = [{"stage": 1, "trigger": "thesis_broken", "label": "投資論點失效，人工核對退出",
+                               "price": timing["last_close"], "fraction": 1.0,
+                               "condition": "核對公告與論點失效證據後，由本人確認實際執行"}]
         results.append({
             "symbol": symbol,
             "name": action.get("name"),
@@ -3886,8 +3972,30 @@ class Handler(SimpleHTTPRequestHandler):
                 if state is None:
                     self.send_json({"error": "每日價值狀態尚未產生", "storage": storage}, HTTPStatus.SERVICE_UNAVAILABLE)
                 else:
-                    self.send_json({**annotate_entry_evidence(state), "storage": storage,
-                                    "freshness": current_state_freshness(state)})
+                    self.send_json({**annotate_entry_evidence(prepare_decision_state(state)), "storage": storage})
+                return
+            if parsed.path == "/api/exit-progress":
+                from company.model.positions import expected_sync_token, is_authorized
+                from company.model.exit_progress import load_progress, completion_reports, ProgressUnavailable
+                if not positions_sync_enabled() or expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                    return
+                try:
+                    document, storage = load_progress()
+                    if storage.get("available") is False:
+                        raise ProgressUnavailable("progress unavailable")
+                    reports, reports_available = {}, True
+                    if any(plan.get("status") == "active" for plan in document.get("plans", {}).values()):
+                        try:
+                            reports = completion_reports(document, private_progress_positions())
+                        except Exception:
+                            # Stored records remain readable; unavailable inventory
+                            # must never be treated as zero shares / a full exit.
+                            reports_available = False
+                    self.send_json({**document, "storage": storage, "completion_reports": reports,
+                                    "completion_reports_available": reports_available})
+                except ProgressUnavailable:
+                    self.send_json({"error": "私人出場紀錄目前不可讀，請稍後重試"}, HTTPStatus.SERVICE_UNAVAILABLE)
                 return
             if parsed.path == "/api/mother-pool":
                 payload = load_mother_pool_status()
@@ -4035,6 +4143,92 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            if self.path == "/api/exit-progress":
+                from company.model.positions import expected_sync_token, is_authorized
+                from company.model import exit_progress as progress
+                if not positions_sync_enabled() or expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                    return
+                origin = self.headers.get("Origin")
+                if origin and (urllib.parse.urlsplit(origin).scheme not in ("https", "http")
+                               or urllib.parse.urlsplit(origin).netloc.lower() != self.headers.get("Host", "").lower()):
+                    self.send_json({"error": "origin rejected"}, HTTPStatus.FORBIDDEN)
+                    return
+                if self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+                    self.send_json({"error": "JSON required"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+                    return
+                try:
+                    if self.headers.get("Transfer-Encoding"):
+                        self.close_connection = True
+                        raise ValueError("transfer encoding not accepted")
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if not 0 < length <= 4096:
+                        self.close_connection = True
+                        raise ValueError("request size")
+                    body = self.read_body()
+                    if not isinstance(body, dict) or set(body) - {"action", "symbol", "version", "plan_id", "stage", "confirmed"}:
+                        raise ValueError("invalid schema")
+                    action, symbol = body.get("action"), body.get("symbol")
+                    version = body.get("version")
+                    if action not in ("start", "complete", "cancel") or not isinstance(symbol, str) or not re.fullmatch(r"[A-Z0-9][A-Z0-9.-]{0,19}", symbol):
+                        raise ValueError("invalid action or symbol")
+                    if type(version) is not int or version < 0:
+                        raise ValueError("version required")
+                    if not allow_exit_progress_write():
+                        self.send_json({"error": "too many requests"}, HTTPStatus.TOO_MANY_REQUESTS)
+                        return
+                    if action == "start":
+                        holdings = private_progress_positions()
+                        position = next((row for row in holdings if row["symbol"] == symbol), None)
+                        if position is None:
+                            raise ValueError("請先同步此檔持股，再建立出場紀錄")
+                        payload = build_sell_timing(holdings, private_entry_summaries())
+                        row = next((row for row in payload.get("items", []) if row["symbol"] == symbol), {})
+                        document, storage = progress.start_plan(symbol, row.get("timing") or {}, position["shares"], version)
+                    elif action == "complete":
+                        if body.get("confirmed") is not True or type(body.get("stage")) is not int:
+                            raise ValueError("須確認實際完成該批交易；本功能不會下單")
+                        existing, existing_storage = progress.load_progress()
+                        if existing_storage.get("available") is False:
+                            raise progress.ProgressUnavailable("progress unavailable")
+                        old = (existing.get("plans") or {}).get(symbol) or {}
+                        already = (old.get("plan_id") == body.get("plan_id")
+                                   and any(row.get("stage") == body["stage"] for row in old.get("completed_stages", [])))
+                        if not already:
+                            holdings = private_progress_positions()
+                            position = next((row for row in holdings if row["symbol"] == symbol), None)
+                            completed_count = len(old.get("completed_stages", []))
+                            stages = old.get("stages") or []
+                            if body["stage"] != completed_count + 1 or completed_count >= len(stages):
+                                raise ValueError("批次不符")
+                            original = float(old.get("original_shares") or 0)
+                            pre = original - sum(row.get("target_shares", original * row["fraction"])
+                                                 for row in stages[:completed_count])
+                            next_quantity = stages[completed_count].get("target_shares", original * stages[completed_count]["fraction"])
+                            post = pre - next_quantity
+                            actual = float(position["shares"]) if position else 0.0
+                            if original <= 0 or min(abs(actual - pre), abs(actual - post)) > max(1e-6, original * 1e-8):
+                                raise ValueError("持股不符執行前或執行後股數")
+                            market_positions = holdings if position else holdings + [{"symbol": symbol, "shares": original, "cost": 0}]
+                            fresh = build_sell_timing(market_positions, private_entry_summaries())
+                            timing = next((row["timing"] for row in fresh.get("items", []) if row["symbol"] == symbol), {})
+                            frozen = progress.apply_progress(timing, symbol, existing)
+                            step = next((row for row in frozen.get("plan", []) if row["stage"] == body["stage"]), {})
+                            fundamental_exit = timing.get("urgency") == "immediate" and step.get("trigger") == "thesis_broken"
+                            if frozen.get("executable") is not True or not (step.get("confirmed_break") or fundamental_exit):
+                                raise ValueError("尚未收盤確認觸發，或資料無法驗證")
+                        document, storage = progress.complete_stage(symbol, body.get("plan_id"), body["stage"], version)
+                    else:
+                        document, storage = progress.cancel_plan(symbol, body.get("plan_id"), version)
+                    self.send_json({**document, "storage": storage, "automatic_trading": False},
+                                   HTTPStatus.OK if storage.get("durable") else HTTPStatus.SERVICE_UNAVAILABLE)
+                except progress.ProgressConflict:
+                    self.send_json({"error": "出場紀錄已變更，請重新讀取後操作", "conflict": True}, HTTPStatus.CONFLICT)
+                except progress.ProgressUnavailable:
+                    self.send_json({"error": "出場紀錄無法持久化，本次未完成儲存"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    self.send_json({"error": "資料不符或計畫不可操作，請確認持股與有效期限"}, HTTPStatus.BAD_REQUEST)
+                return
             if self.path in ('/api/owner/pairing', '/api/owner/pairing/claim'):
                 from company.model.positions import expected_sync_token, is_authorized
                 from owner_access import create_pairing, claim_pairing, PairingError
@@ -4137,6 +4331,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if state is None:
                     self.send_json({"error": "每日價值狀態尚未產生", "storage": storage}, HTTPStatus.SERVICE_UNAVAILABLE)
                 else:
+                    state = prepare_decision_state(state)
                     positions = normalize_positions(body.get("positions", []))
                     normalized = [
                         {"symbol": symbol, "shares": value.get("shares", 0), "cost": value.get("cost", 0)}
@@ -4157,8 +4352,10 @@ class Handler(SimpleHTTPRequestHandler):
                                 state["evaluations"] = list(state.get("evaluations", [])) + extra
                         except Exception as exc:
                             print(f"[value-portfolio] holdings fallback failed: {exc}")
+                    state = prepare_decision_state(state)
                     self.send_json({
-                        "as_of": state.get("as_of"), "actions": portfolio_actions(state, normalized),
+                        "as_of": state.get("as_of"), "actions": portfolio_actions(state, normalized,
+                            expected_as_of=state["freshness"]["expected_completed_date"]),
                         "storage": storage, "personal_data_saved": False,
                     })
                 return
@@ -4173,11 +4370,23 @@ class Handler(SimpleHTTPRequestHandler):
                 from company.model.positions import expected_sync_token, is_authorized
                 entries = None
                 if expected_sync_token() is not None and is_authorized(self.headers.get("Authorization")):
-                    try:
-                        entries = entry_summaries(load_private_ledger("lots"))
-                    except Exception as exc:  # noqa: BLE001
-                        print(f"[sell-timing] lots unavailable: {type(exc).__name__}")
+                    entries = private_entry_summaries()
                 payload = build_sell_timing(normalized, entries)
+                if expected_sync_token() is not None and is_authorized(self.headers.get("Authorization")):
+                    from company.model.exit_progress import load_progress, apply_progress, ProgressUnavailable
+                    try:
+                        progress_document, progress_storage = load_progress()
+                        if progress_storage.get("available") is False:
+                            raise ProgressUnavailable("progress unavailable")
+                        share_map = {row["symbol"]: row["shares"] for row in normalized}
+                        for row in payload.get("items", []):
+                            row["timing"] = apply_progress(row["timing"], row["symbol"], progress_document,
+                                                           shares=share_map.get(row["symbol"]))
+                        payload["progress_storage"] = progress_storage
+                    except ProgressUnavailable:
+                        for row in payload.get("items", []):
+                            row["timing"].update(plan=[], executable=False, urgency="advisory",
+                                                 headline="出場紀錄無法讀取，暫停建立或重複執行批次")
                 self.send_json(
                     payload,
                     HTTPStatus.SERVICE_UNAVAILABLE if payload.get("error") else HTTPStatus.OK,

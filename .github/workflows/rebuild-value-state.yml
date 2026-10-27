@@ -1,0 +1,38 @@
+name: Rebuild Current Value State
+run-name: Rebuild current decision state (no email or orders)
+
+on:
+  workflow_dispatch:
+    inputs:
+      fundamentals_batch:
+        description: Number of public financial snapshots to refresh before re-evaluation
+        type: choice
+        options: ['0', '10']
+        default: '0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-investment-analysis-email
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Re-evaluate public fundamentals and completed prices
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          VALUE_FUNDAMENTALS_BATCH: ${{ inputs.fundamentals_batch }}
+        run: |
+          test -n "$GITHUB_DATA_TOKEN"
+          python run_daily_value_state.py

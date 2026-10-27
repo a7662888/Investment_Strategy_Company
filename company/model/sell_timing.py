@@ -13,6 +13,10 @@ Exit Engine 回答的是部位該降多少（0–100 分 → 比例），但它�
 """
 from __future__ import annotations
 
+from datetime import date
+
+from company.model.reliability import assessment, finite_number
+
 # 盤中觸價與收盤確認的差別，是本引擎最重要的紀律：不做這個區分，
 # 使用者會被日內雜訊掃出場，這在台股是實務上最常見的虧損來源之一。
 CONFIRM_NOTE = "盤中穿價僅為提醒；台股假跌破頻繁，須收盤跌破才視為訊號成立。"
@@ -35,8 +39,8 @@ def atr_multiple(exit_score: float | None) -> float:
 
 def wilder_atr(rows: list[dict], period: int = 14) -> float | None:
     """Wilder 平滑 ATR。rows 需為日期遞增且含 high/low/close。"""
-    usable = [r for r in rows if r.get("high") is not None
-              and r.get("low") is not None and r.get("close") is not None]
+    usable = [r for r in rows if all(finite_number(r.get(key), positive=True) is not None
+                                   for key in ("high", "low", "close"))]
     if len(usable) < period + 1:
         return None
     true_ranges = []
@@ -57,7 +61,8 @@ def entry_anchor_high(rows: list[dict], entry_date: str | None) -> float | None:
     """買進後最高價（Chandelier 原意）。entry_date 早於日線資料起點時無法算，回 None。"""
     if not entry_date or not rows or str(rows[0].get("date") or "") > entry_date:
         return None
-    highs = [float(r["high"]) for r in rows if str(r.get("date") or "") >= entry_date and r.get("high") is not None]
+    highs = [number for r in rows if str(r.get("date") or "") >= entry_date
+             and (number := finite_number(r.get("high"), positive=True)) is not None]
     return round(max(highs), 4) if highs else None
 
 
@@ -67,7 +72,8 @@ def _anchor_high(rows: list[dict], lookback: int = 60) -> float | None:
     持股資料只有 symbol/shares/cost，沒有進場日，故不能用「進場後最高價」，
     改用固定回看窗；這點必須對使用者透明，不可假裝是個人化的進場後高點。
     """
-    highs = [float(r["high"]) for r in rows[-lookback:] if r.get("high") is not None]
+    highs = [number for r in rows[-lookback:]
+             if (number := finite_number(r.get("high"), positive=True)) is not None]
     return round(max(highs), 4) if highs else None
 
 
@@ -91,6 +97,7 @@ def build_levels(item: dict, exit_result: dict, rows: list[dict],
     """組出所有觸發價位。ETF 不掛趨勢型停損，只留配置與保本提示。"""
     is_etf = bool(item.get("is_etf"))
     score = (exit_result or {}).get("score")
+    cost, gain = finite_number(cost, positive=True), finite_number(gain)
     levels: list[dict] = []
 
     atr = wilder_atr(rows)
@@ -110,7 +117,7 @@ def build_levels(item: dict, exit_result: dict, rows: list[dict],
             "anchor": "since_entry" if since_entry is not None else "lookback_60",
         })
 
-    ma20, ma60 = item.get("ma20"), item.get("ma60")
+    ma20, ma60 = (finite_number(item.get(key), positive=True) for key in ("ma20", "ma60"))
     if ma20 is not None and not is_etf:
         levels.append({"key": "ma20", "label": "跌破 20 日均線",
                        "price": round(float(ma20), 2), "basis": "短期趨勢轉弱",
@@ -120,7 +127,7 @@ def build_levels(item: dict, exit_result: dict, rows: list[dict],
                        "price": round(float(ma60), 2), "basis": "中期趨勢轉弱",
                        "kind": "trend_break"})
 
-    high_252 = item.get("high_252")
+    high_252 = finite_number(item.get("high_252"), positive=True)
     if high_252 is not None and not is_etf:
         levels.append({"key": "drawdown_15", "label": "自近一年高點回撤 15%",
                        "price": round(float(high_252) * 0.85, 2),
@@ -168,10 +175,13 @@ def _spread_stages(levels: list[dict]) -> list[dict]:
 def build_plan(exit_result: dict, levels: list[dict], is_etf: bool,
                reference_price: float | None = None) -> list[dict]:
     """把觸發價依「先觸發者在前」排序，並配上每階段減碼比例。"""
-    if is_etf:
+    if is_etf or (exit_result or {}).get("executable") is False or (exit_result or {}).get("status") in (
+        "stale_data", "insufficient_data"
+    ):
         return []
     actionable = [lv for lv in levels
-                  if lv["kind"] in ("trailing_stop", "trend_break", "drawdown", "breakeven")]
+                  if lv["kind"] in ("trailing_stop", "trend_break", "drawdown", "breakeven")
+                  and finite_number(lv.get("price"), positive=True) is not None]
     if reference_price:
         # 離現價過遠的價位不構成「時機」：成本 900、現價 2440 時，
         # 把保本線排成第三批只是填充——真跌到那裡，前兩批早已出清。
@@ -198,6 +208,7 @@ def build_plan(exit_result: dict, levels: list[dict], is_etf: bool,
         "stage": idx + 1, "trigger": level["key"], "label": level["label"],
         "price": level["price"], "fraction": fractions[idx],
         "mode": mode,
+        "fraction_basis": "original_position",
         "condition": "收盤跌破後執行，不在盤中追殺",
     } for idx, level in enumerate(stages)]
 
@@ -214,8 +225,8 @@ def grade_confirmation(snapshot: dict | None) -> dict | None:
     """
     if not snapshot:
         return None
-    vwap_gap = snapshot.get("close_vs_vwap_pct")
-    volume_ratio = snapshot.get("volume_ratio")
+    vwap_gap = finite_number(snapshot.get("close_vs_vwap_pct"))
+    volume_ratio = finite_number(snapshot.get("volume_ratio"), positive=True)
     if vwap_gap is None and volume_ratio is None:
         return None
 
@@ -260,21 +271,63 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
     is_etf = bool(item.get("is_etf"))
     # Yahoo 會回 54.849998474121094 這類浮點雜訊；台股報價本身只有兩位小數，
     # 不先收斂會讓觸發價比較與畫面同時出現假精度。
-    last_close = (round(float(rows[-1]["close"]), 2)
-                  if rows and rows[-1].get("close") is not None else None)
+    close_value = finite_number(rows[-1].get("close"), positive=True) if rows else None
+    last_close = round(close_value, 2) if close_value is not None else None
     last_close_date = rows[-1].get("date") if rows else None
 
     live_price = None
     price_basis = "無可用報價"
     quote_time = None
-    if live_quote and live_quote.get("regularMarketPrice") is not None:
-        live_price = round(float(live_quote["regularMarketPrice"]), 2)
+    live_value = finite_number((live_quote or {}).get("regularMarketPrice"), positive=True)
+    if live_value is not None:
+        live_price = round(live_value, 2)
         quote_time = live_quote.get("regularMarketTime")
         price_basis = "盤中即時成交價" if market_open else "最後成交價（非盤中）"
     elif last_close is not None:
         price_basis = f"日線收盤（{last_close_date}）"
 
-    levels = build_levels(item, exit_result, rows, cost, gain, entry)
+    reliability = assessment(item, last_close_date)
+    block_reasons = list(reliability["reasons"])
+    valid_dates = []
+    for row in rows:
+        try:
+            valid_dates.append(date.fromisoformat(str(row.get("date"))).isoformat())
+        except ValueError:
+            block_reasons.append("日線日期缺漏或無效")
+            break
+        prices = [finite_number(row.get(key), positive=True) for key in ("high", "low", "close")]
+        high, low, close = prices
+        if any(price is None for price in prices) or not low <= close <= high:
+            block_reasons.append("日線 OHLC 缺漏或價格範圍無效")
+            break
+    if not rows or not last_close_date or last_close is None:
+        block_reasons.append("缺少可核對日期的完整收盤資料")
+    if valid_dates != sorted(set(valid_dates)):
+        block_reasons.append("日線日期未依序排列或存在重複")
+    if not exit_result or exit_result.get("executable") is not True:
+        block_reasons.append("Exit Score 尚未通過可執行檢查")
+    if finite_number((exit_result or {}).get("score")) is None:
+        block_reasons.append("Exit Score 分數缺漏或無效")
+    fraction = finite_number((exit_result or {}).get("suggested_fraction", 0.0))
+    if fraction is None or not 0 <= fraction <= 1:
+        block_reasons.append("減碼比例無效")
+    exit_reliability = (exit_result or {}).get("reliability") or {}
+    block_reasons.extend(exit_reliability.get("reasons") or [])
+
+    # A data-date mismatch invalidates the execution plan, rather than merely
+    # adding a warning alongside an actionable instruction.
+    value_state_as_of = item.get("as_of")
+    basis_mismatch = bool(value_state_as_of and last_close_date
+                          and value_state_as_of != last_close_date)
+    basis_note = (
+        f"觸發價比較採 {last_close_date} 收盤；Exit Score 與估值位階來自 "
+        f"{value_state_as_of}，日期不一致，暫停產生出場計畫。"
+        if basis_mismatch else None
+    )
+    stale = (basis_mismatch or reliability["status"] == "stale"
+             or (exit_result or {}).get("status") == "stale_data")
+    executable = not block_reasons and reliability["executable"]
+    levels = build_levels(item, exit_result, rows, cost, gain, entry) if executable else []
     for level in levels:
         state, note = _state(level["price"], last_close, live_price)
         level["state"], level["state_note"] = state, note
@@ -285,25 +338,22 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
         )
 
     reference_price = live_price if live_price is not None else last_close
-    plan = build_plan(exit_result, levels, is_etf, reference_price)
-    confirmation = grade_confirmation(market_snapshot)
+    plan = build_plan(exit_result, levels, is_etf, reference_price) if executable else []
+    snapshot_matches = (market_snapshot or {}).get("trade_date") in (None, last_close_date)
+    confirmation = grade_confirmation(market_snapshot) if executable and snapshot_matches else None
 
     # 每日狀態的價格來自 TWSE OpenAPI，該端點常延遲一個交易日；本層的收盤價來自
     # 日線 OHLC，通常較新。兩者不同日時，卡片上會同時出現兩個「現價」，
     # 若不標明日期，看起來就像資料打架——本專案過去正是敗在這類參考價混用。
-    value_state_as_of = item.get("as_of")
-    basis_mismatch = bool(value_state_as_of and last_close_date
-                          and value_state_as_of != last_close_date)
-    basis_note = (
-        f"觸發價比較採 {last_close_date} 收盤；Exit Score 與估值位階來自 "
-        f"{value_state_as_of} 的每日狀態，兩者相差一個交易日以上。"
-        if basis_mismatch else None
-    )
-    confirmed = [lv for lv in levels if lv["state"] == "confirmed_break"]
+    plan_triggers = {step["trigger"] for step in plan}
+    confirmed = [lv for lv in levels if lv["state"] == "confirmed_break" and lv["key"] in plan_triggers]
     intraday = [lv for lv in levels if lv["state"] == "intraday_break"]
     approaching = [lv for lv in levels if lv["state"] == "approaching"]
 
-    if (exit_result or {}).get("thesis_broken"):
+    if not executable:
+        urgency = "stale_data" if stale else "insufficient_data"
+        headline = "資料過期或日期不一致，暫停出場判定" if stale else "資料不足，無法判定出場時機"
+    elif (exit_result or {}).get("thesis_broken"):
         urgency = "immediate"
         headline = "投資論點已失效：不等技術訊號，直接檢查全數出場"
     elif is_etf:
@@ -336,6 +386,12 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
     return {
         "schema_version": 1,
         "urgency": urgency,
+        "executable": executable,
+        "reliability": {**reliability, "status": "current" if executable else "stale" if stale else "insufficient",
+                        "executable": executable, "reasons": list(dict.fromkeys(block_reasons))},
+        "block_reasons": list(dict.fromkeys(block_reasons)),
+        "valid_for_as_of": last_close_date if executable else None,
+        "fraction_basis": "original_position",
         "headline": headline,
         "price_basis": price_basis,
         "live_price": live_price,
@@ -346,8 +402,8 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
         "basis_mismatch": basis_mismatch,
         "basis_note": basis_note,
         "market_open": bool(market_open),
-        "atr14": wilder_atr(rows),
-        "atr_multiple": None if is_etf else atr_multiple((exit_result or {}).get("score")),
+        "atr14": wilder_atr(rows) if executable else None,
+        "atr_multiple": None if is_etf or not executable else atr_multiple((exit_result or {}).get("score")),
         "levels": levels,
         "plan": plan,
         "confirmation": confirmation,

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import unittest
+import json
+import math
 
 from company.model.value_daily import build_daily_state, portfolio_actions
 
@@ -14,6 +16,13 @@ def _result(symbol="1111.TW", pct=15.0, roe=20.0, price=100.0, ma20=98.0, ma60=9
         "distance_from_high_252": distance_from_high_252,
         "high_252": price / (1 + distance_from_high_252), "price_pct_252": 80.0,
         "reasons": ["test"],
+        "fundamental_trend": {
+            "monthly_revenue_yoy_latest": 10.0, "monthly_revenue_negative_streak": 0,
+            "quarterly_revenue_yoy": 8.0, "quarterly_eps_yoy": 8.0,
+            "gross_margin_decline_2q": False, "operating_margin_decline_2q": False,
+            "earnings_quality_ttm": 1.0, "debt_ratio_change_yoy": 0.0,
+            "earnings_quality_method": "ttm_sum_ocf_over_sum_ni_v1",
+        },
     }
 
 
@@ -42,10 +51,10 @@ class ValueDailyTests(unittest.TestCase):
 
     def test_profitable_overvalued_holding_gets_exit_score(self):
         rich = _result(pct=96, price=145, ma20=140, ma60=130)
-        rich["fundamental_trend"] = {
+        rich["fundamental_trend"].update({
             "observed_metrics": 5, "monthly_revenue_yoy_latest": 10,
             "monthly_revenue_negative_streak": 0, "earnings_quality_ttm": 1.1,
-        }
+        })
         state = build_daily_state([rich], {"1111"}, 1)
         advice = portfolio_actions(state, [{"symbol": "1111.TW", "shares": 100, "cost": 100}])[0]
         self.assertEqual(advice["exit_engine"]["status"], "watch_profit")
@@ -90,6 +99,73 @@ class ValueDailyTests(unittest.TestCase):
         self.assertFalse(state["top_picks"])
         self.assertEqual(state["coverage"]["price_current"], 1)
         self.assertEqual(state["coverage"]["price_stale"], 1)
+
+    def test_compound_margin_and_cash_warning_pauses_buys_and_holding_adds(self):
+        candidate = _result("2356.TW", pct=29.3, roe=15.78)
+        candidate["fundamental_trend"].update(
+            gross_margin_decline_2q=True, earnings_quality_ttm=0.5764)
+        state = build_daily_state([candidate], {"2356"}, 1)
+        self.assertFalse(state["top_picks"])
+        row = state["evaluations"][0]
+        self.assertEqual(row["fundamental_assessment"]["status"], "pause_new")
+        self.assertEqual(row["decision"], "基本面待確認，暫緩新增")
+        self.assertEqual(row["action"], "watch")
+        advice = portfolio_actions(state, [{"symbol": "2356.TW", "shares": 100, "cost": 99}])[0]
+        self.assertEqual(advice["action"], "基本面待確認，暫停追加")
+
+    def test_missing_quality_is_unknown_instead_of_false_or_top_pick(self):
+        candidate = _result()
+        candidate.pop("quality_pass")
+        state = build_daily_state([candidate], {"1111"}, 1)
+        self.assertIsNone(state["evaluations"][0]["quality_pass"])
+        self.assertEqual(state["evaluations"][0]["decision"], "資料不足")
+        self.assertFalse(state["top_picks"])
+        advice = portfolio_actions(state, [{"symbol": "1111.TW", "shares": 100, "cost": 99}])[0]
+        self.assertEqual(advice["action"], "資料不足，人工檢查")
+
+    def test_missing_cash_trend_cannot_add_even_with_quality_true(self):
+        candidate = _result()
+        candidate["fundamental_trend"].pop("earnings_quality_ttm")
+        state = build_daily_state([candidate], {"1111"}, 1)
+        self.assertFalse(state["top_picks"])
+        advice = portfolio_actions(state, [{"symbol": "1111.TW", "shares": 100, "cost": 99}])[0]
+        self.assertNotIn("追加", advice["action"].replace("暫停追加", ""))
+        self.assertFalse(advice["fundamental_assessment"]["allow_new"])
+
+    def test_expected_completed_day_blocks_stale_holding_advice(self):
+        state = build_daily_state([_result()], {"1111"}, 1)
+        advice = portfolio_actions(state, [{"symbol": "1111.TW", "shares": 100, "cost": 99}],
+                                   expected_as_of="2026-07-30")[0]
+        self.assertEqual(advice["action"], "資料過期，暫停建議")
+        self.assertFalse(advice["reliability"]["executable"])
+
+    def test_malformed_numeric_inputs_fail_closed_and_remain_strict_json(self):
+        for field, value in (("price", "not-a-price"), ("valuation_pct", float("nan")),
+                             ("roe_ttm", float("inf")), ("ma20", "invalid-ma"),
+                             ("ma60", float("-inf"))):
+            with self.subTest(field=field):
+                candidate = _result()
+                candidate[field] = value
+                candidate["entry_range"] = [float("nan"), float("inf")]
+                state = build_daily_state([candidate], {"1111"}, 1)
+                self.assertEqual(state["evaluations"][0]["decision"], "資料不足")
+                self.assertEqual(state["evaluations"][0]["action"], "watch")
+                self.assertFalse(state["top_picks"])
+                json.dumps(state, allow_nan=False)
+                if isinstance(value, float) and math.isnan(value):
+                    self.assertTrue(math.isnan(candidate[field]))
+                else:
+                    self.assertEqual(candidate[field], value)
+                self.assertTrue(math.isnan(candidate["entry_range"][0]))
+
+    def test_numeric_strings_are_normalized_without_mutating_original(self):
+        candidate = _result()
+        candidate.update(price="100", valuation_pct="15", roe_ttm="20", ma20="98", ma60="95")
+        state = build_daily_state([candidate], {"1111"}, 1)
+        self.assertEqual(state["top_picks"][0]["price"], 100.0)
+        self.assertEqual(state["evaluations"][0]["valuation_pct"], 15.0)
+        self.assertEqual(candidate["price"], "100")
+        json.dumps(state, allow_nan=False)
 
 
 if __name__ == "__main__":

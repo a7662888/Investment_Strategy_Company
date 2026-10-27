@@ -4,12 +4,26 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime, timezone
+import math
 
 from company.model.value_policy import CYCLICAL
+from company.model.fundamental_policy import evaluate_fundamentals, quality_schema
+from company.model.reliability import assessment, finite_number
 
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, value))
+
+
+def _finite_json(value):
+    """Copy persisted JSON while replacing non-finite numeric leaves with null."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _finite_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite_json(item) for item in value]
+    return value
 
 
 def _trend(result: dict) -> tuple[str, float]:
@@ -26,11 +40,27 @@ def _trend(result: dict) -> tuple[str, float]:
 
 
 def _daily_item(result: dict, eligible_pool: bool) -> dict:
-    symbol = result.get("symbol", "")
+    # Classify only normalized numbers, before comparisons or formatting. This
+    # creates a copy: reading a cached/historical artifact never rewrites it.
+    result = _finite_json(result)
+    for key in ("price", "valuation_pct", "roe_ttm", "ma20", "ma60", "momentum20",
+                "distance_from_high_252", "high_252", "price_pct_252", "ma240",
+                "ma240_deviation_pct", "pe", "pb", "valuation_observations"):
+        if key in result:
+            result[key] = finite_number(result[key])
+    if not result.get("is_etf") and result.get("roe_ttm") is None:
+        result["data_incomplete"] = result.get("data_incomplete") or "roe_ttm_unavailable"
+    if not isinstance(result.get("quality_pass"), bool):
+        result["quality_pass"] = None
+    if not isinstance(result.get("fundamental_trend"), dict):
+        result["fundamental_trend"] = {}
+    symbol = str(result.get("symbol") or "")
     code = symbol.split(".")[0]
     pct = result.get("valuation_pct")
     roe = result.get("roe_ttm")
-    quality_pass = bool(result.get("quality_pass", result.get("is_etf", False)))
+    quality_pass = result.get("quality_pass")
+    fundamental = evaluate_fundamentals(result)
+    reliability = assessment(result)
     trend, trend_score = _trend(result)
     risk_tier = "高" if code in CYCLICAL else "一般"
     momentum20 = result.get("momentum20")
@@ -42,7 +72,7 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     if pct is None:
         valuation_zone, valuation_score = "估值資料不足", 0.0
     elif pct <= 20:
-        valuation_zone, valuation_score = "深度低估（≤P20）", 100.0 - float(pct)
+        valuation_zone, valuation_score = "估值歷史低位（≤P20）", 100.0 - float(pct)
     elif pct <= 40:
         valuation_zone, valuation_score = "分批區（P20–P40）", 100.0 - float(pct)
     elif pct <= 70:
@@ -60,14 +90,18 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     if is_dca_etf:
         # ETF 子軌改為定期定額：沒有估值百分位，位置只用年線乖離描述。
         valuation_zone = result.get("ma240_band") or "年線資料不足"
-    if result.get("error") or result.get("data_incomplete"):
+    if result.get("error") or result.get("data_incomplete") or not reliability["executable"]:
         decision = "資料不足"
     elif is_dca_etf:
         decision = "定期定額"
     elif pct is None:
         decision = "資料不足"
-    elif not quality_pass or action == "avoid":
+    elif quality_pass is False or action == "avoid":
         decision = "排除／賣出檢查"
+    elif fundamental["status"] == "insufficient":
+        decision = "資料不足"
+    elif fundamental["status"] == "pause_new":
+        decision = "基本面待確認，暫緩新增"
     elif risk_tier == "高":
         decision = "高風險反轉觀察"
     elif action == "accumulate" and trend == "下跌趨勢":
@@ -83,13 +117,23 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     return {
         "symbol": symbol, "name": result.get("name"), "as_of": result.get("as_of"),
         "price": round(float(result["price"]), 2) if result.get("price") is not None else None,
-        "action": action, "decision": decision, "eligible_pool": bool(eligible_pool),
+        "action": "watch" if (not reliability["executable"] or not fundamental["allow_new"]) and action == "accumulate" else action,
+        "source_action": result.get("source_action", action),
+        "decision": decision, "eligible_pool": bool(eligible_pool),
         "quality_pass": quality_pass, "risk_tier": risk_tier,
-        "fundamentals_complete": bool(result.get(
+        "quality_schema": quality_schema(result),
+        "quality_missing": list(result.get("quality_missing") or []),
+        "fundamental_assessment": fundamental, "reliability": reliability,
+        "fundamentals_complete": fundamental["status"] != "insufficient" and bool(result.get(
             "fundamentals_complete", not result.get("error") and not result.get("data_incomplete")
         )),
         "roe_ttm": round(float(roe), 2) if roe is not None else None,
         "valuation_basis": result.get("valuation_basis"), "valuation_pct": pct,
+        "pe": result.get("pe"), "pb": result.get("pb"),
+        "valuation_as_of": result.get("valuation_as_of"),
+        "valuation_history_start": result.get("valuation_history_start"),
+        "valuation_observations": result.get("valuation_observations"),
+        "valuation_source": result.get("valuation_source"),
         "valuation_zone": valuation_zone, "entry_range": result.get("entry_range"),
         "ma20": result.get("ma20"), "ma60": result.get("ma60"),
         "momentum20": momentum20, "trend": trend,
@@ -136,7 +180,7 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
     picks = sorted((i for i in current_eligible if i["decision"] == "可分批研究"),
                    key=lambda x: x["rank_score"], reverse=True)[:5]
     waiting = sorted((i for i in current_eligible if i["decision"] in (
-        "等待止跌", "高風險反轉觀察", "高檔，等待拉回"
+        "等待止跌", "高風險反轉觀察", "高檔，等待拉回", "基本面待確認，暫緩新增"
     )),
                      key=lambda x: x["rank_score"], reverse=True)[:5]
     etf_candidates = sorted(
@@ -157,14 +201,14 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
         "top_picks": picks, "waiting_list": waiting, "etf_candidates": etf_candidates,
         "evaluations": items,
         "method": (
-            "tw_value_method v2.3：母池→季度品質硬篩→近3年估值百分位"
+            "tw_value_method v2.4：母池→四季現金轉換／品質硬篩→基本面警訊閘門→近3年估值百分位"
             "→20/60日趨勢＋高檔追價閘門；持倉另用100分Exit Engine，缺值降級且不自動下單。"
             "ETF 子軌 etf_dca v1：定期定額，年線乖離僅供參考"
         ),
     }
 
 
-def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
+def portfolio_actions(state: dict, positions: list[dict], *, expected_as_of: str | None = None) -> list[dict]:
     from company.model.exit_engine import score_exit
 
     by_symbol = {i.get("symbol"): i for i in state.get("evaluations", [])}
@@ -185,10 +229,15 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
         price = item.get("price") if item else None
         gain = (price / cost - 1.0) if price is not None and cost > 0 else None
         weight = market_values.get(symbol, 0.0) / total_value if total_value > 0 else None
+        fundamental = evaluate_fundamentals(item or {})
+        reliability = assessment(item or {}, expected_as_of=expected_as_of)
         reasons = []
         if not item:
             action = "資料不足，人工檢查"
             reasons.append("此標的尚未納入每日品質覆蓋池")
+        elif not reliability["executable"]:
+            action = "資料過期，暫停建議" if reliability["status"] == "stale" else "資料不足，人工檢查"
+            reasons.extend(reliability["reasons"])
         elif item.get("is_etf"):
             # ETF 必須排在個股品質硬篩之前：ETF 沒有 ROE／毛利率／營益率，
             # 其 quality_pass 恆為空值，若先過硬篩會被一律誤判成「賣出／減碼檢查」。
@@ -209,9 +258,15 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
             else:
                 action = "續抱領息，停止追加"
                 reasons.append("ETF 不因單日或均線訊號單獨賣出；待估值回落或配置失衡時再調整")
-        elif not item.get("quality_pass") or item.get("action") == "avoid":
+        elif item.get("quality_pass") is False or item.get("action") == "avoid":
             action = "賣出／減碼檢查"
             reasons.append("品質硬篩未通過或價值引擎判定 avoid；先核對失效條件，不自動賣出")
+        elif fundamental["status"] == "insufficient":
+            action = "基本面資料不足，暫停追加"
+            reasons.extend(fundamental["reasons"])
+        elif fundamental["status"] == "pause_new":
+            action = "基本面待確認，暫停追加"
+            reasons.extend(fundamental["reasons"])
         elif item.get("risk_tier") == "高":
             action = "暫停追加，檢查反轉假設"
             reasons.append("景氣循環股須用 PBR 與獲利週期判斷；低 PER 可能只是高峰盈餘造成的假便宜")
@@ -243,17 +298,21 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
         # 只輸入一檔時顯示的 100% 不足以證明「完整投資組合高度集中」。
         # Exit Score 至少要有兩檔可定價持股才採計 position-risk；原 ETF 配置提示維持相容。
         exit_weight = weight if priced_position_count >= 2 else None
-        exit_engine = score_exit(item or {}, gain, exit_weight)
+        exit_engine = score_exit(item or {}, gain, exit_weight, expected_as_of=expected_as_of)
         base_action = action
         exit_status = exit_engine["status"]
-        if exit_status in ("trim_20_25", "trim_30_50", "take_profit", "exit"):
+        if not reliability["executable"] or exit_status in ("insufficient_data", "stale_data"):
+            action = "資料過期，暫停建議" if (reliability["status"] == "stale" or exit_status == "stale_data") else "資料不足，人工檢查"
+            reasons = list(dict.fromkeys([*reasons, *reliability["reasons"]]))
+        elif exit_status in ("trim_20_25", "trim_30_50", "take_profit", "exit"):
             action = exit_engine["label"]
             reasons = [
                 f"Exit Score {exit_engine['score']:.1f}/100（資料覆蓋 {exit_engine['coverage']}/100）",
                 *reasons,
             ]
         elif (exit_status == "watch_profit" and gain is not None and gain > 0
-              and "賣出" not in base_action and "減碼" not in base_action):
+              and "賣出" not in base_action and "減碼" not in base_action
+              and fundamental["allow_new"]):
             action = "獲利續抱，密切觀察"
             reasons.insert(0, f"Exit Score {exit_engine['score']:.1f}/100，尚未達減碼門檻")
         elif (item and not item.get("is_etf") and priced_position_count >= 2
@@ -267,6 +326,7 @@ def portfolio_actions(state: dict, positions: list[dict]) -> list[dict]:
             "portfolio_weight": round(weight, 6) if weight is not None else None,
             "action": action, "base_action": base_action, "reasons": reasons,
             "exit_engine": exit_engine,
+            "fundamental_assessment": fundamental, "reliability": reliability,
             "value_state": item, "as_of": state.get("as_of"),
             "disclaimer": "研究提示，不自動下單；賣出前須人工確認論點失效與稅費。",
         })

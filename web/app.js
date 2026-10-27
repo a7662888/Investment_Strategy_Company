@@ -1516,7 +1516,7 @@ function renderChips() {
   panel.innerHTML = `
     ${both.length ? `<p style="font-size:12.5px;margin:0 0 8px;"><b>營收創 12 月新高（年增 &gt;20%）＋外資、投信 20 日同步買超：</b>${escapeHtml(both.map(r => `${r.code} ${r.name || ""}`).join("、"))}<span style="color:var(--muted);">（2 年回測：新訊號 60 日平均超額 +11.9%，但中位數 −0.9%，靠少數大漲股拉高；不是買進訊號）</span></p>` : ""}
     <div style="overflow:auto;max-height:560px;"><table style="font-size:12.5px;"><thead><tr>
-      <th>代號／名稱</th><th>收盤</th><th title="距 252 日最高價">折扣%</th><th>月線/季線乖離%</th><th title="⭐ = 創 12 個月新高">${escapeHtml(month)} 營收 YoY%</th>
+      <th>代號／名稱</th><th>收盤</th><th title="相對近 252 交易日盤中最高價；不是合理價折扣">距一年盤中高點%</th><th>月線/季線乖離%</th><th title="⭐ = 創 12 個月新高">${escapeHtml(month)} 營收 YoY%</th>
       <th>外本比 5日/20日%</th><th>投本比 5日/20日%</th><th>投信連買(+)/賣(−)</th><th>≥400張%（週變化）</th>
       <th title="近 5 年，含息、扣成本；斜線後為買進持有年化">MA20 進出／持有 年化%</th><th title="近 5 年，含息、扣成本；斜線後為買進持有年化">MA60 進出／持有 年化%</th></tr></thead>
       <tbody>${body}</tbody></table></div>
@@ -2892,7 +2892,7 @@ function renderDailyValuePanel() {
         : "";
       return `<article class="candidate" style="margin-bottom:8px;">
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}${regBadge(item.symbol)}</span><span style="color:#0f766e;">${escapeHtml(item.decision)}</span>
+        <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}${regBadge(item.symbol)}</span><span style="color:${item.fundamental_assessment?.status === "pause_new" ? "#b45309" : "#0f766e"};">${escapeHtml(item.decision)}</span>
       </strong>
       <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}${item.is_etf
         ? (item.dca ? `｜${etfMaText(item.ma240, item.ma240_deviation_pct, item.ma240_band)}` : "")
@@ -2907,12 +2907,15 @@ function renderDailyValuePanel() {
     const picks = asArray(data.top_picks);
     const waiting = asArray(data.waiting_list);
     const etfs = asArray(data.etf_candidates);
+    const paused = asArray(data.evaluations).filter(item =>
+      item.fundamental_assessment?.status === "pause_new" && item.decision_context?.executable !== false);
     panel.innerHTML = `
       <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:7px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#065f46;">
         母池 ${c.mother_pool || 0} 檔中，目前 ${c.quality_covered || 0} 檔具完整品質資料；其餘 ${c.not_yet_covered || 0} 檔不會假裝已完成基本面判定。
       </div>
       <h3 style="font-size:14px;margin:8px 0;">可分批研究</h3>
-      ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">今天沒有同時通過品質、估值與止跌條件的標的；保留現金也是結果。</p>`}
+      ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">${data.freshness?.status !== "current" ? "分析資料尚未追平完整交易日，暫停買賣判定。" : asArray(data.evaluations).some(i => i.decision_context?.executable === false) ? "部分資料需重算或補齊；未驗證的標的不列買進候選。" : "目前沒有同時通過品質、估值與止跌條件的標的。"}</p>`}
+      ${paused.length ? `<details open style="margin-top:8px;"><summary style="font-size:13px;font-weight:600;color:#b45309;">基本面待確認，暫緩新增（${paused.length}）</summary>${paused.map(card).join("")}</details>` : ""}
       ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}
       ${etfs.length ? `<h3 style="font-size:14px;margin:14px 0 4px;">ETF 子軌（${etfs.length}）</h3>
         <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">ETF 子軌採定期定額：每月固定投入，不依價位擇時；年線乖離只當市場位置參考。回測（2008–2026）顯示舊的百分位擇時規則落後定期定額，年線加權投入也未勝出。更多 ETF 見 <a href="/etf.html">ETF 研究室</a>。</p>
@@ -2927,7 +2930,13 @@ function renderFundamentalWarnings(item) {
   if (f.gross_margin_decline_2q) warnings.push("毛利率連兩季下降");
   if (f.operating_margin_decline_2q) warnings.push("營益率連兩季下降");
   if (f.earnings_quality_ttm != null && Number(f.earnings_quality_ttm) < 0.8) warnings.push("現金流／盈餘品質偏弱");
-  return warnings.length ? `<p style="font-size:12px;color:#b91c1c;margin:6px 0;">基本面警訊：${escapeHtml(warnings.join("；"))}。低估值不代表獲利必然復甦。</p>` : "";
+  const assessment = item.fundamental_assessment || {};
+  const policy = assessment.status === "pause_new" ? "暫緩新買與追加；持股另依風險條件評估"
+    : assessment.status === "insufficient" ? "資料不足，暫停新增判定"
+    : assessment.status === "thesis_review" ? "品質未通過，核對投資論點"
+    : warnings.length ? "持續觀察" : "";
+  const reasons = asArray(assessment.reasons);
+  return warnings.length || policy ? `<p style="font-size:12px;color:#b91c1c;margin:6px 0;">${policy ? `<b>${escapeHtml(policy)}</b>。` : ""}基本面警訊：${escapeHtml((reasons.length ? reasons : warnings).join("；"))}。低估值不代表獲利必然復甦。</p>` : "";
 }
 
 let marketResearchData = null;
@@ -2998,11 +3007,19 @@ async function loadDailyHistoryDay() {
   const state = data.state || data;
   const rows = asArray(state.evaluations);
   $("dailyHistoryPanel").innerHTML = `<p style="font-size:12px;">資料日 ${escapeHtml(state.as_of || day)}｜${rows.length} 檔｜重算 ${escapeHtml(state.generated_at || "—")}</p>`
-    + `<div style="overflow:auto;max-height:360px;"><table><thead><tr><th>股票</th><th>收盤</th><th>當日判定</th><th>估值位階</th><th>趨勢</th></tr></thead><tbody>`
-    + rows.map(row => `<tr><td>${escapeHtml(row.symbol)} ${escapeHtml(row.name || "")}</td><td>${row.price == null ? "—" : Number(row.price).toFixed(2)}</td><td>${escapeHtml(row.decision || "—")}</td><td>${row.valuation_pct == null ? "—" : "P" + Number(row.valuation_pct).toFixed(1)}</td><td>${escapeHtml(row.trend || "—")}</td></tr>`).join("") + "</tbody></table></div>";
+    + `<div style="overflow:auto;max-height:360px;"><table><thead><tr><th>股票</th><th>收盤</th><th>該日判定</th><th title="本益比或股價淨值比相對自身歷史的百分位；不是股價高低或合理價折扣">估值歷史位階</th><th title="收盤在近 252 個交易日收盤價中的百分位">一年價格位階</th><th title="距近 252 交易日最高收盤；與盤中最高價不同">距一年最高收盤</th><th>趨勢</th></tr></thead><tbody>`
+    + rows.map(row => `<tr><td>${escapeHtml(row.symbol)} ${escapeHtml(row.name || "")}</td><td>${row.price == null ? "—" : Number(row.price).toFixed(2)}</td><td>${escapeHtml(row.decision || "—")}</td><td>${valuationPositionText(row)}</td><td>${row.price_pct_252 == null ? "—" : "P" + Number(row.price_pct_252).toFixed(1)}</td><td>${row.distance_from_high_252 == null ? "—" : (Number(row.distance_from_high_252) * 100).toFixed(1) + "%"}</td><td>${escapeHtml(row.trend || "—")}</td></tr>`).join("") + "</tbody></table></div>"
+    + `<p style="font-size:12px;color:var(--muted);">估值低位與股價高位可以同時存在，例如獲利成長快於股價。百分位是歷史比較，不能直接推定值得買進。</p>`;
   } catch (err) {
     if ($("dailyHistoryDate")?.value === day) $("dailyHistoryPanel").textContent = `每日紀錄讀取失敗：${err.message}`;
   }
+}
+
+function valuationPositionText(row) {
+  if (row.valuation_pct == null) return "—";
+  const basis = String(row.valuation_basis || "估值");
+  const multiple = basis.startsWith("PBR") ? row.pb : row.pe;
+  return `${escapeHtml(basis)} 約 P${Number(row.valuation_pct).toFixed(1)}${multiple == null ? "" : `（${Number(multiple).toFixed(2)} 倍）`}`;
 }
 
 async function refreshDailyLivePrices() {
@@ -3612,6 +3629,7 @@ async function renderMyHoldings() {
   const status = $("myHoldingsStatus");
   if (!panel) return;
   const requestVersion = ++holdingsRenderVersion;
+  loadExitProgressHistory(requestVersion);
   // 庫存或行情重畫不能把使用者正在清空／修改的手動草稿填回舊值。
   // 初次還原只在 bundle 完成初始化時執行一次。
   const pos = effectiveHoldings();
@@ -3646,7 +3664,7 @@ async function renderMyHoldings() {
     postPositions("/api/value-portfolio"),
     postPositions("/api/sell-timing"),
   ]);
-  if (requestVersion !== holdingsRenderVersion) return;
+  if (requestVersion !== holdingsRenderVersion || syncToken !== positionSyncToken()) return;
   if (portfolioResult.status === "fulfilled") {
     asArray(portfolioResult.value.actions).forEach(a => { valueActions[a.symbol] = a; });
   } else {
@@ -3683,18 +3701,19 @@ async function renderMyHoldings() {
       : sig ? `<span class="pill" style="font-size:11px;">凍結卡：${(sig.action || "").toUpperCase()}</span>`
       : `<span class="pill" style="font-size:11px; color:var(--muted);">未納入價值分析</span>`;
     const ex = va && va.exit_engine;
-    const exitColor = !ex ? "#64748b" : ex.status === "exit" || ex.status === "take_profit" ? "#b91c1c"
+    const exitColor = !ex || ex.executable === false ? "#64748b" : ex.status === "exit" || ex.status === "take_profit" ? "#b91c1c"
+      : ex.fundamental_assessment?.status === "pause_new" ? "#b45309"
       : String(ex.status || "").startsWith("trim") ? "#c2410c" : ex.status === "watch_profit" ? "#b45309" : "#137333";
     const exitReasons = ex ? Object.values(ex.reasons || {}).flat().filter(Boolean).slice(0, 3) : [];
     const exitPanel = ex ? `<div style="font-size:12px;background:#f8fafc;border:1px solid var(--line);border-radius:6px;padding:8px 9px;margin-top:7px;line-height:1.55;">
       <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <b style="color:${exitColor};">Exit Score ${Number(ex.score || 0).toFixed(1)}/100 · ${escapeHtml(ex.label || "—")}</b>
+        <b style="color:${exitColor};">${ex.executable === false ? "判定暫停" : "Exit Score"} ${ex.executable === false ? "" : Number(ex.score || 0).toFixed(1) + "/100 · "}${escapeHtml(ex.label || "—")}</b>
         <span style="color:var(--muted);">資料覆蓋 ${Number(ex.coverage || 0)}/100 · shadow</span>
       </div>
       <div style="color:#475569;margin-top:3px;">估值 ${Number(ex.components?.valuation || 0)}/30｜基本面 ${Number(ex.components?.fundamentals || 0)}/30｜趨勢 ${Number(ex.components?.momentum || 0)}/20｜盈餘品質 ${Number(ex.components?.accounting_quality || 0)}/10｜部位 ${Number(ex.components?.position_risk || 0)}/10</div>
       ${exitReasons.length ? `<div style="color:var(--muted);margin-top:3px;">依據：${escapeHtml(exitReasons.join("；"))}</div>` : ""}
     </div>` : "";
-    const timingPanel = renderSellTiming(sellTiming[p.symbol]);
+    const timingPanel = renderSellTiming(sellTiming[p.symbol]) + renderExitProgressControls(p.symbol, sellTiming[p.symbol]);
     return `<article class="candidate" style="margin-bottom:10px;">
       <strong style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
         <span>${escapeHtml(p.symbol)} ${sig && sig.name ? escapeHtml(sig.name) : ""} ${sigLine}${regBadge(p.symbol)}</span>
@@ -3709,6 +3728,94 @@ async function renderMyHoldings() {
       ${timingPanel}
     </article>`;
   }).join("");
+  panel.onclick = handleExitProgressClick;
+}
+
+function renderExitProgressControls(symbol, timing) {
+  if (!timing || !positionSyncToken()) return "";
+  const p = timing.exit_progress || {};
+  const done = asArray(p.completed_stages);
+  const step = asArray(timing.plan)[0];
+  const report = timing.completion_report;
+  const nextStage = Number(report?.stage || step?.stage || done.length + 1);
+  const button = (action, label, disabled = false) => `<button type="button" data-exit-action="${action}" data-exit-symbol="${escapeHtml(symbol)}" data-exit-version="${Number(p.version || 0)}" data-exit-plan="${escapeHtml(p.plan_id || "")}" data-exit-stage="${nextStage}" ${disabled ? "disabled" : ""}>${label}</button>`;
+  if (!p.plan_id) return timing.executable && step
+    ? `<div style="font-size:12px;margin-top:7px;">${button("start", "儲存此分批計畫")} 價位固定，完成批次會保留；只記錄，不下單。<span data-exit-feedback></span></div>` : "";
+  const terminal = ["completed", "cancelled", "expired"].includes(p.status);
+  const labels = {active: "追蹤中", completed: "已完成", cancelled: "已取消", expired: "已到期", suspended: "資料不足，暫停", position_changed: "股數變更，待核對", completion_pending: "股數符合已執行，待本人回報", needs_review: "論點失效，原計畫待重建"};
+  const completion = done.map(row => `第 ${Number(row.stage)} 批已回報完成（${escapeHtml(String(row.completed_at || "").slice(0, 10))}）`).join("；");
+  return `<div style="font-size:12px;line-height:1.7;padding:7px;margin-top:7px;border:1px solid var(--line);border-radius:5px;">
+    <b>出場紀錄：${escapeHtml(labels[p.status] || p.status)}</b><br>
+    原始 ${Number(p.original_shares).toLocaleString()} 股｜已完成 ${(Number(p.completed_fraction || 0) * 100).toFixed(0)}%｜計畫剩餘 ${(Number(p.remaining_fraction || 0) * 100).toFixed(0)}%<br>
+    建立依據 ${escapeHtml(p.basis_date || "—")}｜有效至 ${escapeHtml(String(p.expires_at || "").slice(0, 10))}；比例均以建立時原始股數計算。${completion ? `<br>${completion}` : ""}<br>
+    ${terminal ? (timing.fresh_plan_available ? button("start", "重新評估並建立新計畫") : "須取得完整新分析，才能明確重建計畫。")
+      : button("complete", `本人已實際完成第 ${nextStage} 批`, !report && (!timing.executable || !(step?.confirmed_break || timing.urgency === "immediate" && step?.trigger === "thesis_broken"))) + " " + button("cancel", "取消此計畫")}
+    ${report ? `<div style="color:#475569;">${escapeHtml(report.note || "股數符合本批執行後數量；送出後仍由伺服器核對原計畫及最新資料。")}</div>` : ""}
+    <div style="color:var(--muted);">完成僅為本人回報，不代表券商成交驗證。完成後請更新持股股數。計畫保存在私人資料庫；取消保留紀錄及既有版本歷史。</div><span data-exit-feedback></span>
+  </div>`;
+}
+
+async function handleExitProgressClick(event) {
+  const button = event.target.closest?.("[data-exit-action]");
+  if (!button) return;
+  const token = positionSyncToken();
+  if (!token) return;
+  const {exitAction: action, exitSymbol: symbol, exitPlan: plan_id} = button.dataset;
+  const stage = Number(button.dataset.exitStage);
+  const messages = {start: "儲存此計畫的價位、原始股數與七日有效期限？只記錄，不會下單。", complete: `確認你已在券商實際完成第 ${stage} 批？這會記錄本人回報，不會下單。`, cancel: "取消此計畫並保留取消紀錄？"};
+  if (!window.confirm(messages[action] || "確認更新出場紀錄？")) return;
+  button.disabled = true;
+  const feedback = button.parentElement.querySelector("[data-exit-feedback]");
+  if (feedback) feedback.textContent = "儲存中…";
+  try {
+    const body = {action, symbol, version: Number(button.dataset.exitVersion)};
+    if (action !== "start") body.plan_id = plan_id;
+    if (action === "complete") Object.assign(body, {stage, confirmed: true});
+    const response = await fetch("/api/exit-progress", {method: "POST", headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`}, body: JSON.stringify(body)});
+    if (token !== positionSyncToken()) return;
+    if (response.status === 401) { requireOwnerReconnect(token); throw new Error("連接已失效，請重新連接"); }
+    if (response.status === 409) {
+      await renderMyHoldings();
+      if (token === positionSyncToken() && $("myHoldingsStatus")) $("myHoldingsStatus").textContent = "出場紀錄已有較新版，已重新讀取；請核對後再操作。";
+      return;
+    }
+    const data = await readJson(response);
+    if (!data.storage?.durable) throw new Error("尚未確認持久化，請重新讀取紀錄");
+    await renderMyHoldings();
+  } catch (err) {
+    if (token !== positionSyncToken()) return;
+    if (feedback) feedback.textContent = `未完成：${err.message}`;
+    button.disabled = false;
+  }
+}
+
+async function loadExitProgressHistory(requestVersion) {
+  const panel = $("myExitHistoryPanel"), token = positionSyncToken();
+  if (!panel) return;
+  panel.textContent = "";
+  if (!token) return;
+  try {
+    const response = await fetch("/api/exit-progress", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
+    if (requestVersion !== holdingsRenderVersion || token !== positionSyncToken()) return;
+    if (response.status === 401) { requireOwnerReconnect(token); return; }
+    const data = await readJson(response);
+    if (requestVersion !== holdingsRenderVersion || token !== positionSyncToken()) return;
+    const plans = Object.values(data.plans || {});
+    if (!plans.length) return;
+    panel.innerHTML = `<details><summary>私人出場紀錄（${plans.length} 檔，含已退出持股）</summary><p>僅供本人追蹤；完成狀態是本人回報，並非券商成交證明。</p>`
+      + plans.map(p => {
+        const report = data.completion_reports?.[p.symbol];
+        const count = asArray(p.completed_stages).length;
+        const done = asArray(p.stages).slice(0, count).reduce((sum, row) => sum + Number(row.fraction || 0), 0);
+        const total = asArray(p.stages).reduce((sum, row) => sum + Number(row.fraction || 0), 0);
+        const controls = report ? renderExitProgressControls(p.symbol, {executable: false, plan: [], completion_report: report,
+          exit_progress: {...p, version: data.version, status: "completion_pending", completed_fraction: done, remaining_fraction: Math.max(0, total - done)}}) : "";
+        return `<div style="padding:5px 0;">${escapeHtml(p.symbol)}｜${escapeHtml(({active: "追蹤中", completed: "已完成", cancelled: "已取消"})[p.status] || p.status)}｜已完成 ${count}/${asArray(p.stages).length} 批｜原始 ${Number(p.original_shares).toLocaleString()} 股｜有效至 ${escapeHtml(String(p.expires_at || "").slice(0, 10))}${controls}</div>`;
+      }).join("") + "</details>";
+    panel.onclick = handleExitProgressClick;
+  } catch (_) {
+    if (requestVersion === holdingsRenderVersion && token === positionSyncToken()) panel.textContent = "私人出場紀錄暫時無法讀取。";
+  }
 }
 
 // ---- 賣出時機 ----
@@ -3777,7 +3884,7 @@ function renderSellTiming(t) {
   }).join("");
 
   const plan = asArray(t.plan).map(step =>
-    `<div style="padding:2px 0;">第 ${step.stage} 批：<b>${Number(step.price).toFixed(2)}</b> 元收盤跌破「${escapeHtml(step.label)}」→ 減碼 ${(Number(step.fraction) * 100).toFixed(0)}%</div>`
+    `<div style="padding:2px 0;">第 ${step.stage} 批：${step.trigger === "thesis_broken" ? `人工核對「${escapeHtml(step.label)}」` : `<b>${Number(step.price).toFixed(2)}</b> 元收盤跌破「${escapeHtml(step.label)}」`} → 減碼${step.fraction_basis === "original_plan_shares" ? "原始部位 " : " "}${(Number(step.fraction) * 100).toFixed(0)}%${step.target_shares != null ? `（${Number(step.target_shares).toLocaleString()} 股，實際交易單位另核對）` : ""}</div>`
   ).join("");
 
   return holding + `<div style="font-size:12px;background:${style.bg};border:1px solid ${style.line};border-radius:6px;padding:8px 9px;margin-top:7px;line-height:1.55;">

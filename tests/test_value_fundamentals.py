@@ -76,9 +76,9 @@ class ValueFundamentalsTests(unittest.TestCase):
         fundamentals = {"2027": {
             "name": "大成鋼",
             "quarterly": [
-                {"roe": 4.5, "gross_profit_margin": 25, "operating_income_margin": 15,
+                {"period": period, "roe": 4.5, "gross_profit_margin": 25, "operating_income_margin": 15,
                  "earnings_quality": 1.0, "debt_ratio": 44}
-                for _ in range(4)
+                for period in ("2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31")
             ],
             "valuation": {
                 "date": rows[-1]["date"], "pe": 10.0, "pb": 1.5,
@@ -103,8 +103,9 @@ class ValueFundamentalsTests(unittest.TestCase):
         fundamentals = {"2317": {
             "name": "鴻海",
             "quarterly": [
-                {"period": f"2025-{month:02d}-30", "roe": 3.1, "gross_profit_margin": 6.1,
-                 "operating_income_margin": 3.4, "earnings_quality": 0.99, "debt_ratio": 62.0}
+                {"period": f"2025-{month:02d}-{'31' if month in (3, 12) else '30'}", "roe": 3.1, "gross_profit_margin": 6.1,
+                 "operating_income_margin": 3.4, "earnings_quality": 0.99, "debt_ratio": 62.0,
+                 "operating_cash_flow": 99.0, "net_income": 100.0}
                 for month in (3, 6, 9, 12)
             ],
             "valuation": {"date": rows[-1]["date"], "pe": 15.0, "pb": 1.5,
@@ -127,7 +128,7 @@ class ValueFundamentalsTests(unittest.TestCase):
         fundamentals = {"5871": {
             "name": "中租-KY",
             "quarterly": [
-                {"period": f"2025-{month:02d}-30", "roe": 2.95, "gross_profit_margin": 5,
+                {"period": f"2025-{month:02d}-{'31' if month in (3, 12) else '30'}", "roe": 2.95, "gross_profit_margin": 5,
                  "operating_income_margin": 4, "earnings_quality": 0.2, "debt_ratio": 79.1}
                 for month in (3, 6, 9, 12)
             ],

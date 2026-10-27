@@ -22,6 +22,49 @@ def item(**updates):
 
 
 class ExitEngineTests(unittest.TestCase):
+    def test_no_data_never_means_safe_hold(self):
+        result = score_exit({}, gain=None, weight=None)
+        self.assertEqual(result["coverage"], 0)
+        self.assertEqual(result["status"], "insufficient_data")
+        self.assertFalse(result["executable"])
+        self.assertEqual(result["suggested_fraction"], 0)
+
+    def test_missing_essential_valuation_blocks_even_with_other_coverage(self):
+        result = score_exit(item(valuation_pct=None), gain=0.2, weight=0.1)
+        self.assertGreaterEqual(result["coverage"], 70)
+        self.assertEqual(result["status"], "insufficient_data")
+
+    def test_stale_context_blocks_high_score_and_thesis_exit(self):
+        trend = {**item()["fundamental_trend"], "quarterly_eps_yoy": -20,
+                 "quarterly_revenue_yoy": -15, "earnings_quality_ttm": 0.2}
+        result = score_exit(item(as_of="2026-10-22", valuation_pct=99, quality_pass=False,
+                                 fundamental_trend=trend), gain=0.3, weight=0.3,
+                            expected_as_of="2026-10-23")
+        self.assertEqual(result["status"], "stale_data")
+        self.assertFalse(result["thesis_broken"])
+        self.assertEqual(result["suggested_fraction"], 0)
+
+    def test_nan_inputs_do_not_count_as_observed_or_produce_nan_score(self):
+        result = score_exit(item(price=float("nan"), fundamental_trend={
+            "quarterly_eps_yoy": float("nan"), "earnings_quality_ttm": float("inf")}),
+            gain=None, weight=None)
+        self.assertEqual(result["status"], "insufficient_data")
+        self.assertEqual(result["coverage_by_component"]["accounting_quality"], 0)
+        self.assertEqual(result["coverage_by_component"]["momentum"], 0)
+
+    def test_etf_is_not_rejected_for_missing_company_fundamentals(self):
+        result = score_exit(item(is_etf=True, valuation_pct=None, quality_pass=None,
+                                 fundamental_trend={}), gain=0.2, weight=None)
+        self.assertEqual(result["status"], "hold")
+        self.assertTrue(result["executable"])
+
+    def test_etf_dca_without_stock_moving_averages_keeps_allocation_track(self):
+        result = score_exit({"is_etf": True, "dca": True, "price": 32.5,
+                             "as_of": "2026-10-23"}, gain=None, weight=None,
+                            expected_as_of="2026-10-23")
+        self.assertTrue(result["executable"])
+        self.assertEqual(result["label"], "ETF 配置觀察")
+
     def test_high_valuation_alone_only_watches_profit(self):
         result = score_exit(item(valuation_pct=96), gain=0.45, weight=0.08)
         self.assertEqual(result["score"], 30.0)
@@ -43,13 +86,14 @@ class ExitEngineTests(unittest.TestCase):
         self.assertTrue(result["thesis_broken"])
         self.assertGreaterEqual(result["score"], 75)
 
-    def test_missing_data_caps_trim_to_watch(self):
+    def test_missing_data_cannot_produce_executable_trim(self):
         sparse = item(valuation_pct=96, price=80, ma20=95, ma60=100,
                       distance_from_high_252=-0.25, fundamental_trend={})
         result = score_exit(sparse, gain=0.30, weight=None)
         self.assertGreaterEqual(result["score"], 45)
         self.assertLess(result["coverage"], 70)
-        self.assertEqual(result["status"], "watch_profit")
+        self.assertEqual(result["status"], "insufficient_data")
+        self.assertFalse(result["executable"])
 
     def test_partial_fields_do_not_claim_full_fundamental_coverage(self):
         partial = item(fundamental_trend={"monthly_revenue_yoy_latest": -15.0})
