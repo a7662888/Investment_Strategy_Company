@@ -1420,6 +1420,19 @@ def holdings(code: str) -> dict:
 LOOKTHROUGH = {'0050': 'yuanta', '0056': 'yuanta', '00713': 'yuanta', '006208': 'fubon', '009816': 'kgi'}
 
 
+def passive_pair(code: str) -> tuple[dict, dict | None]:
+    issuer = LOOKTHROUGH[code]
+    return (yuanta_pair if issuer == 'yuanta' else fubon_pair if issuer == 'fubon' else kgi_pair)(code)
+
+
+def _lookthrough_doc(code: str, current: dict, status: str, **extra) -> dict:
+    rows = [{'code': h['code'], 'name': h['name'], 'weight_pct': h['weight_pct'], 'asset_type': h['asset_type']}
+            for h in current['holdings']]
+    return {'code': code, 'status': status, 'as_of': current['as_of'], 'source': current['source'],
+            'holdings': rows, 'weight_total_pct': round(sum(r['weight_pct'] for r in rows), 2),
+            'scope': current.get('scope'), **extra}
+
+
 def lookthrough(code: str) -> dict:
     if code not in LOOKTHROUGH:
         raise ValueError('此 ETF 尚未串接官方成分股')
@@ -1427,14 +1440,13 @@ def lookthrough(code: str) -> dict:
     def load():
         token = _DEADLINE.set(time.monotonic() + 35)
         try:
-            issuer = LOOKTHROUGH[code]
-            current = (yuanta_pair if issuer == 'yuanta' else fubon_pair if issuer == 'fubon' else kgi_pair)(code)[0]
-            rows = [{'code': h['code'], 'name': h['name'], 'weight_pct': h['weight_pct'], 'asset_type': h['asset_type']}
-                    for h in current['holdings']]
-            return {'code': code, 'status': 'official_snapshot', 'as_of': current['as_of'], 'source': current['source'],
-                    'holdings': rows, 'weight_total_pct': round(sum(r['weight_pct'] for r in rows), 2),
-                    'scope': current.get('scope')}
+            return _lookthrough_doc(code, passive_pair(code)[0], 'official_snapshot')
         except Exception as exc:  # noqa: BLE001 - 單檔讀不到就標明，不以其他基金代填
+            # 元大、凱基 API 擋國外主機（Render 實測 2026-11-01 URLError），改用每日批次存下的官方快照。
+            stored = stored_pair(code)
+            if stored:
+                return _lookthrough_doc(code, stored['current'], 'stored_official', stored_at=stored.get('saved_at'),
+                                        error=type(exc).__name__)
             return {'code': code, 'status': 'unavailable', 'holdings': [], 'error': type(exc).__name__}
         finally:
             _DEADLINE.reset(token)

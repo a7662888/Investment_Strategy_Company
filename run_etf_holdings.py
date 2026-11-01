@@ -19,6 +19,8 @@ ROOT = Path(__file__).resolve().parent
 
 
 def issuer_of(code: str) -> str:
+    if code in e.LOOKTHROUGH:
+        return {"yuanta": "元大", "fubon": "富邦", "kgi": "凱基"}[e.LOOKTHROUGH[code]]
     for name, group in (("統一", e.EZMONEY), ("復華", e.FH), ("聯博", e.AB), ("元大", e.YUANTA),
                         ("群益", e.CAPITAL), ("野村", e.NOMURA),
                         ("國泰", e.CATHAY), ("富邦", e.FUBON), ("凱基", e.KGI), ("安聯", e.ALLIANZ),
@@ -35,11 +37,13 @@ def main() -> int:
         print(json.dumps({"skipped": "session not settled; PCF for the next session is published after close"}))
         return 0
     codes = sorted(r["code"] for r in e.catalog()["rows"] if r.get("active") and e.supported_issuer(r["code"]))
+    # 持股透視用的被動式 ETF：網站主機連不到部分投信，同樣靠每日批次存官方快照。
+    codes += sorted(e.LOOKTHROUGH)
     report: dict[str, dict] = defaultdict(lambda: {"ok": 0, "failed": 0, "errors": []})
     for code in codes:
         token = e._DEADLINE.set(time.monotonic() + 40)
         try:
-            current, previous = e.fetch_pair(code)
+            current, previous = e.passive_pair(code) if code in e.LOOKTHROUGH else e.fetch_pair(code)
             doc = {"schema_version": 1, "code": code, "saved_at": e.now_iso(), "current": current, "previous": previous}
             save_document(doc, ROOT / "data" / "etf" / "holdings" / f"{code}.json",
                           e.STORED_REMOTE.format(code=code), f"chore(etf): official holdings {code} {current['as_of']}")

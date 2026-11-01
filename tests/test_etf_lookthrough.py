@@ -56,3 +56,19 @@ def test_endpoint_filters_codes():
         assert "009816" in body["supported"]
     finally:
         server.shutdown()
+
+
+def test_blocked_issuer_falls_back_to_stored_daily_snapshot():
+    etf_research._CACHE.clear()
+    stored = {"saved_at": "2026-11-01T14:00:00+08:00", "current": snapshot("0050")}
+    with patch.object(etf_research, "yuanta_pair", side_effect=OSError("blocked")), \
+            patch.object(etf_research, "stored_pair", return_value=stored):
+        doc = etf_research.lookthrough("0050")
+    assert doc["status"] == "stored_official" and doc["stored_at"] == stored["saved_at"]
+    assert doc["holdings"][0]["code"] == "2330" and doc["error"] == "OSError"
+
+
+def test_daily_batch_stores_lookthrough_codes():
+    import run_etf_holdings
+    assert run_etf_holdings.issuer_of("009816") == "凱基"
+    assert run_etf_holdings.issuer_of("0050") == "元大"

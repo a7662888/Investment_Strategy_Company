@@ -2659,7 +2659,7 @@ async function renderLookthrough() {
   try { data = await readJson(await fetch(`/api/etf-lookthrough?codes=${encodeURIComponent(etfCodes.join(","))}`)); }
   catch (err) { if (version === lookthroughRequestVersion) box.innerHTML = ""; return; }
   if (version !== lookthroughRequestVersion) return;
-  const official = new Map(asArray(data.items).filter(i => i.status === "official_snapshot").map(i => [i.code, i]));
+  const official = new Map(asArray(data.items).filter(i => ["official_snapshot", "stored_official"].includes(i.status)).map(i => [i.code, i]));
   const exposure = new Map();
   const add = (code, name, value, via) => {
     const row = exposure.get(code) || {code, name, direct: 0, viaEtf: 0, etfs: new Set()};
@@ -2698,7 +2698,7 @@ async function renderLookthrough() {
     ${pairs.length ? `<p style="font-size:12.5px;margin:6px 0;color:#b45309;">${escapeHtml(pairs.join("；"))}。重疊越高，同時持有越不算分散。</p>` : ""}
     ${overCap.length ? `<p style="font-size:12.5px;margin:6px 0;color:#b45309;">透視後超過你設定的單一個股上限 ${cap}%：${overCap.map(r => `${escapeHtml(r.code)} ${escapeHtml(r.name)} ${(r.value / total * 100).toFixed(1)}%`).join("、")}</p>` : ""}
     <div style="overflow:auto;"><table><thead><tr><th>個股</th><th>占股票類</th><th>金額（估）</th><th>來源</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0;">以投信官方申購買回清單權重估算（${held.map(d => `${escapeHtml(d.code)} ${escapeHtml(d.as_of)}`).join("、")}）；ETF 現金部位未拆。${opaque.length ? `未串接成分股、未拆分：${opaque.map(escapeHtml).join("、")}。` : ""}${cap != null ? "標色列為超過你自訂的單一個股上限（占總資產）。" : ""}</p>
+    <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0;">以投信官方申購買回清單權重估算（${held.map(d => `${escapeHtml(d.code)} ${escapeHtml(d.as_of)}${d.status === "stored_official" ? "・每日批次存檔" : ""}`).join("、")}）；ETF 現金部位未拆。${opaque.length ? `未串接成分股、未拆分：${opaque.map(escapeHtml).join("、")}。` : ""}${cap != null ? "標色列為超過你自訂的單一個股上限（占總資產）。" : ""}</p>
   </details>`;
 }
 
