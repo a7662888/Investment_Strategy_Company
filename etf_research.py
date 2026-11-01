@@ -64,6 +64,8 @@ FUBON_BASE = 'https://websys.fsit.com.tw/FubonETF/Trade'
 # （中文為 HTML 實體編碼）；queryDate 為 PCF 日，「(日期)每受益權單位淨資產價值」為持股日。
 KGI = {'00407A': 'J024'}
 KGI_URL = 'https://www.kgifund.com.tw/Fund/RedemptionVC'
+# 被動式 ETF 的凱基基金編號（只供持股透視用，不進主動式 ETF 研究流程）；J023 已核對頁面代號 (009816)。
+PASSIVE_KGI = {'009816': 'J023'}
 # 安聯投信：交易資訊頁（list-trade）POST /webapi/api/Fund/GetFundTradeInfo {FundNo, Date}；
 # Angular 標準 XSRF：先 GET AntiForgery/GetAntiForgeryToken 取 Cookie，再以 X-XSRF-TOKEN 標頭送出。
 # FundNo 為內部編號（回應 CSecuritiesCode 為股票代號，用來核對）；Date 為 PCF 日。
@@ -622,13 +624,18 @@ def parse_yuanta(raw: dict, code: str, source: str) -> dict:
     return {'code': code, 'as_of': date, 'effective_date': date_iso(meta.get('anndate')), 'units': number(meta.get('osunit')), 'aum_twd': number(meta.get('totalav')), 'nav': number(meta.get('nav')), 'holdings': positions, 'derivatives': derivatives, 'source': source, 'fetched_at': now_iso(), 'scope': '官方PCF現貨股票／債券／ETF部位；期貨另列；現金未列入本表'}
 
 
+def yuanta_url(code: str) -> str:
+    return YUANTA_URL.replace('00990A', code)
+
+
 def yuanta_pair(code: str) -> tuple[dict, dict | None]:
-    current = parse_yuanta(json.loads(read_public(YUANTA_URL)), code, YUANTA_URL)
+    url = yuanta_url(code)
+    current = parse_yuanta(json.loads(read_public(url)), code, url)
     for gap in range(1, 5):
         day = datetime.fromisoformat(current['effective_date']) - timedelta(days=gap)
         if day.weekday() >= 5:
             continue
-        source = YUANTA_URL + '&date=' + day.strftime('%Y%m%d')
+        source = url + '&date=' + day.strftime('%Y%m%d')
         try:
             previous = parse_yuanta(json.loads(read_public(source)), code, source)
             if previous['as_of'] < current['as_of']:
@@ -886,7 +893,7 @@ def parse_kgi(fragment: str, code: str, source: str) -> dict:
 
 
 def kgi_pair(code: str) -> tuple[dict, dict | None]:
-    fund = KGI[code]
+    fund = KGI.get(code) or PASSIVE_KGI[code]
     def fetch(day: str | None) -> dict:
         body = urllib.parse.urlencode({'fundID': fund, **({'queryDate': day} if day else {})}).encode()
         request = urllib.request.Request(KGI_URL, data=body, method='POST', headers={
@@ -1405,3 +1412,34 @@ def holdings(code: str) -> dict:
         finally:
             _DEADLINE.reset(token)
     return cached('holdings:' + code, 1800, load)
+
+
+# ---- 持股透視（被動式 ETF 官方成分股）----
+# 使用者持有市值型／高股息 ETF 時，用投信官方 PCF 權重把 ETF 拆回成分股，
+# 算出「透過幾檔 ETF 加總後」實際持有多少台積電等個股。只收錄已核對過的投信 API。
+LOOKTHROUGH = {'0050': 'yuanta', '0056': 'yuanta', '00713': 'yuanta', '006208': 'fubon', '009816': 'kgi'}
+
+
+def lookthrough(code: str) -> dict:
+    if code not in LOOKTHROUGH:
+        raise ValueError('此 ETF 尚未串接官方成分股')
+
+    def load():
+        token = _DEADLINE.set(time.monotonic() + 35)
+        try:
+            issuer = LOOKTHROUGH[code]
+            current = (yuanta_pair if issuer == 'yuanta' else fubon_pair if issuer == 'fubon' else kgi_pair)(code)[0]
+            rows = [{'code': h['code'], 'name': h['name'], 'weight_pct': h['weight_pct'], 'asset_type': h['asset_type']}
+                    for h in current['holdings']]
+            return {'code': code, 'status': 'official_snapshot', 'as_of': current['as_of'], 'source': current['source'],
+                    'holdings': rows, 'weight_total_pct': round(sum(r['weight_pct'] for r in rows), 2),
+                    'scope': current.get('scope')}
+        except Exception as exc:  # noqa: BLE001 - 單檔讀不到就標明，不以其他基金代填
+            return {'code': code, 'status': 'unavailable', 'holdings': [], 'error': type(exc).__name__}
+        finally:
+            _DEADLINE.reset(token)
+    result = cached('lookthrough:' + code, 12 * 3600, load)
+    if result['status'] != 'official_snapshot':
+        with _LOCK:
+            _CACHE.pop('lookthrough:' + code, None)  # 失敗不快取，下次重試
+    return result

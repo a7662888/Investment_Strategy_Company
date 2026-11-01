@@ -2507,6 +2507,7 @@ async function loadInvestmentPlan() {
   investmentPlan = plan;
   fillPlanForm(plan);
   renderPlanAnalysis();
+  renderLookthrough();
 }
 
 async function saveInvestmentPlan(plan) {
@@ -2532,6 +2533,7 @@ async function saveInvestmentPlan(plan) {
   browserStore.setItem(PLAN_STORAGE_KEY, JSON.stringify(investmentPlan));
   fillPlanForm(investmentPlan);
   renderPlanAnalysis();
+  renderLookthrough();
   return true;
 }
 
@@ -2637,6 +2639,67 @@ function renderStressPlanRules() {
   const conflict = planConflictNote(investmentPlan, a, reserve);
   box.innerHTML = `<p style="margin:6px 0 0;"><b>你的計畫</b>：${[equity, reserve ? escapeHtml(reserve.text) : "未設定預備加碼"].filter(Boolean).join("；")}</p>`
     + (conflict ? `<p style="margin:2px 0 0;color:#b91c1c;">${escapeHtml(conflict)}</p>` : "");
+}
+
+// ---- 持股透視（P3）：把 ETF 依投信官方成分權重拆回個股，再加上直接持有的個股 ----
+// 例如同時持有 0050、006208、009816 時，三檔其實大部分是同一批股票；這裡算出加總後的實際曝險。
+let lookthroughRequestVersion = 0;
+function pairOverlap(a, b) {
+  const wa = new Map(asArray(a.holdings).map(h => [h.code, Number(h.weight_pct) || 0]));
+  return asArray(b.holdings).reduce((sum, h) => sum + Math.min(wa.get(h.code) || 0, Number(h.weight_pct) || 0), 0);
+}
+async function renderLookthrough() {
+  const box = $("lookthroughPanel");
+  if (!box) return;
+  const version = ++lookthroughRequestVersion;
+  const priced = lastHoldingValues.filter(h => h.price != null && h.shares > 0);
+  const etfCodes = priced.filter(h => assetClass(h.symbol) === "etf").map(h => h.symbol.split(".")[0]);
+  if (!etfCodes.length) { box.innerHTML = ""; return; }
+  let data;
+  try { data = await readJson(await fetch(`/api/etf-lookthrough?codes=${encodeURIComponent(etfCodes.join(","))}`)); }
+  catch (err) { if (version === lookthroughRequestVersion) box.innerHTML = ""; return; }
+  if (version !== lookthroughRequestVersion) return;
+  const official = new Map(asArray(data.items).filter(i => i.status === "official_snapshot").map(i => [i.code, i]));
+  const exposure = new Map();
+  const add = (code, name, value, via) => {
+    const row = exposure.get(code) || {code, name, direct: 0, viaEtf: 0, etfs: new Set()};
+    if (via) { row.viaEtf += value; row.etfs.add(via); } else row.direct += value;
+    exposure.set(code, row);
+  };
+  let equity = 0, opaque = [];
+  for (const h of priced) {
+    const value = h.price * h.shares, code = h.symbol.split(".")[0], cls = assetClass(h.symbol);
+    if (cls === "bond") continue;
+    equity += value;
+    if (cls === "stock") { add(code, "", value, null); continue; }
+    const doc = official.get(code);
+    if (!doc) { opaque.push(code); continue; }
+    asArray(doc.holdings).forEach(row => add(row.code, row.name, value * (Number(row.weight_pct) || 0) / 100, code));
+  }
+  if (!official.size || !(equity > 0)) { box.innerHTML = ""; return; }
+  const total = planAllocation(investmentPlan).total;
+  const cap = investmentPlan?.max_single_stock_pct;
+  const top = [...exposure.values()].map(r => ({...r, value: r.direct + r.viaEtf}))
+    .sort((a, b) => b.value - a.value).slice(0, 8);
+  const rows = top.map(r => {
+    const ofTotal = total > 0 ? r.value / total * 100 : null;
+    const over = cap != null && ofTotal != null && ofTotal > cap;
+    return `<tr${over ? ' style="color:#b45309;font-weight:600;"' : ""}><td>${escapeHtml(r.code)} ${escapeHtml(r.name)}</td>
+      <td>${(r.value / equity * 100).toFixed(1)}%</td><td>${formatNT(r.value)}</td>
+      <td>${r.direct ? `直接 ${formatNT(r.direct)}` : ""}${r.direct && r.viaEtf ? "＋" : ""}${r.viaEtf ? `經 ${[...r.etfs].join("、")}` : ""}</td></tr>`;
+  }).join("");
+  const held = [...official.values()];
+  const pairs = [];
+  for (let i = 0; i < held.length; i++) for (let j = i + 1; j < held.length; j++) {
+    pairs.push(`${held[i].code} 與 ${held[j].code} 成分重疊 ${pairOverlap(held[i], held[j]).toFixed(1)}%`);
+  }
+  const overCap = cap != null && total > 0 ? top.filter(r => r.value / total * 100 > cap) : [];
+  box.innerHTML = `<details open style="margin:10px 0;"><summary style="cursor:pointer;font-size:14px;font-weight:700;">🔍 持股透視（ETF 拆回成分股後的實際曝險）</summary>
+    ${pairs.length ? `<p style="font-size:12.5px;margin:6px 0;color:#b45309;">${escapeHtml(pairs.join("；"))}。重疊越高，同時持有越不算分散。</p>` : ""}
+    ${overCap.length ? `<p style="font-size:12.5px;margin:6px 0;color:#b45309;">透視後超過你設定的單一個股上限 ${cap}%：${overCap.map(r => `${escapeHtml(r.code)} ${escapeHtml(r.name)} ${(r.value / total * 100).toFixed(1)}%`).join("、")}</p>` : ""}
+    <div style="overflow:auto;"><table><thead><tr><th>個股</th><th>占股票類</th><th>金額（估）</th><th>來源</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p style="font-size:11.5px;color:var(--muted);margin:4px 0 0;">以投信官方申購買回清單權重估算（${held.map(d => `${escapeHtml(d.code)} ${escapeHtml(d.as_of)}`).join("、")}）；ETF 現金部位未拆。${opaque.length ? `未串接成分股、未拆分：${opaque.map(escapeHtml).join("、")}。` : ""}${cap != null ? "標色列為超過你自訂的單一個股上限（占總資產）。" : ""}</p>
+  </details>`;
 }
 
 // 大跌情境卡：把「現在跌了多少」放進歷史基準率裡看，並重申系統既有規則。
@@ -4041,6 +4104,7 @@ async function renderMyHoldings() {
   lastHoldingValues = pos.map(p => ({symbol: p.symbol, shares: Number(p.shares),
     price: valueActions[p.symbol]?.price != null ? Number(valueActions[p.symbol].price) : null}));
   renderPlanAnalysis();
+  renderLookthrough();
 }
 
 function renderExitProgressControls(symbol, timing) {

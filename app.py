@@ -3955,6 +3955,13 @@ class Handler(SimpleHTTPRequestHandler):
                 document, storage = load_history_day(day) if day else load_history_index()
                 self.send_json({**(document or {}), "storage": storage})
                 return
+            if parsed.path == "/api/etf-lookthrough":
+                import etf_research
+                codes = [c.strip().upper() for c in (query.get("codes", [""])[0] or "").split(",") if c.strip()]
+                codes = [c for c in dict.fromkeys(codes) if c in etf_research.LOOKTHROUGH][:8]
+                self.send_json({"supported": sorted(etf_research.LOOKTHROUGH),
+                                "items": [etf_research.lookthrough(c) for c in codes]})
+                return
             if parsed.path == "/api/market-stress":
                 brief, _ = load_premarket_brief()
                 self.send_json({**load_market_stress(),
