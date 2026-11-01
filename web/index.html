@@ -147,6 +147,31 @@
       </details>
       <div id="myHoldingsPanel"><p style="color:var(--muted); font-size:13px;">輸入持股後，這裡會顯示每檔損益、持股建議與可稽核的 Exit Score 獲利保護提醒。</p></div>
       <div id="myExitHistoryPanel" style="font-size:12px;margin-top:10px;"></div>
+      <!-- 我的投資計畫：所有數字由業主自訂；網站只拿這些規則對照目前持股與市場資料，不替使用者定數字。 -->
+      <details id="planDetails" style="margin:12px 0 0;border-top:1px dashed var(--line);padding-top:10px;">
+        <summary style="cursor:pointer;font-size:14px;font-weight:700;">🗂 我的投資計畫（配置、再平衡、預備加碼）<span id="planStatus" style="font-weight:400;font-size:12px;color:var(--muted);margin-left:6px;">尚未設定</span></summary>
+        <div id="planAnalysis" style="font-size:12.5px;margin:8px 0;"></div>
+        <div id="planForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;font-size:12.5px;">
+          <label>投資期限（年）<input id="planHorizon" type="number" min="0" max="60" step="1" placeholder="例：10"></label>
+          <label>股票類目標比例（%）<input id="planTargetEquity" type="number" min="0" max="100" step="1"></label>
+          <label>現金／定存等保守資產（元）<input id="planCash" type="number" min="0" step="1000"></label>
+          <label>再平衡容忍帶（±百分點）<input id="planBand" type="number" min="1" max="50" step="1"></label>
+          <label>單一個股上限（占總資產 %）<input id="planMaxStock" type="number" min="1" max="100" step="1"></label>
+          <label>預備加碼總額（元）<input id="planReserveTotal" type="number" min="0" step="1000"></label>
+          <label>分成幾份<input id="planReserveTranches" type="number" min="1" max="36" step="1" value="1"></label>
+          <label>分批方式<select id="planReserveMode"><option value="monthly">每月一份</option><option value="drawdown">0050 離高點達門檻時一份</option></select></label>
+          <label>起始月份（每月一份用）<input id="planReserveStart" type="month"></label>
+          <label>跌幅門檻 %（逗號分隔，份數要一致）<input id="planReserveSteps" type="text" placeholder="例：10,20,30"></label>
+          <label>已執行份數<input id="planReserveExecuted" type="number" min="0" max="36" step="1" value="0"></label>
+          <label style="grid-column:1/-1;">備註（最多 500 字）<input id="planNotes" type="text" maxlength="500"></label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+          <button id="planSave" class="primary" type="button" style="padding:7px 16px;">儲存計畫</button>
+          <button id="planMarkExecuted" type="button" style="padding:7px 12px;">已執行一份</button>
+          <span id="planSaveNote" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+        <p style="font-size:11.5px;color:var(--muted);margin:6px 0 0;">數字全部由你自訂；網站只依你的規則對照目前持股與 0050 走勢提示，不替你決定金額或價位。已配對裝置存進私有資料庫，未配對時只存在此瀏覽器。</p>
+      </details>
     </section>
 
     <!-- 每日 current-state：與不可變的 Decision Ledger 分離 -->
@@ -347,6 +372,6 @@
     }
   </style>
 
-  <script src="/app.js?v=20261101-1" charset="utf-8"></script>
+  <script src="/app.js?v=20261101-2" charset="utf-8"></script>
 </body>
 </html>
