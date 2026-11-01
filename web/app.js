@@ -81,6 +81,10 @@ let positionCloudVersion = 0;
 let positionSyncGeneration = 0;
 let brokerSyncGeneration = 0;
 let holdingsRenderVersion = 0;
+// 投資計畫狀態宣告在檔案前段：持股與大跌卡的非同步流程都會讀到。
+const PLAN_STORAGE_KEY = "investment_strategy_plan";
+let investmentPlan = null, investmentPlanVersion = 0;
+let lastHoldingValues = [], lastMarketStress = null;
 let brokerInventory = null;
 let brokerLastReadable = null; // 僅供核對舊日期與數量，永不直接送入 effectiveHoldings。
 let brokerPositionsEnabled = browserStore.getItem("investment_strategy_broker_enabled") === "true";
@@ -1401,6 +1405,13 @@ function safeBind(id, handler) {
 }
 
 function bindActions() {
+  safeBind("planSave", () => saveInvestmentPlan(planFromForm()));
+  safeBind("planMarkExecuted", () => {
+    const plan = planFromForm();
+    if (plan.reserve.executed >= plan.reserve.tranches) { $("planSaveNote").textContent = "已全部執行完畢"; return; }
+    plan.reserve.executed += 1;
+    return saveInvestmentPlan(plan);
+  });
   safeBind("homePositionSave", async () => {
     const input = $("homePositionInput");
     if (!input) return;
@@ -2437,6 +2448,197 @@ async function loadPremarketBrief() {
   if (note) note.textContent = `${d.discipline || ""} ${d.disclaimer || ""}`;
 }
 
+// ---- 我的投資計畫（P2 計畫、P4 再平衡、P6 集中度）----
+// 數字全部是業主自訂；這裡只把「業主自己的規則」對照目前持股與 0050 回檔，不產生新的建議數字。
+
+function assetClass(symbol) {
+  const code = String(symbol || "").split(".")[0];
+  if (/^00\d+[A-Z]*B$/.test(code)) return "bond";
+  return code.startsWith("00") ? "etf" : "stock";
+}
+function formatNT(value) {
+  return value == null || !Number.isFinite(value) ? "—" : `NT$${Math.round(value).toLocaleString()}`;
+}
+
+function planFromForm() {
+  const num = id => { const v = $(id)?.value; return v === "" || v == null ? null : Number(v); };
+  const steps = String($("planReserveSteps")?.value || "").split(/[,，\s]+/).filter(Boolean).map(Number);
+  return {
+    horizon_years: num("planHorizon"), target_equity_pct: num("planTargetEquity"), cash_amount: num("planCash"),
+    rebalance_band_pct: num("planBand"), max_single_stock_pct: num("planMaxStock"),
+    reserve: {total: num("planReserveTotal"), tranches: num("planReserveTranches") || 1,
+      mode: $("planReserveMode")?.value || "monthly", drawdown_steps_pct: steps,
+      start_month: $("planReserveStart")?.value || null, executed: num("planReserveExecuted") || 0},
+    notes: $("planNotes")?.value || "",
+  };
+}
+function fillPlanForm(plan) {
+  const set = (id, value) => { if ($(id)) $(id).value = value == null ? "" : value; };
+  const r = (plan && plan.reserve) || {};
+  set("planHorizon", plan?.horizon_years); set("planTargetEquity", plan?.target_equity_pct);
+  set("planCash", plan?.cash_amount); set("planBand", plan?.rebalance_band_pct);
+  set("planMaxStock", plan?.max_single_stock_pct); set("planReserveTotal", r.total);
+  set("planReserveTranches", r.tranches || 1); set("planReserveMode", r.mode || "monthly");
+  set("planReserveStart", r.start_month); set("planReserveSteps", asArray(r.drawdown_steps_pct).join(","));
+  set("planReserveExecuted", r.executed || 0); set("planNotes", plan?.notes || "");
+}
+// 前端先擋明顯錯誤，伺服器 normalize_plan 仍是最終驗證。
+function validatePlan(plan) {
+  const r = plan.reserve;
+  if (plan.target_equity_pct != null && !(plan.target_equity_pct >= 0 && plan.target_equity_pct <= 100)) return "股票類目標比例須介於 0–100";
+  if (r.mode === "drawdown" && r.drawdown_steps_pct.length !== r.tranches) return "依跌幅分批時，門檻數量要等於份數";
+  if (r.executed > r.tranches) return "已執行份數不可大於總份數";
+  if (r.drawdown_steps_pct.some(x => !(x >= 1 && x <= 90))) return "跌幅門檻須介於 1–90";
+  return "";
+}
+
+async function loadInvestmentPlan() {
+  const token = positionSyncToken();
+  let plan = null;
+  if (token) {
+    try {
+      const doc = await readJson(await fetch("/api/plan", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"}));
+      plan = doc.plan; investmentPlanVersion = doc.version || 0;
+    } catch (err) { console.warn("plan load failed:", err); }
+  }
+  if (!plan) {
+    try { plan = JSON.parse(browserStore.getItem(PLAN_STORAGE_KEY) || "null"); } catch (err) { plan = null; }
+  }
+  investmentPlan = plan;
+  fillPlanForm(plan);
+  renderPlanAnalysis();
+}
+
+async function saveInvestmentPlan(plan) {
+  const note = $("planSaveNote");
+  const problem = validatePlan(plan);
+  if (problem) { if (note) note.textContent = problem; return false; }
+  const token = positionSyncToken();
+  if (token) {
+    try {
+      const doc = await readJson(await fetch("/api/plan", {method: "POST",
+        headers: {"Content-Type": "application/json", Authorization: `Bearer ${token}`},
+        body: JSON.stringify({plan, version: investmentPlanVersion})}));
+      investmentPlan = doc.plan; investmentPlanVersion = doc.version;
+      if (note) note.textContent = `已存入私有資料庫（第 ${doc.version} 版）`;
+    } catch (err) {
+      if (note) note.textContent = `雲端儲存失敗：${err.message}（若顯示版本衝突，請重新整理後再改）`;
+      return false;
+    }
+  } else {
+    investmentPlan = plan;
+    if (note) note.textContent = "已存在此瀏覽器（未配對，不會同步到其他裝置）";
+  }
+  browserStore.setItem(PLAN_STORAGE_KEY, JSON.stringify(investmentPlan));
+  fillPlanForm(investmentPlan);
+  renderPlanAnalysis();
+  return true;
+}
+
+function reserveStatus(plan) {
+  const r = plan && plan.reserve;
+  if (!r || !(r.total > 0) || !(r.tranches > 0)) return null;
+  const each = r.total / r.tranches;
+  const executed = Number(r.executed || 0);
+  if (executed >= r.tranches) return {text: `預備加碼 ${r.tranches} 份已全部執行完畢。`, due: false};
+  if (r.mode === "drawdown") {
+    if (!lastMarketStress?.available) return {text: "預備加碼依 0050 跌幅分批：目前取不到 0050 回檔資料，暫不判斷。", due: false};
+    const dd = Math.abs(Math.min(0, Number(lastMarketStress.current_drawdown))) * 100;
+    const steps = asArray(r.drawdown_steps_pct).map(Number);
+    const hit = steps.filter(step => dd >= step).length;
+    const next = steps[executed];
+    if (hit > executed) {
+      return {due: true, text: `0050 離高點 ${dd.toFixed(1)}%，已達你設定的第 ${executed + 1} 個門檻（−${next}%）：依你的計畫，可執行第 ${executed + 1} 份 ${formatNT(each)}。`};
+    }
+    return {due: false, text: `0050 離高點 ${dd.toFixed(1)}%；你的下一個門檻是 −${next}%（第 ${executed + 1} 份 ${formatNT(each)}）。`};
+  }
+  if (!r.start_month) return {text: `預備加碼每月一份（每份 ${formatNT(each)}）：尚未設定起始月份。`, due: false};
+  const now = new Date();
+  const [y, m] = r.start_month.split("-").map(Number);
+  const elapsed = (now.getFullYear() - y) * 12 + (now.getMonth() + 1 - m) + 1;
+  const due = Math.max(0, Math.min(r.tranches, elapsed));
+  if (due > executed) return {due: true, text: `依你的計畫，到本月應已執行 ${due} 份、目前記錄 ${executed} 份：可執行第 ${executed + 1} 份 ${formatNT(each)}。`};
+  return {due: false, text: elapsed < 1 ? `預備加碼從 ${r.start_month} 開始，每份 ${formatNT(each)}。` : `本月份已執行；共 ${r.tranches} 份，已執行 ${executed} 份。`};
+}
+
+function planAllocation(plan) {
+  const priced = lastHoldingValues.filter(h => h.price != null && h.shares > 0);
+  const missing = lastHoldingValues.filter(h => h.price == null).map(h => h.symbol);
+  const sum = cls => priced.filter(h => assetClass(h.symbol) === cls).reduce((a, h) => a + h.price * h.shares, 0);
+  const etf = sum("etf"), stock = sum("stock"), bond = sum("bond");
+  const cash = Number(plan?.cash_amount || 0);
+  const total = etf + stock + bond + cash;
+  return {etf, stock, bond, cash, total, equity: etf + stock, priced, missing};
+}
+
+// 預備加碼與再平衡同時觸發但方向相反時，明講衝突，由業主自己決定先遵守哪一條。
+function planConflictNote(plan, a, reserve) {
+  if (!reserve?.due || !a.priced.length || !(a.total > 0) || plan.target_equity_pct == null || plan.rebalance_band_pct == null) return "";
+  const actual = a.equity / a.total * 100;
+  return actual > plan.target_equity_pct + plan.rebalance_band_pct
+    ? `注意：股票類 ${actual.toFixed(1)}% 已高於你的目標 ${plan.target_equity_pct}% ±${plan.rebalance_band_pct}，再加碼會讓偏離更大；兩條規則方向相反，請自行決定先遵守哪一條。` : "";
+}
+
+function renderPlanAnalysis() {
+  const box = $("planAnalysis"), status = $("planStatus");
+  if (!box) return;
+  const plan = investmentPlan;
+  if (status) status.textContent = plan ? "已設定" : "尚未設定";
+  if (!plan) {
+    box.innerHTML = `<p style="color:var(--muted);margin:0;">設定股票類目標比例、再平衡容忍帶與預備加碼規則後，這裡會依<b>你自己的規則</b>檢查目前持股。</p>`;
+    renderStressPlanRules();
+    return;
+  }
+  const a = planAllocation(plan);
+  const lines = [];
+  if (!lastHoldingValues.length) {
+    lines.push(`<p style="color:var(--muted);margin:0 0 4px;">尚未輸入持股，配置與集中度暫不計算。</p>`);
+  } else if (!a.priced.length) {
+    lines.push(`<p style="color:var(--muted);margin:0 0 4px;">持股尚未取得收盤價，配置與集中度暫不計算。</p>`);
+  } else if (a.total > 0) {
+    const pct = v => `${(v / a.total * 100).toFixed(1)}%`;
+    lines.push(`<p style="margin:0 0 4px;">目前配置（以最新收盤估算）：股票類 <b>${pct(a.equity)}</b>（ETF ${pct(a.etf)}、個股 ${pct(a.stock)}）｜債券類 ${pct(a.bond)}｜現金 ${pct(a.cash)}｜總計 ${formatNT(a.total)}</p>`);
+    if (plan.target_equity_pct != null && plan.rebalance_band_pct != null) {
+      const actual = a.equity / a.total * 100;
+      const diff = actual - plan.target_equity_pct;
+      const gap = Math.abs(a.equity - plan.target_equity_pct / 100 * a.total);
+      lines.push(Math.abs(diff) > plan.rebalance_band_pct
+        ? `<p style="margin:0 0 4px;color:#b45309;font-weight:600;">⚖️ 依你的再平衡規則：股票類 ${actual.toFixed(1)}%，${diff > 0 ? "高於" : "低於"}目標 ${plan.target_equity_pct}% 達 ${Math.abs(diff).toFixed(1)} 個百分點（容忍 ±${plan.rebalance_band_pct}）。回到目標約需${diff > 0 ? "減少" : "增加"}股票類 ${formatNT(gap)}。</p>`
+        : `<p style="margin:0 0 4px;color:#137333;">⚖️ 股票類 ${actual.toFixed(1)}%，在你的目標 ${plan.target_equity_pct}% ±${plan.rebalance_band_pct} 內，不需再平衡。</p>`);
+    }
+    if (plan.max_single_stock_pct != null) {
+      const heavy = a.priced.filter(h => assetClass(h.symbol) === "stock" && h.price * h.shares / a.total * 100 > plan.max_single_stock_pct);
+      lines.push(heavy.length
+        ? `<p style="margin:0 0 4px;color:#b45309;">🎯 超過你設定的單一個股上限 ${plan.max_single_stock_pct}%：${heavy.map(h => `${escapeHtml(h.symbol)} ${(h.price * h.shares / a.total * 100).toFixed(1)}%`).join("、")}</p>`
+        : `<p style="margin:0 0 4px;color:#137333;">🎯 沒有個股超過你設定的上限 ${plan.max_single_stock_pct}%。</p>`);
+    }
+    if (a.missing.length) lines.push(`<p style="margin:0 0 4px;color:var(--muted);">未取得收盤價、未納入計算：${a.missing.map(escapeHtml).join("、")}</p>`);
+  }
+  const reserve = reserveStatus(plan);
+  if (reserve) lines.push(`<p style="margin:0 0 4px;${reserve.due ? "color:#b45309;font-weight:600;" : ""}">💰 ${escapeHtml(reserve.text)}</p>`);
+  const conflict = planConflictNote(plan, a, reserve);
+  if (conflict) lines.push(`<p style="margin:0 0 4px;color:#b91c1c;">${escapeHtml(conflict)}</p>`);
+  box.innerHTML = lines.join("");
+  renderStressPlanRules();
+}
+
+// 大跌情境卡裡只列「你的規則今天說什麼」，不另外給建議。
+function renderStressPlanRules() {
+  const box = $("stressPlanRules");
+  if (!box) return;
+  if (!investmentPlan) {
+    box.innerHTML = `<p style="margin:6px 0 0;"><b>你的計畫</b>：尚未設定。可在「我的持股」下方的「我的投資計畫」寫下目標配置與預備加碼規則，下次大跌時這裡會直接列出你的規則今天觸發了什麼。</p>`;
+    return;
+  }
+  const reserve = reserveStatus(investmentPlan);
+  const a = planAllocation(investmentPlan);
+  const equity = a.priced.length && a.total > 0 && investmentPlan.target_equity_pct != null
+    ? `股票類目前 ${(a.equity / a.total * 100).toFixed(1)}%（你的目標 ${investmentPlan.target_equity_pct}%${investmentPlan.rebalance_band_pct != null ? ` ±${investmentPlan.rebalance_band_pct}` : ""}）` : "";
+  const conflict = planConflictNote(investmentPlan, a, reserve);
+  box.innerHTML = `<p style="margin:6px 0 0;"><b>你的計畫</b>：${[equity, reserve ? escapeHtml(reserve.text) : "未設定預備加碼"].filter(Boolean).join("；")}</p>`
+    + (conflict ? `<p style="margin:2px 0 0;color:#b91c1c;">${escapeHtml(conflict)}</p>` : "");
+}
+
 // 大跌情境卡：把「現在跌了多少」放進歷史基準率裡看，並重申系統既有規則。
 // 數字全部來自 /api/market-stress（0050 含息還原收盤），前端不自行推估。
 function daysToMonths(days) {
@@ -2448,6 +2650,8 @@ async function loadMarketStress() {
   let d;
   try { d = await readJson(await fetch("/api/market-stress")); } catch (err) { section.style.display = "none"; return; }
   if (!d.available) { section.style.display = "none"; return; }
+  lastMarketStress = d;
+  renderPlanAnalysis();
   const riskOff = d.regime && d.regime.level === "risk_off";
   const deep = Number(d.current_drawdown) <= -0.10;  // 離高點 10%：回檔的常用門檻
   const triggered = riskOff || deep;
@@ -3834,6 +4038,9 @@ async function renderMyHoldings() {
     </article>`;
   }).join("");
   panel.onclick = handleExitProgressClick;
+  lastHoldingValues = pos.map(p => ({symbol: p.symbol, shares: Number(p.shares),
+    price: valueActions[p.symbol]?.price != null ? Number(valueActions[p.symbol].price) : null}));
+  renderPlanAnalysis();
 }
 
 function renderExitProgressControls(symbol, timing) {
@@ -4131,7 +4338,7 @@ function renderOutcomeCells(signal) {
 // two-page bundle has initialized. Without a pairing key the browser remains local-only.
 const homePositionRestore = $("homePositionInput");
 if (homePositionRestore && !homePositionRestore.value) homePositionRestore.value = browserStore.getItem(POSITION_STORAGE_KEY) || "";
-loadCloudPositions().finally(resumePendingWorkflows);
+loadCloudPositions().finally(() => { resumePendingWorkflows(); loadInvestmentPlan(); });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) return;
   resumePendingWorkflows();

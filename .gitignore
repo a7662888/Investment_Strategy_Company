@@ -15,6 +15,7 @@ data/current_value_state.json
 data/value_fundamentals_full.json
 data/ledger_archive/
 data/private_positions.json
+data/private_investment_plan.json
 data/exit_progress.json
 data/exit_progress.json.tmp
 data/daily_audit/

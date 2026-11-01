@@ -3836,6 +3836,19 @@ class Handler(SimpleHTTPRequestHandler):
                     signals = [s for s in signals if s.get("agent_id") in allowed]
                 self.send_json({"storage": storage, "signals": signals[:limit], "signal_count": len(signals)})
                 return
+            if parsed.path == "/api/plan":
+                from company.model.investment_plan import load_plan
+                from company.model.positions import expected_sync_token, is_authorized
+                if not positions_sync_enabled():
+                    self.send_json({"error": "positions sync is temporarily disabled"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                elif expected_sync_token() is None:
+                    self.send_json({"error": "positions sync is not configured"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                elif not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                else:
+                    document, storage = load_plan()
+                    self.send_json({**document, "storage": storage})
+                return
             if parsed.path == "/api/positions":
                 from company.model.positions import expected_sync_token, is_authorized, load_positions
                 if not positions_sync_enabled():
@@ -4319,6 +4332,36 @@ class Handler(SimpleHTTPRequestHandler):
                 job = str(self.read_body().get("job") or "")
                 payload, status = manual_refresh(job)
                 self.send_json(payload, HTTPStatus(status))
+                return
+            if self.path == "/api/plan":
+                from company.model.investment_plan import PlanConflict, save_plan
+                from company.model.positions import expected_sync_token, is_authorized
+                if not positions_sync_enabled():
+                    self.send_json({"error": "positions sync is temporarily disabled"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
+                if expected_sync_token() is None:
+                    self.send_json({"error": "positions sync is not configured"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
+                if not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                    return
+                body = self.read_body()
+                origin = self.headers.get("Origin")
+                if origin and urllib.parse.urlsplit(origin).netloc.lower() != self.headers.get("Host", "").lower():
+                    self.send_json({"error": "origin rejected"}, HTTPStatus.FORBIDDEN)
+                    return
+                try:
+                    document, storage = save_plan(body.get("plan"), body.get("version"))
+                except PlanConflict as exc:
+                    self.send_json({"error": str(exc)}, HTTPStatus.CONFLICT)
+                    return
+                except (TypeError, ValueError) as exc:
+                    self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+                    return
+                if not storage.get("durable") and storage.get("remote_error"):
+                    self.send_json({"error": "plan not saved durably", "storage": storage}, HTTPStatus.BAD_GATEWAY)
+                    return
+                self.send_json({**document, "storage": storage})
                 return
             if self.path == "/api/positions":
                 from company.model.positions import (
