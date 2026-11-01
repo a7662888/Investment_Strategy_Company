@@ -1463,6 +1463,7 @@ if (endDateEl && !endDateEl.value) {
 bindActions();
 loadDataFreshness();
 loadDailyValueState();
+loadMarketStress();
 loadDecisionLedger();
 runDailyJobs();
 loadEtfScreen();
@@ -2434,6 +2435,58 @@ async function loadPremarketBrief() {
 
   const note = $("premarketNote");
   if (note) note.textContent = `${d.discipline || ""} ${d.disclaimer || ""}`;
+}
+
+// 大跌情境卡：把「現在跌了多少」放進歷史基準率裡看，並重申系統既有規則。
+// 數字全部來自 /api/market-stress（0050 含息還原收盤），前端不自行推估。
+function daysToMonths(days) {
+  return days == null ? "—" : `約 ${(days / 30.44).toFixed(days < 304 ? 1 : 0)} 個月`;
+}
+async function loadMarketStress() {
+  const section = $("stressSection"), panel = $("stressPanel");
+  if (!section || !panel) return;
+  let d;
+  try { d = await readJson(await fetch("/api/market-stress")); } catch (err) { section.style.display = "none"; return; }
+  if (!d.available) { section.style.display = "none"; return; }
+  const riskOff = d.regime && d.regime.level === "risk_off";
+  const deep = Number(d.current_drawdown) <= -0.10;  // 離高點 10%：回檔的常用門檻
+  const triggered = riskOff || deep;
+  section.style.display = "";
+  section.style.border = triggered ? "2px solid #b45309" : "1px solid var(--line)";
+  section.style.background = triggered ? "#fffbeb" : "";
+  const title = $("stressTitle");
+  if (title) title.innerHTML = `<span>🧭</span> <span>${triggered ? "大跌時先看這裡" : "市場位置參考"}</span>`;
+  const dd = (Number(d.current_drawdown) * 100).toFixed(1);
+  const why = [riskOff ? `隔夜偏弱（${escapeHtml(asArray(d.regime.reasons).join("；"))}）` : "",
+    deep ? `0050 離高點已達 ${Math.abs(dd)}%` : ""].filter(Boolean).join("，");
+  const rows = asArray(d.bands).map(b => `<tr>
+      <td>跌幅達 ${(b.threshold * 100).toFixed(0)}%</td><td>${b.episodes} 次</td><td>${b.recovered} 次</td>
+      <td>${daysToMonths(b.median_days_to_new_high)}</td><td>${daysToMonths(b.longest_days_to_new_high)}</td></tr>`).join("");
+  const repairs = d.data_repairs || {};
+  const repairNote = [asArray(repairs.splits_adjusted).length ? `${asArray(repairs.splits_adjusted).join("、")} 拆股已還原` : "",
+    repairs.anomalies_dropped_before ? `${repairs.anomalies_dropped_before} 之前資料有不可能的單日跳動，未納入` : ""]
+    .filter(Boolean).join("；");
+  const body = `
+    ${why ? `<p style="font-size:13px;color:#b45309;font-weight:700;margin:0 0 6px;">${why}</p>` : ""}
+    <p style="font-size:13px;margin:0 0 6px;">0050（含息還原）目前離 ${escapeHtml(d.peak_date)} 高點 <b>${dd}%</b>
+      ${d.days_since_peak ? `，已 ${d.days_since_peak} 天` : "，位於歷史高點"}（資料至 ${escapeHtml(d.as_of)} 收盤）。</p>
+    <div style="overflow:auto;"><table><thead><tr><th>回檔深度</th><th>歷史發生</th><th>已收復</th>
+      <th title="從前一個高點起算，到再創新高的日曆天">回到前高（中位數）</th><th>回到前高（最長）</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p style="font-size:11.5px;color:var(--muted);margin:4px 0 8px;">期間 ${escapeHtml(d.history_start)}–${escapeHtml(d.as_of)}，
+      ${d.observations} 個交易日；${escapeHtml(d.method || "")}${repairNote ? `；${escapeHtml(repairNote)}` : ""}。
+      過去的回檔與收復時間不代表未來一定相同。</p>
+    <div style="font-size:12.5px;line-height:1.7;">
+      <b>系統既有規則（不因單日下跌改變）</b>
+      <ul style="margin:2px 0 0 18px;">
+        <li>判定一律以收盤價重算；開盤跳空不算訊號，賣出以收盤確認。</li>
+        <li>ETF 子軌是定期定額；2008–2026 回測中，依價位擇時與年線加權投入都沒有勝過每月固定投入。</li>
+        <li>個股只有「可分批研究」才列為候選；下跌趨勢中標「等待止跌」，不在下跌途中加碼。</li>
+      </ul>
+      <div id="stressPlanRules"></div>
+    </div>`;
+  panel.innerHTML = triggered ? body
+    : `<details><summary style="cursor:pointer;font-size:13px;">0050 離高點 ${dd}%｜展開看歷史回檔與收復時間</summary>${body}</details>`;
+  if (typeof renderStressPlanRules === "function") renderStressPlanRules();
 }
 
 // 每日任務：開頁時檢查一次（伺服器端判斷盤前／盤中／盤後是否今日尚未成功），
