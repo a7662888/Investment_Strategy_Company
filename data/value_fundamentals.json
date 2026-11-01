@@ -5097,6 +5097,23 @@
       "date": "尚待確認"
     }
   },
+  "009816": {
+    "symbol": "009816",
+    "name": "凱基台灣TOP50",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
   "0056": {
     "symbol": "0056",
     "name": "元大高股息",

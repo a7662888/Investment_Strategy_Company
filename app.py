@@ -3240,6 +3240,28 @@ def load_market_doc(name: str, ttl: float = 1800.0) -> dict:
     return doc or {}
 
 
+_MARKET_STRESS_CACHE: dict = {}
+_MARKET_STRESS_TTL = 6 * 3600
+
+
+def load_market_stress() -> dict:
+    """0050 歷史回檔基準率（大跌情境卡用）；Yahoo 失敗時回 available=False，不擋頁面。"""
+    now = time.time()
+    if _MARKET_STRESS_CACHE.get("doc") and now - _MARKET_STRESS_CACHE.get("at", 0) < _MARKET_STRESS_TTL:
+        return _MARKET_STRESS_CACHE["doc"]
+    from company.model.drawdown_stats import drawdown_profile
+    from company.screener.value_rescreen import _yahoo_history
+
+    try:
+        doc = {"symbol": "0050.TW", "name": "元大台灣50", **drawdown_profile(_yahoo_history("0050.TW", days=9000))}
+    except Exception as exc:  # noqa: BLE001 - 情境卡失敗不能讓頁面其他區塊消失
+        print(f"[market-stress] unavailable: {exc}")
+        return {"available": False, "reason": type(exc).__name__}
+    if doc.get("available"):
+        _MARKET_STRESS_CACHE.update(at=now, doc=doc)
+    return doc
+
+
 def load_regulatory() -> dict:
     """處置股／注意股清單（盤後批次 run_regulatory.py 寫入）。讀不到回空字典。"""
     now = time.time()
@@ -3919,6 +3941,12 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 document, storage = load_history_day(day) if day else load_history_index()
                 self.send_json({**(document or {}), "storage": storage})
+                return
+            if parsed.path == "/api/market-stress":
+                brief, _ = load_premarket_brief()
+                self.send_json({**load_market_stress(),
+                                "regime": (brief or {}).get("regime"),
+                                "regime_date": (brief or {}).get("target_session")})
                 return
             if parsed.path == "/api/market-research":
                 from company.model.current_state import load_current_state

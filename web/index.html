@@ -72,6 +72,16 @@
       <p id="premarketNote" style="font-size:11.5px; color:#3730a3; margin:10px 0 0;"></p>
     </section>
 
+    <!-- 大跌情境卡：隔夜偏弱或 0050 離高點達 10% 時展開。內容是歷史回檔基準率與系統既有規則，
+         不是預測、不改判定；使用者自訂的投資計畫規則（P2）也在這裡列出。 -->
+    <section id="stressSection" class="panel" style="border:1px solid var(--line); display:none;">
+      <div class="sectionHead">
+        <h2 id="stressTitle" style="margin:0; display:flex; align-items:center; gap:8px;"><span>🧭</span> <span>市場位置參考</span></h2>
+        <span class="pill" style="font-size:12px;">歷史統計 · 不是預測</span>
+      </div>
+      <div id="stressPanel"></div>
+    </section>
+
     <!-- 盤中研究快訊：每個交易日限產生一次，內容由 /api/intraday-flash 動態帶入。
          先前此處為手寫死的靜態區塊（日期寫死 2026/09/07），會隨時間變成過期資訊。
          刻意與凍結的 current-state／決策帳本分離：盤中價未定案，不寫入帳本。 -->
@@ -337,6 +347,6 @@
     }
   </style>
 
-  <script src="/app.js?v=20261027-2" charset="utf-8"></script>
+  <script src="/app.js?v=20261101-1" charset="utf-8"></script>
 </body>
 </html>
