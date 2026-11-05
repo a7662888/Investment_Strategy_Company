@@ -146,9 +146,16 @@ def main() -> int:
     storage = save_document(report, REPORT_LOCAL, REPORT_REMOTE, f"chore(market): chip report {end}")
 
     try:
-        calendar = cf.dividend_calendar(src.fetch_dividends(), today.isoformat(), is_trading_day, set(codes))
-        save_document({"schema_version": 1, "as_of": now.isoformat(), "rows": calendar,
-                       "sources": "證交所 TWT48U 除權除息預告、櫃買除權除息預告"},
+        try:
+            distributions = src.fetch_etf_distributions(today)
+        except Exception as exc:  # noqa: BLE001 - 少了發放日仍要保留除息預告
+            distributions = []
+            errors["etf_distributions"] = type(exc).__name__
+        merged = cf.merge_etf_distributions(src.fetch_dividends(), distributions)
+        calendar = cf.dividend_calendar(merged, today.isoformat(), is_trading_day, set(codes))
+        save_document({"schema_version": 2, "as_of": now.isoformat(), "rows": calendar,
+                       "etf_latest": cf.latest_etf_distributions(distributions, today.isoformat()),
+                       "sources": "證交所 TWT48U 除權除息預告、證交所 ETF 分配收益、櫃買除權除息預告"},
                       DIVIDEND_LOCAL, DIVIDEND_REMOTE, f"chore(market): dividend calendar {end}")
     except Exception as exc:  # noqa: BLE001
         errors["dividends"] = type(exc).__name__

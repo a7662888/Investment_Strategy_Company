@@ -182,12 +182,36 @@ def previous_trading_day(day: str, is_trading) -> str:
     return current.isoformat()
 
 
+def merge_etf_distributions(rows: list[dict], distributions: list[dict]) -> list[dict]:
+    """把官方 ETF 分配收益的基準日、發放日併入除息預告；預告沒有的 ETF 補成新列。"""
+    by_key = {(d["code"], d["ex_date"]): d for d in distributions}
+    merged = []
+    for row in rows:
+        extra = by_key.pop((row["code"], row["ex_date"]), None) or {}
+        cash = row.get("cash_dividend") if row.get("cash_dividend") is not None else extra.get("cash_dividend")
+        merged.append({**row, "record_date": extra.get("record_date"), "pay_date": extra.get("pay_date"),
+                       "cash_dividend": cash})
+    merged += [{**d, "kind": "息", "market": ""} for d in by_key.values()]
+    return merged
+
+
+def latest_etf_distributions(distributions: list[dict], today: str) -> dict[str, dict]:
+    """每檔最近一次已除息的配息，供目前沒有預告的持有 ETF 顯示。"""
+    latest: dict[str, dict] = {}
+    for item in sorted(distributions, key=lambda d: d["ex_date"]):
+        if item["ex_date"] <= today and item.get("cash_dividend") is not None:
+            latest[item["code"]] = {key: item.get(key) for key in
+                                    ("ex_date", "record_date", "pay_date", "cash_dividend")}
+    return latest
+
+
 def dividend_calendar(rows: list[dict], today: str, is_trading, highlight: set[str]) -> list[dict]:
-    """未來（含今天）的除息列，附最後買進日；ETF 與關注標的放前面。"""
+    """未來（含今天）的除息列與已除息待發放列，附最後買進日；ETF 與關注標的放前面。"""
     seen, out = set(), []
     for r in sorted(rows, key=lambda x: (x["ex_date"], x["code"])):
         key = (r["code"], r["ex_date"])
-        if r["ex_date"] < today or key in seen:
+        awaiting_payment = bool(r.get("pay_date")) and r["pay_date"] >= today
+        if (r["ex_date"] < today and not awaiting_payment) or key in seen:
             continue
         seen.add(key)
         out.append({**r, "last_buy_date": previous_trading_day(r["ex_date"], is_trading),

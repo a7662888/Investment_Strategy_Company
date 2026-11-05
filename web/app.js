@@ -1566,20 +1566,67 @@ async function loadDividends() {
   $("dividendAll").onchange = renderDividends;
   renderDividends();
 }
+function heldByCode() {
+  const held = new Map();
+  effectiveHoldings().forEach(p => {
+    const code = String(p.symbol || "").split(".")[0];
+    held.set(code, (held.get(code) || 0) + Number(p.shares || 0));
+  });
+  return held;
+}
+function dividendAmount(value) {
+  return value == null ? '<span style="color:var(--muted);">待公告</span>' : Number(value).toFixed(3);
+}
+function dateOrPending(value) {
+  return value ? escapeHtml(value) : '<span style="color:var(--muted);">待公告</span>';
+}
+// 我持有的 ETF：有預告就列下一次，沒有就列最近一次，讓每一檔都看得到日期。
+function renderHeldDividends(held, today) {
+  const box = $("dividendHeldPanel");
+  if (!box) return;
+  const d = dividendDoc;
+  const codes = [...held.keys()].filter(code => code.startsWith("00"));
+  if (!codes.length) {
+    box.innerHTML = `<p style="font-size:12.5px;color:var(--muted);margin:0 0 8px;">此裝置尚未讀到持股，下方表格不會標註「持有」。到「我的持股」輸入或完成配對後會自動顯示。</p>`;
+    return;
+  }
+  const rows = codes.map(code => {
+    const upcoming = asArray(d.rows).filter(r => r.code === code).sort((a, b) => a.ex_date.localeCompare(b.ex_date));
+    const next = upcoming.find(r => r.ex_date >= today) || upcoming[0];
+    const last = (d.etf_latest || {})[code];
+    const row = next || last;
+    const status = next ? (next.ex_date < today ? "已除息，待發放" : "即將除息") : last ? "最近一次（尚無新公告）" : "近兩年查無配息紀錄";
+    const name = next?.name || asArray(dailyValueState?.evaluations).find(e => e.symbol?.split(".")[0] === code)?.name || "";
+    const estimate = row?.cash_dividend != null ? formatNT(row.cash_dividend * held.get(code)) : "—";
+    return {sort: next ? next.ex_date : "9999", html: `<tr style="background:#f0fdf4;"><td>${escapeHtml(code)} ${escapeHtml(name)}</td><td>${escapeHtml(status)}</td>
+      <td>${row ? dateOrPending(row.ex_date) : "—"}</td><td>${next ? escapeHtml(next.last_buy_date || "—") : "—"}</td>
+      <td>${row ? dateOrPending(row.record_date) : "—"}</td><td>${row ? dateOrPending(row.pay_date) : "—"}</td>
+      <td>${row ? dividendAmount(row.cash_dividend) : "—"}</td><td>${Number(held.get(code)).toLocaleString()} 股｜${estimate}</td></tr>`};
+  }).sort((a, b) => a.sort.localeCompare(b.sort));
+  box.innerHTML = `<h3 style="font-size:14px;margin:0 0 6px;">我持有的 ETF</h3><div style="overflow:auto;"><table style="font-size:12.5px;"><thead><tr>
+      <th>ETF</th><th>狀態</th><th>除息日</th><th>最後買進日</th><th title="收益分配基準日：這天仍登記為受益人才有配息">基準日</th><th>發放日</th><th>每單位（元）</th><th title="目前股數 × 每單位配息，未扣二代健保補充保費與匯費">持股｜估算可領</th></tr></thead>
+      <tbody>${rows.map(r => r.html).join("")}</tbody></table></div>
+    <p style="font-size:11.5px;color:var(--muted);margin:6px 0 10px;">估算可領＝目前股數×每單位配息，未扣二代健保補充保費與匯費；已除息的那一次，要在最後買進日前就持有才領得到。</p>`;
+}
 function renderDividends() {
   const d = dividendDoc;
   if (!d) return;
   const all = $("dividendAll").checked;
-  const rows = asArray(d.rows).filter(r => all || r.is_etf || r.tracked);
-  $("dividendStatus").textContent = `${String(d.as_of || "").slice(0, 10)} · ${rows.length} 筆`;
+  const held = heldByCode();
+  const today = String(d.as_of || "").slice(0, 10);
+  renderHeldDividends(held, today);
+  // 已除息待發放只對持有者有意義；其他 ETF 留給「顯示全部」，預設清單才不會被洗版。
+  const rows = asArray(d.rows).filter(r => all || held.has(r.code) || (r.ex_date >= today && (r.is_etf || r.tracked)));
+  $("dividendStatus").textContent = `${today} · ${rows.length} 筆`;
   $("dividendPanel").innerHTML = rows.length ? `<div style="overflow:auto;max-height:420px;"><table style="font-size:12.5px;"><thead><tr>
-      <th>除息日</th><th>最後買進日</th><th>代號／名稱</th><th>類別</th><th>現金股利（元）</th><th>市場</th></tr></thead><tbody>`
-    + rows.map(r => `<tr><td>${escapeHtml(r.ex_date)}</td><td>${escapeHtml(r.last_buy_date || "")}</td>
-        <td>${escapeHtml(r.code)} ${escapeHtml(r.name || "")}${r.tracked ? ' <span class="pill" style="font-size:10.5px;">關注</span>' : ""}</td>
+      <th>除息日</th><th>最後買進日</th><th title="收益分配基準日：這天仍登記為受益人才有配息">基準日</th><th>發放日</th><th>代號／名稱</th><th>類別</th><th>現金股利（元）</th><th>市場</th></tr></thead><tbody>`
+    + rows.map(r => `<tr${held.has(r.code) ? ' style="background:#f0fdf4;font-weight:600;"' : ""}><td>${escapeHtml(r.ex_date)}${r.ex_date < today ? '<div style="font-size:11px;color:var(--muted);font-weight:400;">已除息，待發放</div>' : ""}</td><td>${escapeHtml(r.last_buy_date || "")}</td>
+        <td>${r.is_etf ? dateOrPending(r.record_date) : "—"}</td><td>${r.is_etf ? dateOrPending(r.pay_date) : "—"}</td>
+        <td>${escapeHtml(r.code)} ${escapeHtml(r.name || "")}${held.has(r.code) ? ' <span class="pill" style="font-size:10.5px;background:#dcfce7;color:#166534;border-color:#86efac;">持有</span>' : ""}${r.tracked ? ' <span class="pill" style="font-size:10.5px;">關注</span>' : ""}</td>
         <td>${escapeHtml(r.kind || "")}${r.is_etf ? "（ETF）" : ""}</td>
-        <td>${r.cash_dividend == null ? '<span style="color:var(--muted);">待公告</span>' : Number(r.cash_dividend).toFixed(3)}</td>
+        <td>${dividendAmount(r.cash_dividend)}</td>
         <td>${escapeHtml(r.market || "")}</td></tr>`).join("")
-    + `</tbody></table></div><p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">最後買進日 = 除息日前一個交易日。配息率不等於報酬率：除息當天股價會扣掉配息。來源：${escapeHtml(d.sources || "")}。</p>`
+    + `</tbody></table></div><p style="font-size:11.5px;color:var(--muted);margin:8px 0 0;">最後買進日 = 除息日前一個交易日；基準日是收益分配的權利登記日，發放日是配息入帳日。配息率不等於報酬率：除息當天股價會扣掉配息。來源：${escapeHtml(d.sources || "")}。</p>`
     : `<p style="font-size:12.5px;color:var(--muted);">近期沒有 ETF 或關注標的除息。</p>`;
 }
 
@@ -4105,6 +4152,9 @@ async function renderMyHoldings() {
     price: valueActions[p.symbol]?.price != null ? Number(valueActions[p.symbol].price) : null}));
   renderPlanAnalysis();
   renderLookthrough();
+  renderDividends();
+  // ETF 研究室是另一頁，只帶代號與股數過去做標註。
+  browserStore.setItem("investment_strategy_held_codes", JSON.stringify(Object.fromEntries(heldByCode())));
 }
 
 function renderExitProgressControls(symbol, timing) {

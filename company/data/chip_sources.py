@@ -17,7 +17,7 @@ import ssl
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 TAIPEI = timezone(timedelta(hours=8))
 BIG_LEVELS = {"12", "13", "14", "15"}      # 400,001 股以上
@@ -171,6 +171,34 @@ def fetch_dividends() -> list[dict]:
     except Exception as exc:  # noqa: BLE001
         print(f"[dividends] tpex unavailable: {type(exc).__name__}")
     return rows
+
+
+def parse_etf_distributions(payload: dict) -> list[dict]:
+    """證交所「ETF 分配收益」：唯一同時有除息日、收益分配基準日與發放日的官方來源。"""
+    if payload.get("status") != "ok" and payload.get("stat") != "OK":
+        return []
+    fields = payload.get("fields") or []
+
+    def column(prefix: str) -> int:
+        return next(i for i, name in enumerate(fields) if str(name).startswith(prefix))
+
+    code, name, ex_date = column("證券代號"), column("證券簡稱"), column("除息交易日")
+    record, pay, amount = column("收益分配基準日"), column("收益分配發放日"), column("收益分配金額")
+    out = []
+    for row in payload.get("data") or []:
+        item = {"code": str(row[code] or "").strip(), "name": str(row[name] or "").strip(),
+                "ex_date": _roc(row[ex_date]), "record_date": _roc(row[record]),
+                "pay_date": _roc(row[pay]), "cash_dividend": num(row[amount])}
+        if item["code"] and item["ex_date"]:
+            out.append(item)
+    return out
+
+
+def fetch_etf_distributions(today: date) -> list[dict]:
+    start, end = today - timedelta(days=400), today + timedelta(days=180)
+    url = ("https://www.twse.com.tw/rwd/zh/ETF/etfDiv?stkNo="
+           f"&startDate={start:%Y%m%d}&endDate={end:%Y%m%d}&response=json")
+    return parse_etf_distributions(json.loads(get(url)))
 
 
 # ---------- 價格（還原） ----------
