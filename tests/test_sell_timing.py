@@ -158,8 +158,12 @@ class TestPlan(unittest.TestCase):
     def test_stages_fall_back_to_profit_protection_when_holding(self) -> None:
         levels = build_levels({"ma20": 99.0, "ma60": 95.0, "high_252": 120.0},
                               {"score": 10.0}, make_rows(), cost=None, gain=None)
-        plan = build_plan({"suggested_fraction": 0.0}, levels, is_etf=False)
+        plan = build_plan({"suggested_fraction": 0.0}, levels, is_etf=False, gain=0.2)
         self.assertIn("獲利保護", plan[0]["mode"])
+        for gain in (-0.1, 0.0, None):
+            mode = build_plan({"suggested_fraction": 0.0}, levels, is_etf=False, gain=gain)[0]["mode"]
+            self.assertNotIn("獲利保護", mode)
+            self.assertIn("風險控管參考", mode)
 
     def test_stages_are_ordered_by_which_triggers_first(self) -> None:
         levels = build_levels({"ma20": 99.0, "ma60": 95.0, "high_252": 120.0},

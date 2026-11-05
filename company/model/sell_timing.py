@@ -156,6 +156,11 @@ PROTECTIVE_CAP = 0.50
 MAX_STAGE_DEPTH = 0.25
 
 
+def _in_profit(gain: float | None) -> bool:
+    value = finite_number(gain)
+    return value is not None and value > 0
+
+
 def _allocate(total: float, weights: list[float]) -> list[float]:
     """依權重切分並讓末批吸收餘數，確保四捨五入後合計精確等於 total。"""
     fractions = [round(total * weight, 2) for weight in weights[:-1]]
@@ -173,7 +178,7 @@ def _spread_stages(levels: list[dict]) -> list[dict]:
 
 
 def build_plan(exit_result: dict, levels: list[dict], is_etf: bool,
-               reference_price: float | None = None) -> list[dict]:
+               reference_price: float | None = None, gain: float | None = None) -> list[dict]:
     """把觸發價依「先觸發者在前」排序，並配上每階段減碼比例。"""
     if is_etf or (exit_result or {}).get("executable") is False or (exit_result or {}).get("status") in (
         "stale_data", "insufficient_data"
@@ -200,9 +205,12 @@ def build_plan(exit_result: dict, levels: list[dict], is_etf: bool,
         fractions = _allocate(target, [weight / total_weight for weight in weights])
         mode = "執行 Exit Engine 既定減碼比例"
     else:
-        # Exit Engine 說續抱：觸發價退化為「獲利保護停損」，且合計不超過半數部位。
+        # Exit Engine 說續抱：觸發價退化為保護性價位，且合計不超過半數部位。
+        # 沒有獲利可保護時不能叫「獲利保護」，只是供業主參考的風險控管比例。
         fractions = _allocate(PROTECTIVE_CAP, [1.0 / len(stages)] * len(stages))
-        mode = f"獲利保護停損（Exit Engine 尚未要求減碼，合計上限 {PROTECTIVE_CAP:.0%}）"
+        mode = (f"獲利保護停損（Exit Engine 尚未要求減碼，合計上限 {PROTECTIVE_CAP:.0%}）"
+                if _in_profit(gain) else
+                f"風險控管參考（帳面未獲利，Exit Engine 未要求減碼，合計上限 {PROTECTIVE_CAP:.0%}）")
 
     return [{
         "stage": idx + 1, "trigger": level["key"], "label": level["label"],
@@ -274,15 +282,22 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
     close_value = finite_number(rows[-1].get("close"), positive=True) if rows else None
     last_close = round(close_value, 2) if close_value is not None else None
     last_close_date = rows[-1].get("date") if rows else None
+    # ETF 不掛價格型停損，不需要 OHLC；日線來源落後時改用每日狀態的正式收盤，
+    # 否則整個子軌都會被標成資料過期（實測 2026-11-04 Yahoo 日線落後一天）。
+    state_close = finite_number(item.get("price"), positive=True)
+    if is_etf and state_close is not None and str(item.get("as_of") or "") > str(last_close_date or ""):
+        last_close, last_close_date = round(state_close, 2), item.get("as_of")
 
     live_price = None
     price_basis = "無可用報價"
     quote_time = None
     live_value = finite_number((live_quote or {}).get("regularMarketPrice"), positive=True)
-    if live_value is not None:
+    price_kind = (live_quote or {}).get("priceKind")
+    if live_value is not None and price_kind != "previous_close":
         live_price = round(live_value, 2)
         quote_time = live_quote.get("regularMarketTime")
-        price_basis = "盤中即時成交價" if market_open else "最後成交價（非盤中）"
+        price_basis = ("盤中最佳委買賣中價（非成交價）" if price_kind == "bid_ask_mid"
+                       else "盤中即時成交價" if market_open else "最後成交價（非盤中）")
     elif last_close is not None:
         price_basis = f"日線收盤（{last_close_date}）"
 
@@ -338,15 +353,17 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
         )
 
     reference_price = live_price if live_price is not None else last_close
-    plan = build_plan(exit_result, levels, is_etf, reference_price) if executable else []
+    plan = build_plan(exit_result, levels, is_etf, reference_price, gain) if executable else []
     snapshot_matches = (market_snapshot or {}).get("trade_date") in (None, last_close_date)
     confirmation = grade_confirmation(market_snapshot) if executable and snapshot_matches else None
 
     # 每日狀態的價格來自 TWSE OpenAPI，該端點常延遲一個交易日；本層的收盤價來自
     # 日線 OHLC，通常較新。兩者不同日時，卡片上會同時出現兩個「現價」，
     # 若不標明日期，看起來就像資料打架——本專案過去正是敗在這類參考價混用。
-    plan_triggers = {step["trigger"] for step in plan}
-    confirmed = [lv for lv in levels if lv["state"] == "confirmed_break" and lv["key"] in plan_triggers]
+    # 依計畫順序取已確認的階段，標題的階段編號與觸發價才會是同一件事。
+    states = {lv["key"]: lv["state"] for lv in levels}
+    confirmed = [step for step in plan if states.get(step["trigger"]) == "confirmed_break"]
+    requested = (finite_number((exit_result or {}).get("suggested_fraction")) or 0) > 0
     intraday = [lv for lv in levels if lv["state"] == "intraday_break"]
     approaching = [lv for lv in levels if lv["state"] == "approaching"]
 
@@ -359,8 +376,15 @@ def compute_sell_timing(item: dict, exit_result: dict, rows: list[dict],
     elif is_etf:
         urgency = "advisory"
         headline = "ETF 不因均線或單日波動賣出；僅在估值過高或配置失衡時再平衡"
+    elif confirmed and not requested and not _in_profit(gain):
+        # Exit Engine 要求的比例是 0 且沒有獲利可保護：這是風險提示，不可寫成減碼指令，
+        # 否則同一檔會同時出現「續抱」與「執行減碼」兩種結論。
+        urgency = "review"
+        review = ((exit_result or {}).get("fundamental_assessment") or {}).get("status") == "thesis_review"
+        headline = (f"已收盤跌破「{confirmed[0]['label']}」，帳面虧損中；Exit Engine 未要求減碼（0%）："
+                    + ("品質硬篩未通過，請先核對投資論點" if review else "這是風險提示，不是減碼指令"))
     elif confirmed:
-        stage = plan[0]["stage"] if plan else 1
+        stage = confirmed[0]["stage"]
         label = confirmed[0]["label"]
         # 收盤跌破仍有真假之分：無量下跌常是雜訊。有量價證據時據此調整行動急迫性，
         # 但不改變觸發價與既定比例——量價只評成色，不另立判斷。
