@@ -47,6 +47,20 @@
     if (data.error && !data.rows && !data.status) throw new Error('資料暫時無法取得');
     return data;
   }
+  // 價值大腦頁讀到持股後會寫入代號與股數；讀不到就不標註。
+  function heldCodes() {
+    try {
+      const raw = localStorage.getItem('investment_strategy_held_codes');
+      const item = raw ? JSON.parse(raw) : null;
+      return JSON.parse(item?.value ?? 'null') || {};
+    } catch { return {}; }
+  }
+  function officialDividend(code) {
+    const doc = state.dividends;
+    if (!doc) return null;
+    const next = (doc.rows || []).filter((row) => row.code === code).sort((a, b) => a.ex_date.localeCompare(b.ex_date))[0];
+    return next ? {...next, label: next.ex_date < new Date().toISOString().slice(0, 10) ? '已除息待發放（官方）' : '下一次配息（官方）'} : doc.etf_latest?.[code] ? {...doc.etf_latest[code], label: '最近一次配息（官方）'} : null;
+  }
   function rankedRows() {
     return (state.catalog?.rows || []).filter((row) => row.market === state.market && row.ranking_status === 'official_weekly' && finite(row.holders) && finite(row.popularity_rank)).sort((a, b) => a.popularity_rank - b.popularity_rank).slice(0, 20);
   }
@@ -90,6 +104,7 @@
       const price = description.invalid ? null : quote?.regularMarketPrice;
       const change = description.invalid ? null : quote?.regularMarketChangePercent;
       const nameCell = append(node('td'), fundButton(row));
+      if (heldCodes()[row.code]) nameCell.appendChild(node('small', '持有', 'held-badge'));
       const holderCell = append(node('td', count(row.holders), 'numeric'), node('small', datumDate(row.ranking_as_of), 'subtext'));
       const sourceCell = append(node('td'), node('span', description.time), node('small', description.text, 'subtext'));
       if (description.status) sourceCell.title = description.status;
@@ -109,6 +124,14 @@
     const grid = node('div', null, 'detail-grid');
     append(grid, metric('分類研究方向', row.category || 'NA'), metric('上市日期', datumDate(row.listing_date)), metric('經理費（商品規格）', feeText(row.management_fee)), metric('保管費（商品規格）', feeText(row.custody_fee)), metric('參考指標 / 追蹤指數', row.benchmark || 'NA'), metric('發行受益權單位', count(row.units)), metric('最新取得市價（元）', description.invalid ? 'NA' : fmt(quote?.regularMarketPrice)), metric('官方含息總報酬', 'NA · 未串接'));
     append(panel, grid, note(`基本資料基準日：${datumDate(row.basic_as_of)}；公告日：NA（來源未提供）。${row.fee_status || '費用未取得，請核對公開說明書。'} 行情：${description.time}，${description.text}。`, 'detail-note'));
+    const dividend = officialDividend(row.code);
+    if (dividend) {
+      const heldShares = heldCodes()[row.code];
+      const dividendGrid = node('div', null, 'detail-grid');
+      append(dividendGrid, metric('除息日', datumDate(dividend.ex_date)), metric('最後買進日', datumDate(dividend.last_buy_date)), metric('收益分配基準日', datumDate(dividend.record_date)), metric('發放日', datumDate(dividend.pay_date)), metric('每單位配息（元）', finite(dividend.cash_dividend) ? dividend.cash_dividend.toFixed(3) : '待公告'));
+      if (heldShares) append(dividendGrid, metric('持有股數', count(heldShares)));
+      append(panel, node('h4', dividend.label, 'holdings-title'), dividendGrid);
+    }
     if (row.basic_source) append(panel, external('官方基本資料來源 ↗', row.basic_source));
     if (row.fee_source) append(panel, note(`費用規格基準日：${datumDate(row.fee_as_of)}；取得時間：${clock(row.fee_fetched_at)}；商品規格不等於實際總費用率。`), external('官方費用規格來源 ↗', row.fee_source));
     const chart = row.chart_snapshot;
@@ -159,6 +182,7 @@
       if (!Array.isArray(data.rows)) throw new Error('資料格式不符');
       state.catalog = data;
       state.catalogLoadedAt = Date.now();
+      state.dividends = await getJSON('/api/dividends').catch(() => null);
       $('catalogCount').textContent = `${data.rows.length} 檔`;
       $('rankingDate').textContent = datumDate(data.holder_status?.as_of);
       $('activeCoverage').textContent = `${data.holdings_supported_count ?? 'NA'} / ${data.active_count ?? 'NA'} 檔`;
