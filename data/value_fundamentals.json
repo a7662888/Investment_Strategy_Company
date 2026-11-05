@@ -5114,6 +5114,40 @@
       "date": "尚待確認"
     }
   },
+  "00757": {
+    "symbol": "00757",
+    "name": "統一FANG+",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
+  "00918": {
+    "symbol": "00918",
+    "name": "大華優利高填息30",
+    "is_etf": true,
+    "quarterly": [],
+    "monthly_revenue": [],
+    "chips": {
+      "days_30_net": null,
+      "days_60_net": null
+    },
+    "valuation": {
+      "pe": null,
+      "pb": null,
+      "yield": null,
+      "date": "尚待確認"
+    }
+  },
   "0056": {
     "symbol": "0056",
     "name": "元大高股息",

@@ -4200,6 +4200,7 @@ async function loadExitProgressHistory(requestVersion) {
 const TIMING_STYLE = {
   immediate:   { color: "#b91c1c", bg: "#fef2f2", line: "#fecaca", icon: "🔴" },
   act:         { color: "#c2410c", bg: "#fff7ed", line: "#fed7aa", icon: "🟠" },
+  review:      { color: "#b45309", bg: "#fffbeb", line: "#fde68a", icon: "🟡" },
   watch_close: { color: "#b45309", bg: "#fffbeb", line: "#fde68a", icon: "🟡" },
   prepare:     { color: "#a16207", bg: "#fefce8", line: "#fef08a", icon: "🟡" },
   hold:        { color: "#137333", bg: "#f0fdf4", line: "#bbf7d0", icon: "🟢" },

@@ -377,6 +377,22 @@ def is_tw_market_session(now: datetime | None = None) -> bool:
     return local.weekday() < 5 and 8 * 60 + 55 <= minutes <= 13 * 60 + 40
 
 
+def mis_price(item: dict) -> tuple[float | None, str]:
+    """MIS 的 z/pz 在兩筆成交之間常是 "-"（實測 2026-11-05 盤中四檔皆如此）。
+
+    不可直接退回昨收 y：那會把昨收當成盤中成交價，漲跌也永遠是 0%。
+    先用當下最佳委買賣中價並標明不是成交價；都沒有才用昨收，且標為昨收。
+    """
+    trade = parse_float(item.get("z")) or parse_float(item.get("pz"))
+    if trade:
+        return trade, "trade"
+    best = [parse_float(str(item.get(key) or "").split("_")[0]) for key in ("b", "a")]
+    best = [price for price in best if price]
+    if best:
+        return round(sum(best) / len(best), 2), "bid_ask_mid"
+    return parse_float(item.get("y")), "previous_close"
+
+
 def fetch_twse_mis_quotes(symbols: list[str]) -> list[dict]:
     channels = []
     for symbol in symbols:
@@ -416,7 +432,7 @@ def fetch_twse_mis_quotes(symbols: list[str]) -> list[dict]:
         if symbol not in symbols:
             continue
 
-        price = parse_float(item.get("z")) or parse_float(item.get("pz")) or parse_float(item.get("y"))
+        price, price_kind = mis_price(item)
         prev_close = parse_float(item.get("y"))
         if price is None:
             continue
@@ -440,7 +456,10 @@ def fetch_twse_mis_quotes(symbols: list[str]) -> list[dict]:
             "dayLow": parse_float(item.get("l")),
             "volume": parse_float(item.get("v")),
             "source": source,
-            "realtimeStatus": "盤中撮合/收盤後最後成交價",
+            "priceKind": price_kind,
+            "realtimeStatus": {"trade": "盤中撮合/收盤後最後成交價",
+                               "bid_ask_mid": "最佳委買賣中價（非成交價）",
+                               "previous_close": "尚無今日成交，顯示昨收"}[price_kind],
         }
     return [results[symbol] for symbol in symbols if symbol in results]
 
