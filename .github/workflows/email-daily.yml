@@ -48,7 +48,8 @@ jobs:
           GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
           GITHUB_DATA_REPO: a7662888/investment-strategy-data
           GITHUB_DATA_BRANCH: main
-        run: python run_broker_positions.py --fetch --scheduled --require-ledger
+        # 歷史保存沿用本次登入與庫存結果，失敗只記固定代碼，不改庫存工作的退出狀態。
+        run: python run_broker_positions.py --fetch --scheduled --require-ledger --portfolio-history
 
   email:
     needs: [guard, broker]

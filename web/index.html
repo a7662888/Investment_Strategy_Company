@@ -141,6 +141,14 @@
         <summary style="cursor:pointer;font-size:13px;">已實現損益（永豐近一年）與當時系統判定</summary>
         <div id="brokerLedgerPanel" style="font-size:12px;margin-top:6px;">展開後讀取。</div>
       </details>
+      <section class="portfolio-nav" aria-labelledby="portfolioNavTitle">
+        <div class="portfolio-nav-head">
+          <h3 id="portfolioNavTitle">持股部位淨值與 0050 對照</h3>
+          <button id="portfolioNavRefresh" type="button">重讀已保存紀錄</button>
+        </div>
+        <p class="portfolio-nav-help">只含已對帳的永豐持股部位，不含券商現金與其他手動持股。這是事後紀錄，不是預測，也不代表選股能力已被驗證。</p>
+        <div id="portfolioNavPanel" aria-live="polite">請先使用上方的裝置配對連接，再讀取私有紀錄。</div>
+      </section>
       <details id="timingResearchDetails" style="margin:10px 0;">
         <summary style="cursor:pointer;font-size:13px;">買賣時機研究（永豐分 K：盤中假跌破、成交價對當日均價）</summary>
         <div id="timingResearchPanel" style="font-size:12px;margin-top:6px;">展開後讀取。</div>
@@ -374,6 +382,6 @@
     }
   </style>
 
-  <script src="/app.js?v=20261105-2" charset="utf-8"></script>
+  <script src="/app.js?v=20261111-nav" charset="utf-8"></script>
 </body>
 </html>

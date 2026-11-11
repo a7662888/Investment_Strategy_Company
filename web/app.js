@@ -80,6 +80,7 @@ const POSITION_SYNC_EXPIRY_KEY = "investment_strategy_positions_sync_expires";
 let positionCloudVersion = 0;
 let positionSyncGeneration = 0;
 let brokerSyncGeneration = 0;
+let portfolioNavGeneration = 0;
 let holdingsRenderVersion = 0;
 // 投資計畫狀態宣告在檔案前段：持股與大跌卡的非同步流程都會讀到。
 const PLAN_STORAGE_KEY = "investment_strategy_plan";
@@ -233,6 +234,7 @@ async function configurePositionCloud() {
 function acceptPositionToken(token, expiresIn = null) {
   positionSyncGeneration++;
   brokerSyncGeneration++;
+  clearPortfolioNav("連接已變更，正在重新讀取私有紀錄。");
   brokerInventory = null;
   brokerLastReadable = null;
   positionCloudVersion = 0;
@@ -247,6 +249,7 @@ function requireOwnerReconnect(token) {
   browserStore.removeItem(POSITION_SYNC_EXPIRY_KEY);
   brokerInventory = null;
   brokerSyncGeneration++;
+  clearPortfolioNav("授權已失效，請使用上方的裝置配對重新連接。");
   setPositionCloudStatus("連接已到期或憑證無效，請用 8 位連接碼重新連接", false);
   if ($("ownerPairingStatus")) $("ownerPairingStatus").textContent = "請在已連接的裝置重新產生 8 位連接碼，或使用原同步密鑰連接。";
   if ($("brokerPositionPanel")) $("brokerPositionPanel").textContent = "授權已失效，請重新連接；手動持股仍保留。";
@@ -1435,6 +1438,7 @@ function bindActions() {
   $("ownerPairingInput")?.addEventListener("keydown", event => { if (event.key === "Enter") claimOwnerPairing(); });
   safeBind("brokerPositionRefresh", reloadBrokerViews);
   $("brokerLedgerDetails")?.addEventListener("toggle", e => { if (e.target.open) loadBrokerLedger(); });
+  safeBind("portfolioNavRefresh", loadPortfolioNav);
   $("timingResearchDetails")?.addEventListener("toggle", e => { if (e.target.open) loadTimingResearch(); });
   safeBind("brokerPositionAdopt", adoptBrokerInventory);
   safeBind("brokerPositionDisable", async () => {
@@ -3921,7 +3925,7 @@ let brokerViewsLoading = null;
 function reloadBrokerViews() {
   const token = positionSyncToken();
   if (brokerViewsLoading?.token === token) return brokerViewsLoading.promise;
-  const promise = Promise.allSettled([loadBrokerInventory(), loadBrokerLedger(), loadTimingResearch()]);
+  const promise = Promise.allSettled([loadBrokerInventory(), loadBrokerLedger(), loadTimingResearch(), loadPortfolioNav()]);
   brokerViewsLoading = {token, promise};
   promise.finally(() => { if (brokerViewsLoading?.promise === promise) brokerViewsLoading = null; });
   return promise;
@@ -3940,6 +3944,95 @@ function renderBrokerAdoptBanner(inventory) {
     採用一次後，之後開網頁與每日 Email 都會自動使用最新永豐庫存，手動欄只需填其他券商持股。
     <button type="button" id="brokerAdoptQuick" class="primary" style="margin-left:6px;padding:5px 12px;">一鍵採用永豐庫存</button>`;
   $("brokerAdoptQuick")?.addEventListener("click", adoptBrokerInventory);
+}
+
+function clearPortfolioNav(message) {
+  portfolioNavGeneration++;
+  const panel = $("portfolioNavPanel");
+  if (panel) panel.textContent = message;
+}
+
+function portfolioNavMarkup(doc) {
+  const rows = asArray(doc.rows), last = rows.at(-1) || {};
+  const accumulating = rows.length < 20;
+  const finite = value => typeof value === "number" && Number.isFinite(value);
+  const pct = value => finite(value) ? `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%` : "資料不足";
+  const money = value => finite(value) ? `${Math.round(value).toLocaleString("zh-TW")} 元` : "資料不足";
+  const benchmarkAvailable = doc.benchmark?.total_return_supported === true;
+  const series = [
+    {key: "cumulative_return", name: "我的持股累積報酬", color: "#1d4ed8", available: true},
+    {key: "benchmark_return", name: "0050 同期含息報酬", color: "#0f766e", available: benchmarkAvailable},
+    {key: "cashflow_benchmark_return", name: "同金流買 0050 投入資本損益率（非時間加權）", color: "#b45309", available: benchmarkAvailable},
+  ];
+  const period = rows.length ? `${rows[0].date || "—"} ～ ${last.date || "—"}` : "尚無成功快照";
+  const returnPeriod = last.return_start && finite(last.cumulative_return) ? `${last.return_start} ～ ${last.date || "—"}` : "資料不足";
+  const resetCount = rows.filter(row => row.return_status === "reset_base").length;
+  const incomplete = rows.some(row => !finite(row.cumulative_return)) || (last.return_start && last.return_start !== rows[0]?.date);
+  const stats = [
+    ["紀錄期間", period],
+    ["本段報酬計算期間", returnPeriod],
+    ...series.map(item => [item.name, accumulating ? "累積中" : item.available ? pct(last[item.key]) : "資料不足"]),
+    ["同金流買 0050 模擬市值", benchmarkAvailable ? money(last.cashflow_benchmark_value) : "資料不足"],
+    ["持股市值", money(last.market_value)], ["持股成本", money(last.total_cost)],
+  ];
+  let markup = `<dl class="portfolio-nav-stats">${stats.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>`;
+  if (doc.scope) markup += `<p class="portfolio-nav-help">資料範圍：${escapeHtml(doc.scope)}</p>`;
+  markup += `<p class="portfolio-nav-help">涵蓋起始日：${escapeHtml(doc.coverage_start || "尚未建立")} · 最後成功：${escapeHtml(doc.last_success_at || "尚無紀錄")}</p>`;
+  if (resetCount || incomplete) markup += `<p class="portfolio-nav-notice">報酬涵蓋不完整${resetCount ? `，已重新起算 ${resetCount} 次` : ""}。摘要只列目前有效區段；曲線各段從各自基準日歸零，斷線前後不可串接成全期間報酬。</p>`;
+  if (doc.contains_provisional) markup += `<p class="portfolio-nav-notice">含暫定價格，尚待當日收盤價確認；請勿據此判定績效。</p>`;
+  if (doc.last_attempt?.error_code || doc.last_attempt?.ok === false || doc.last_attempt?.status === "failed") markup += `<p class="portfolio-nav-notice">最近一次更新未成功，以上保留最後成功紀錄。</p>`;
+  if (accumulating) {
+    markup += `<p class="portfolio-nav-pending">累積中，目前 ${rows.length} 天。累積滿 20 個交易日後，才顯示報酬曲線。</p>`;
+  } else {
+    const values = series.flatMap(item => item.available ? rows.map(row => row[item.key]).filter(finite) : []);
+    if (!values.length) {
+      markup += `<p class="portfolio-nav-pending">報酬資料不足，暫不繪製曲線；市值紀錄仍持續保存。</p>`;
+    } else {
+      const low = Math.min(0, ...values), high = Math.max(0, ...values), span = high - low || 0.02;
+      const minimum = low - span * 0.08, maximum = high + span * 0.08;
+      const x = index => 8 + index / (rows.length - 1) * 584;
+      const y = value => 212 - (value - minimum) / (maximum - minimum) * 204;
+      const paths = series.map(item => {
+        if (!item.available) return "";
+        let active = false;
+        const path = rows.map((row, index) => {
+          if (row.return_status === "reset_base") active = false;
+          if (!finite(row[item.key])) { active = false; return ""; }
+          const command = active ? "L" : "M";
+          active = true;
+          return `${command}${x(index).toFixed(2)},${y(row[item.key]).toFixed(2)}`;
+        }).join(" ");
+        return `<path d="${path}" fill="none" stroke="${item.color}" stroke-width="2.5" vector-effect="non-scaling-stroke"/>`;
+      }).join("");
+      markup += `<div class="portfolio-nav-legend">${series.map(item => `<span><i style="background:${item.color}"></i>${escapeHtml(item.name)}${!item.available || !rows.some(row => finite(row[item.key])) ? "（資料不足）" : ""}</span>`).join("")}</div>`;
+      markup += `<div class="portfolio-nav-chart"><div class="portfolio-nav-scale"><span>${pct(maximum)}</span><span>${pct(minimum)}</span></div><svg viewBox="0 0 600 220" role="img" aria-label="持股與 0050 分段報酬曲線；同金流線為投入資本損益率。缺漏與重新起算時保留斷線"><line x1="8" x2="592" y1="${y(0).toFixed(2)}" y2="${y(0).toFixed(2)}" stroke="#cbd5e1" stroke-dasharray="5 5"/>${paths}</svg></div>`;
+      markup += `<div class="portfolio-nav-dates"><span>${escapeHtml(rows[0].date || "")}</span><span>${escapeHtml(last.date || "")}</span></div>`;
+    }
+  }
+  if (doc.benchmark?.reason) markup += `<p class="portfolio-nav-help">0050 口徑：${escapeHtml(doc.benchmark.reason)}</p>`;
+  markup += `<p class="portfolio-nav-help">同金流線＝（模擬市值＋本段累計賣出領回）÷（期初市值＋本段累計買進投入）− 1，為含領回金額的投入資本損益率，與前兩條時間加權報酬不同，不可直接當成超額報酬。</p>`;
+  if (doc.benchmark?.cashflow_basis) markup += `<p class="portfolio-nav-help">模擬假設：${escapeHtml(doc.benchmark.cashflow_basis)}</p>`;
+  markup += `<p class="portfolio-nav-help">每日報酬扣除當日買賣金流並計入已確認除息；缺資料或市值歸零時保留斷點，重新起算。未以今日持股回推歷史市值。三條線只在同期間、同含息口徑可驗證時比較。</p>`;
+  return markup;
+}
+
+async function loadPortfolioNav() {
+  const panel = $("portfolioNavPanel"), token = positionSyncToken();
+  if (!panel) return;
+  const generation = ++portfolioNavGeneration;
+  if (!token) { panel.textContent = "請先使用上方的裝置配對連接，再讀取私有紀錄。"; return; }
+  panel.textContent = "正在讀取已保存的私有淨值紀錄…";
+  try {
+    const response = await fetch("/api/portfolio-nav", {headers: {Authorization: `Bearer ${token}`}, cache: "no-store"});
+    if (generation !== portfolioNavGeneration || token !== positionSyncToken()) return;
+    if (response.status === 401) { requireOwnerReconnect(token); return; }
+    const doc = await readJson(response);
+    if (generation !== portfolioNavGeneration || token !== positionSyncToken()) return;
+    panel.innerHTML = portfolioNavMarkup(doc);
+  } catch (error) {
+    if (generation !== portfolioNavGeneration || token !== positionSyncToken()) return;
+    panel.textContent = "淨值紀錄讀取失敗；請稍後重讀已保存紀錄。";
+  }
 }
 
 // 已實現損益（永豐 list_profit_loss，近一年）＋賣出前一個交易日系統的判定，用來對照實際操作。

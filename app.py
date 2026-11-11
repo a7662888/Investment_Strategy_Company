@@ -3912,6 +3912,22 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     self.send_json({**doc, "storage": storage})
                 return
+            if parsed.path in ("/api/portfolio-nav", "/api/trade-events"):
+                # 與 broker-ledger 共用同步密鑰及到期裝置配對驗證；授權前不讀私有資料。
+                from company.model.positions import expected_sync_token, is_authorized
+                if expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
+                    self.send_json({"error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                    return
+                try:
+                    from company.model.portfolio_nav import load_public
+                    kind = "nav" if parsed.path == "/api/portfolio-nav" else "events"
+                    payload = load_public(kind)
+                except Exception:
+                    # 私有儲存錯誤可能包含路徑、帳號或內容，不能交給外層 str(exc)。
+                    self.send_json({"error": "PRIVATE_HISTORY_UNAVAILABLE"}, HTTPStatus.SERVICE_UNAVAILABLE)
+                    return
+                self.send_json(payload)
+                return
             if parsed.path == "/api/broker-ledger":
                 from company.model.positions import expected_sync_token, is_authorized
                 if expected_sync_token() is None or not is_authorized(self.headers.get("Authorization")):
