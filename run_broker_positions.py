@@ -44,6 +44,7 @@ def _quiet_sdk():
 
 
 def _fetch():
+    _LEDGER.clear()
     if os.environ.get("SHIOAJI_SIMULATION", "").strip().lower() not in ("", "0", "false"):
         raise broker.BrokerPositionsError("PRODUCTION_REQUIRED")
     broker_id = os.environ.get("SHIOAJI_BROKER_ID", "").strip()
@@ -139,6 +140,23 @@ def _save_ledger() -> dict:
     return report
 
 
+def _save_portfolio_history(snapshot):
+    """同一次庫存讀取後保存歷史；失敗僅記代碼，不阻擋每日郵件。"""
+    from company.model.portfolio_nav import record_refresh
+    from company.data.portfolio_actions import collect_actions
+
+    # app 提供 Decision Ledger 既有的行情來源；禁止因匯入而讀本機 .env。
+    os.environ["APP_SKIP_DOTENV"] = "1"
+    import app
+
+    key = _LEDGER.get("account_key")
+    now = broker._now()
+    lots = {**_LEDGER["lots"], "account_key": key, "as_of": now} if "lots" in _LEDGER else None
+    realized = {**_LEDGER["realized"], "account_key": key, "as_of": now} if "realized" in _LEDGER else None
+    return record_refresh(snapshot, lots, realized, app.fetch_history,
+                          lambda symbols, day: collect_actions(symbols, day, app.yahoo_json))
+
+
 def _account_diagnostics(api):
     """Whitelist structural metadata only; never serialize an SDK object."""
     accounts = api.list_accounts()
@@ -214,6 +232,7 @@ def main(argv=None) -> int:
     modes.add_argument("--diagnose", action="store_true", help="Read account metadata only, without inventory queries or storage writes")
     parser.add_argument("--require-ledger", action="store_true", help="Fail if lots or realized P&L were not durably refreshed")
     parser.add_argument("--scheduled", action="store_true", help="Skip automatic reads outside a completed trading session")
+    parser.add_argument("--portfolio-history", action="store_true", help="Save private events and post-close holdings history without another broker login")
     args = parser.parse_args(argv)
     if args.scheduled:
         from company.model.daily_jobs import is_trading_weekday, is_after_close, taipei_now
@@ -244,8 +263,15 @@ def main(argv=None) -> int:
         ledger_report = _save_ledger() if snapshot is not None else {}
     except Exception:
         ledger_report = {"error_code": "LEDGER_SAVE_FAILED"}
+    history_report = None
+    if args.portfolio_history:
+        try:
+            history_report = _save_portfolio_history(snapshot)
+        except Exception:
+            history_report = {"error_code": "PORTFOLIO_HISTORY_FAILED"}
     print(json.dumps({"position_count": len(snapshot["positions"]) if snapshot is not None else 0,
-                      "error_code": code, "storage": storage, "ledger": ledger_report}))
+                      "error_code": code, "storage": storage, "ledger": ledger_report,
+                      "portfolio_history": history_report}))
     ledger_ok = not args.require_ledger or all(
         ledger_report.get(name, {}).get('durable') is True
         and not ledger_report.get(name, {}).get('error_code')
