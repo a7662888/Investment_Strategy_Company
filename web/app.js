@@ -3979,6 +3979,8 @@ function portfolioNavMarkup(doc) {
   if (doc.scope) markup += `<p class="portfolio-nav-help">資料範圍：${escapeHtml(doc.scope)}</p>`;
   markup += `<p class="portfolio-nav-help">涵蓋起始日：${escapeHtml(doc.coverage_start || "尚未建立")} · 最後成功：${escapeHtml(doc.last_success_at || "尚無紀錄")}</p>`;
   if (resetCount || incomplete) markup += `<p class="portfolio-nav-notice">報酬涵蓋不完整${resetCount ? `，已重新起算 ${resetCount} 次` : ""}。摘要只列目前有效區段；曲線各段從各自基準日歸零，斷線前後不可串接成全期間報酬。</p>`;
+  const lotGap = Number(last.lot_reconciliation?.unreconciled);
+  if (Number.isFinite(lotGap) && lotGap > 0) markup += `<p class="portfolio-nav-help">有 ${lotGap} 檔的買進批次明細與庫存對不上：市值仍以券商庫存股數計算，不受影響；這些標的若當日有買賣，當日報酬會留空並重新起算。</p>`;
   if (doc.contains_provisional) markup += `<p class="portfolio-nav-notice">含暫定價格，尚待當日收盤價確認；請勿據此判定績效。</p>`;
   if (doc.last_attempt?.error_code || doc.last_attempt?.ok === false || doc.last_attempt?.status === "failed") markup += `<p class="portfolio-nav-notice">最近一次更新未成功，以上保留最後成功紀錄。</p>`;
   if (accumulating) {

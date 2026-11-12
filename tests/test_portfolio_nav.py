@@ -83,7 +83,7 @@ def test_split_is_no_trade_no_flow_no_artificial_profit():
     assert result[-1]["daily_return"] == 0
 
 
-@pytest.mark.parametrize("reason", ["unknown_buy", "unknown_dividend", "provisional", "unreconciled", "snapshot_mismatch", "missing_session"])
+@pytest.mark.parametrize("reason", ["unknown_buy", "unknown_dividend", "provisional", "unreconciled_buy", "missing_session"])
 def test_incomplete_evidence_never_becomes_zero_return(reason):
     prev, args = prior(), list(inputs())
     if reason == "unknown_buy":
@@ -92,10 +92,11 @@ def test_incomplete_evidence_never_becomes_zero_return(reason):
         args[5]["complete"] = False
     elif reason == "provisional":
         args[4][SYM][0]["date"] = "2026-11-10"
-    elif reason == "unreconciled":
-        args[1]["status"][SYM] = "cost_mismatch"
-    elif reason == "snapshot_mismatch":
-        args[1]["lots"][SYM][0]["shares"] = 9
+    elif reason == "unreconciled_buy":
+        # 明細對不上的標的當日股數變了：沒有可信金流，不能算報酬。
+        args = list(inputs(15))
+        args[1]["status"][SYM] = "quantity_mismatch"
+        args[1]["lots"] = {}
     else:
         args[4]["0050.TW"].insert(1, {"date": "2026-11-09", "adj_close": 90})
         prev["date"] = "2026-11-06"
@@ -220,17 +221,43 @@ def test_refresh_second_day_and_rerun_are_frozen(tmp_path, monkeypatch):
     assert old["rows"] == new["rows"]
 
 
-def test_unreconciled_refresh_does_not_publish_a_successful_nav(tmp_path, monkeypatch):
+@pytest.mark.parametrize("reason", ["cost_mismatch", "quantity_mismatch", "no_detail", "detail_shares_differ"])
+def test_unreconciled_lot_detail_is_flagged_but_never_changes_value_or_return(reason):
+    """實例（2026-11-12）：12 檔中 3 檔明細對不上，整天的市值快照被擋下。
+    市值來自券商庫存股數，明細只是輔助；股數沒變的日子金流確定為零，報酬照算。"""
+    prev, args = prior(), list(inputs(10, 11))
+    if reason == "detail_shares_differ":
+        args[1]["lots"][SYM][0]["shares"] = 9
+    else:
+        args[1]["status"][SYM] = reason
+        args[1]["lots"] = {}
+    row = nav.make_snapshot(*args, prev, NOW)
+    assert row["market_value"] == 110 and row["total_cost"] == 80
+    assert row["inventory_reconciled"] is False
+    assert row["lot_reconciliation"] == {"ok": 0, "unreconciled": 1}
+    assert row["flow_complete"] is True and row["buy_amount"] == row["sell_amount"] == 0
+    result = nav.calculate_returns([prev, row], args[4]["0050.TW"])
+    assert result[-1]["daily_return"] == pytest.approx(.1)
+
+
+def test_fully_reconciled_row_reports_zero_gap():
+    row = snap()
+    assert row["inventory_reconciled"] is True
+    assert row["lot_reconciliation"] == {"ok": 1, "unreconciled": 0}
+
+
+def test_unreconciled_refresh_still_saves_the_daily_snapshot(tmp_path, monkeypatch):
     monkeypatch.setattr(broker_positions, "LOCAL_PATH", tmp_path / "snapshot.json")
     monkeypatch.setattr(store.store, "_config", lambda: None)
     args = inputs()
     args[1]["lots"][SYM][0]["shares"] = 9
     report = nav.record_refresh(args[0], args[1], args[2], lambda s, *a: args[4].get(s, []),
                                lambda *a: args[5], now=NOW)
-    assert report["error_code"] == "INVENTORY_UNRECONCILED"
-    assert not (tmp_path / "portfolio_nav.json").exists()
-    assert nav.load_public("nav")["last_success_at"] is None
-    assert nav.load_public("nav")["last_attempt"]["ok"] is False
+    assert "error_code" not in report and report["status"]["ok"] is True
+    public = nav.load_public("nav")
+    assert public["data_days"] == 1 and public["last_attempt"]["ok"] is True
+    assert public["rows"][0]["inventory_reconciled"] is False
+    assert public["rows"][0]["lot_reconciliation"]["unreconciled"] == 1
 
 
 def test_runner_history_failure_does_not_change_inventory_exit(capsys):
