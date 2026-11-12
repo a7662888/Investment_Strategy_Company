@@ -132,22 +132,27 @@ def make_snapshot(snapshot, lots, realized, events, histories, actions, previous
                           "price_date": quote["date"], "price_source": "Decision Ledger / Yahoo history",
                           "provisional": quote["date"] != day})
     statuses = lots.get("status") or {}
-    reconciled = all(statuses.get(p["symbol"]) == "ok" for p in positions)
-    reconciled = reconciled and set(lots.get("lots") or {}) == seen and all(v == "ok" for v in statuses.values())
+    # 買進批次明細只是輔助證據：市值一律用券商庫存（Unit.Share）的股數 × 收盤價，
+    # 明細對不上的標的只記數量，不擋當日快照。金流另由下方「股數守恆」把關。
+    lot_ok = 0
     for p in positions:
         ls = (lots.get("lots") or {}).get(p["symbol"], [])
-        if any(_num(l.get("shares"), positive=True) is None or _num(l.get("cost_per_share"), positive=True) is None for l in ls):
-            reconciled = False
+        if (statuses.get(p["symbol"]) != "ok" or not ls or any(
+                _num(l.get("shares"), positive=True) is None or _num(l.get("cost_per_share"), positive=True) is None for l in ls)):
             continue
         qty = sum(l["shares"] for l in ls)
         total = sum(l["shares"] * l["cost_per_share"] for l in ls)
-        if qty != p["shares"] or abs(total / qty / p["cost_per_share"] - 1) > 0.03:
-            reconciled = False
+        if qty == p["shares"] and abs(total / qty / p["cost_per_share"] - 1) <= 0.03:
+            lot_ok += 1
+    reconciled = (lot_ok == len(positions) and set(lots.get("lots") or {}) == seen
+                  and all(v == "ok" for v in statuses.values()))
     provisional = any(p["provisional"] for p in positions)
     row = {"date": day, "market_value": sum(p["market_value"] for p in positions),
            "total_cost": sum(p["cost"] for p in positions), "holding_count": len(positions),
            "positions": positions, "provisional": provisional,
-           "inventory_reconciled": reconciled, "anchor": reconciled and not provisional,
+           "inventory_reconciled": reconciled,
+           "lot_reconciliation": {"ok": lot_ok, "unreconciled": len(positions) - lot_ok},
+           "anchor": not provisional,
            "source": "broker_postclose", "captured_at": now.isoformat(),
            "buy_amount": None, "sell_amount": None, "dividend_amount": None,
            "flow_complete": False, "corporate_actions": copy.deepcopy(actions),
@@ -343,8 +348,6 @@ def record_refresh(snapshot, lots, realized, fetch_history, fetch_actions, *, no
             actions = fetch_actions(sorted(symbols), day)
             row = make_snapshot(snapshot, lots, realized, events, histories, actions,
                                 prior["rows"][-1] if prior and prior["rows"] else None, now)
-            if row["inventory_reconciled"] is not True:
-                raise NavError("INVENTORY_UNRECONCILED")
             def transform(old):
                 # 兩個 writer 的庫存對帳都基於同一個前日錨點，否則重試整次工作。
                 if (old or {}).get("rows", []) != (prior or {}).get("rows", []):
