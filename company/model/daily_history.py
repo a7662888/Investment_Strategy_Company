@@ -41,6 +41,8 @@ _ITEM_FIELDS = (
     "ma20", "ma60", "momentum20", "trend", "high_252",
     "distance_from_high_252", "price_pct_252", "chase_risk", "rank_score", "is_etf",
     "quality_missing",
+    # B 級並行判定：存進每日紀錄，之後才能與正式名單比較（放寬門檻是否有用）。
+    "quality_tier", "relaxed_decision", "tier_b_basis",
 )
 _PROVENANCE_FIELDS = ("price_date", "price_source", "financials_period", "revenue_month")
 

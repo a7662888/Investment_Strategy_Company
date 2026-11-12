@@ -639,3 +639,15 @@ input[type="range"] {
 
 
 
+
+/* 卡片最上面的白話結論：先講人話，數字留在下面。 */
+.plain-summary {
+  margin: 6px 0 2px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}

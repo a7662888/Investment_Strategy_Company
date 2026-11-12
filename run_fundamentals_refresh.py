@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Refresh the durable 100-stock fundamentals snapshot."""
+"""Refresh the durable mother-pool fundamentals snapshot."""
 from __future__ import annotations
 
 import argparse

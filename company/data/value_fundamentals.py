@@ -224,6 +224,8 @@ YAHOO_ANNUAL = {
     "annualBasicAverageShares": "basic_shares",
 }
 YAHOO_OTC_CODES = {"8299", "3324", "6182", "3529", "4966"}
+# 規則式母池會納入任意上櫃股；refresh_pool 依母池的 symbol 後綴登記，不再只靠上面的手寫清單。
+_POOL_SYMBOLS: dict[str, str] = {}
 
 
 def _yahoo_timeseries(symbol: str, types: list[str], years: int = 6) -> dict[str, list[dict]]:
@@ -354,7 +356,7 @@ def _yahoo_valuation(series: dict[str, list[dict]], prices: list[dict]) -> dict:
 
 
 def fetch_stock_yahoo(code: str, name: str, finmind_error: str | None = None) -> dict:
-    symbol = f"{code}.TWO" if code in YAHOO_OTC_CODES else f"{code}.TW"
+    symbol = _POOL_SYMBOLS.get(code) or (f"{code}.TWO" if code in YAHOO_OTC_CODES else f"{code}.TW")
     types = list(YAHOO_QUARTERLY) + list(YAHOO_ANNUAL)
     series = _yahoo_timeseries(symbol, types)
     prices = _yahoo_prices(symbol)
@@ -422,6 +424,7 @@ def refresh_pool(pool: dict, existing_doc: dict | None = None, batch_size: int =
     existing_doc = existing_doc or {}
     stocks = dict(existing_doc.get("stocks") or {})
     pool_rows = pool.get("stocks") or []
+    _POOL_SYMBOLS.update({row["symbol"].split(".")[0]: row["symbol"] for row in pool_rows})
     selected = _refresh_order(pool_rows, stocks)
     if not force_all:
         selected = selected[:max(0, batch_size)]
@@ -459,4 +462,4 @@ def refresh_pool(pool: dict, existing_doc: dict | None = None, batch_size: int =
 
 
 def save_fundamentals(doc: dict) -> dict:
-    return save_document(doc, LOCAL_PATH, REMOTE_PATH, "chore(value): refresh 100-stock fundamentals")
+    return save_document(doc, LOCAL_PATH, REMOTE_PATH, "chore(value): refresh mother-pool fundamentals")

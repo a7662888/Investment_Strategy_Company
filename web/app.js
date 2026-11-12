@@ -3294,6 +3294,7 @@ function renderDailyValuePanel() {
       <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
         <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}${regBadge(item.symbol)}</span><span style="color:${item.fundamental_assessment?.status === "pause_new" ? "#b45309" : "#0f766e"};">${escapeHtml(item.decision)}</span>
       </strong>
+      ${item.plain_summary ? `<p class="plain-summary">${escapeHtml(item.plain_summary)}</p>` : ""}
       <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}${item.is_etf
         ? (item.dca ? `｜${etfMaText(item.ma240, item.ma240_deviation_pct, item.ma240_band)}` : "")
         : `｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}`}${highDistance}</p>
@@ -3309,6 +3310,35 @@ function renderDailyValuePanel() {
     const etfs = asArray(data.etf_candidates);
     const paused = asArray(data.evaluations).filter(item =>
       item.fundamental_assessment?.status === "pause_new" && item.decision_context?.executable !== false);
+    // B 級並行觀察：從當日完整評估即時篩，不用後端預先切好的名單，避免與盤中重算後的狀態不一致。
+    const tierB = asArray(data.evaluations).filter(item =>
+      item.quality_tier === "B" && item.eligible_pool && !item.is_etf && item.as_of === data.as_of
+      && item.decision_context?.executable !== false);
+    const tierBPicks = tierB.filter(item => item.relaxed_decision === "可分批研究")
+      .sort((a, b) => Number(b.rank_score || 0) - Number(a.rank_score || 0)).slice(0, 10);
+    const tierBCard = item => `<article class="candidate" style="margin-bottom:8px;border-left:3px solid #7c3aed;">
+      <strong style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span>${escapeHtml(item.symbol)} ${escapeHtml(item.name || "")}${regBadge(item.symbol)}</span><span style="color:#6d28d9;">B 級・${escapeHtml(item.relaxed_decision || "—")}</span>
+      </strong>
+      <p class="plain-summary">放寬理由：${escapeHtml(item.tier_b_basis || "—")}。</p>
+      <p style="font-size:12.5px;margin:6px 0;">正式收盤 ${Number(item.price).toFixed(2)}｜${escapeHtml(item.valuation_zone)}｜${escapeHtml(item.trend)}｜ROE ${item.roe_ttm == null ? "—" : Number(item.roe_ttm).toFixed(1) + "%"}</p>
+      <p style="font-size:12px;color:var(--muted);margin:0;">正式判定仍為「${escapeHtml(item.decision)}」。${item.turn_price ? `脫離下跌趨勢參考價 ${Number(item.turn_price).toFixed(2)}。` : ""}</p>
+      ${renderFundamentalWarnings(item)}
+      ${provenanceLine(item)}
+    </article>`;
+    const tierBRules = asArray(data.tier_b?.rules);
+    const tierBOther = {};
+    tierB.filter(item => item.relaxed_decision !== "可分批研究").forEach(item => {
+      const key = item.relaxed_decision || "—";
+      (tierBOther[key] = tierBOther[key] || []).push(`${item.symbol.replace(/\.TWO?$/, "")} ${item.name || ""}`.trim());
+    });
+    const tierBBlock = !data.tier_b ? "" : `<details style="margin-top:10px;" ${tierBPicks.length ? "open" : ""}>
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;color:#6d28d9;">B 級並行觀察：放寬門檻後可分批研究（${tierBPicks.length}）・B 級共 ${tierB.length} 檔</summary>
+        <p style="font-size:12px;color:var(--muted);margin:6px 0;">正式門檻沒有改。B 級是「品質篩只差一項、而且合乎事先定好的原則」的股票，另外列出、每天記錄，之後用來檢驗放寬門檻到底有沒有用。<strong>放寬不代表報酬會提高</strong>，也不進正式候選與決策帳本。</p>
+        ${tierBRules.length ? `<ul style="font-size:12px;color:var(--muted);margin:0 0 8px 18px;padding:0;">${tierBRules.map(rule => `<li>${escapeHtml(rule)}</li>`).join("")}</ul>` : ""}
+        ${tierBPicks.length ? tierBPicks.map(tierBCard).join("") : `<p style="font-size:13px;color:var(--muted);">今天沒有 B 級股票同時符合估值與止跌條件。</p>`}
+        ${Object.keys(tierBOther).length ? `<p style="font-size:12px;color:var(--muted);margin:6px 0 0;">其餘 B 級：${Object.entries(tierBOther).map(([key, names]) => `${escapeHtml(key)}（${names.length}）${escapeHtml(names.slice(0, 8).join("、"))}${names.length > 8 ? "…" : ""}`).join("；")}</p>` : ""}
+      </details>`;
     panel.innerHTML = `
       <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:7px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#065f46;">
         母池 ${c.mother_pool || 0} 檔中，目前 ${c.quality_covered || 0} 檔具完整品質資料；其餘 ${c.not_yet_covered || 0} 檔不會假裝已完成基本面判定。
@@ -3317,6 +3347,7 @@ function renderDailyValuePanel() {
       ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">${data.freshness?.status !== "current" ? "分析資料尚未追平完整交易日，暫停買賣判定。" : asArray(data.evaluations).some(i => i.decision_context?.executable === false) ? "部分資料需重算或補齊；未驗證的標的不列買進候選。" : "目前沒有同時通過品質、估值與止跌條件的標的。"}</p>`}
       ${paused.length ? `<details open style="margin-top:8px;"><summary style="font-size:13px;font-weight:600;color:#b45309;">基本面待確認，暫緩新增（${paused.length}）</summary>${paused.map(card).join("")}</details>` : ""}
       ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}
+      ${tierBBlock}
       ${etfs.length ? `<h3 style="font-size:14px;margin:14px 0 4px;">ETF 子軌（${etfs.length}）</h3>
         <p style="font-size:12px;color:var(--muted);margin:0 0 8px;">ETF 子軌採定期定額：每月固定投入，不依價位擇時；年線乖離只當市場位置參考。回測（2008–2026）顯示舊的百分位擇時規則落後定期定額，年線加權投入也未勝出。更多 ETF 見 <a href="/etf.html">ETF 研究室</a>。</p>
         ${etfs.map(card).join("")}` : ""}`;

@@ -39,6 +39,85 @@ def _trend(result: dict) -> tuple[str, float]:
     return "下跌趨勢", 20.0
 
 
+def _decide(*, blocked: bool, is_dca_etf: bool, pct, quality_pass, action, fundamental_status: str,
+            risk_tier: str, trend: str, chase_risk: bool) -> str:
+    """判定階梯（純函式）。正式判定與 B 級並行判定共用同一條，只差 quality_pass／action 的輸入。"""
+    if blocked:
+        return "資料不足"
+    if is_dca_etf:
+        return "定期定額"
+    if pct is None:
+        return "資料不足"
+    if quality_pass is False or action == "avoid":
+        # 未過品質篩只代表不新增；是否處理持股由 Exit Engine 與「我的持股」另外判斷。
+        return "未過品質篩，不新增"
+    if fundamental_status == "insufficient":
+        return "資料不足"
+    if fundamental_status == "pause_new":
+        return "基本面待確認，暫緩新增"
+    if risk_tier == "高":
+        return "高風險反轉觀察"
+    if action == "accumulate" and trend == "下跌趨勢":
+        return "等待止跌"
+    if action == "accumulate" and chase_risk:
+        return "高檔，等待拉回"
+    if action == "accumulate":
+        return "可分批研究"
+    if action == "hold":
+        return "續列觀察"
+    return "等待更便宜"
+
+
+def turn_price(trend: str, ma20, ma60) -> float | None:
+    """脫離「下跌趨勢」所需的收盤價：站回 20 日或 60 日均線中較低的那一條。
+
+    均線每天變動，所以這是「以今天的均線來看」的參考價，不是預測。
+    """
+    if trend != "下跌趨勢" or ma20 is None or ma60 is None:
+        return None
+    return round(min(float(ma20), float(ma60)), 2)
+
+
+_VALUATION_PLAIN = {
+    "估值歷史低位（≤P20）": "價格在自己近三年的低檔",
+    "分批區（P20–P40）": "價格在自己近三年的偏低區",
+    "合理區（P40–P70）": "價格不貴也不便宜",
+    "偏貴區（>P70）": "價格在自己近三年的偏貴區",
+}
+
+
+def plain_summary(decision: str, valuation_zone: str, trend: str, turn: float | None,
+                  failed: list[str], warnings: list[str], tier_b: str | None = None,
+                  relaxed_decision: str | None = None) -> str:
+    """每張卡片最上面那一句人話。只重述已算出的判定，不新增任何判斷。"""
+    price = _VALUATION_PLAIN.get(valuation_zone, "估值資料不足")
+    wait = f"收盤站回 {turn:g} 元附近（月線或季線中較低者）再看" if turn else "等止跌再看"
+    if decision == "定期定額":
+        return "ETF 走定期定額：每月固定投入，不看價位擇時。"
+    if decision == "可分批研究":
+        return f"體質過關、{price}、沒有在跌：可以開始研究，分批而不是一次買。"
+    if decision == "等待止跌":
+        return f"體質過關、{price}，但還在跌：先不買，{wait}。"
+    if decision == "高檔，等待拉回":
+        return f"體質過關、{price}，但短線漲多又貼近一年高點：等拉回再看。"
+    if decision == "續列觀察":
+        return f"體質過關，{price}：先放觀察名單。"
+    if decision == "等待更便宜":
+        return f"體質過關，但{price}：等價格回落再看。"
+    if decision == "高風險反轉觀察":
+        return "景氣循環股在谷底，可能反轉也可能續弱：風險高，只觀察、不當成一般候選。"
+    if decision == "基本面待確認，暫緩新增":
+        why = f"（{'；'.join(warnings[:2])}）" if warnings else ""
+        return f"近期財報出現警訊{why}：暫時不新買，已持有的另看持股建議。"
+    if decision == "未過品質篩，不新增":
+        why = f"（{'；'.join(failed[:2])}）" if failed else ""
+        text = f"體質有項目沒達標{why}：不新買；已持有的另看持股建議。"
+        if tier_b:
+            text += f" 只差一點，列入 B 級並行觀察（放寬後判定：{relaxed_decision or '—'}）。"
+        return text
+    return "財報或估值資料不完整：暫不判定。"
+
+
 def _daily_item(result: dict, eligible_pool: bool) -> dict:
     # Classify only normalized numbers, before comparisons or formatting. This
     # creates a copy: reading a cached/historical artifact never rewrites it.
@@ -90,37 +169,33 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     if is_dca_etf:
         # ETF 子軌改為定期定額：沒有估值百分位，位置只用年線乖離描述。
         valuation_zone = result.get("ma240_band") or "年線資料不足"
-    if result.get("error") or result.get("data_incomplete") or not reliability["executable"]:
-        decision = "資料不足"
-    elif is_dca_etf:
-        decision = "定期定額"
-    elif pct is None:
-        decision = "資料不足"
-    elif quality_pass is False or action == "avoid":
-        # 未過品質篩只代表不新增；是否處理持股由 Exit Engine 與「我的持股」另外判斷。
-        decision = "未過品質篩，不新增"
-    elif fundamental["status"] == "insufficient":
-        decision = "資料不足"
-    elif fundamental["status"] == "pause_new":
-        decision = "基本面待確認，暫緩新增"
-    elif risk_tier == "高":
-        decision = "高風險反轉觀察"
-    elif action == "accumulate" and trend == "下跌趨勢":
-        decision = "等待止跌"
-    elif action == "accumulate" and chase_risk:
-        decision = "高檔，等待拉回"
-    elif action == "accumulate":
-        decision = "可分批研究"
-    elif action == "hold":
-        decision = "續列觀察"
-    else:
-        decision = "等待更便宜"
+    blocked = bool(result.get("error") or result.get("data_incomplete") or not reliability["executable"])
+    ladder = dict(blocked=blocked, is_dca_etf=is_dca_etf, pct=pct, risk_tier=risk_tier,
+                  trend=trend, chase_risk=chase_risk)
+    decision = _decide(quality_pass=quality_pass, action=action, fundamental_status=fundamental["status"], **ladder)
+    # B 級並行判定：同一條階梯，只把「差一項且合乎放寬原則」視為通過。不影響正式 decision。
+    tier = result.get("quality_tier") if result.get("quality_tier") in ("A", "B", "C") else None
+    relaxed_decision = None
+    if tier == "B":
+        relaxed_guard = evaluate_fundamentals(
+            {**result, "quality_pass": True, "action": result.get("relaxed_action")})
+        relaxed_decision = _decide(quality_pass=True, action=result.get("relaxed_action"),
+                                   fundamental_status=relaxed_guard.get("status", "insufficient"), **ladder)
+    turn = turn_price(trend, result.get("ma20"), result.get("ma60"))
+    summary = plain_summary(decision, valuation_zone, trend, turn, list(result.get("failed") or []),
+                            list(fundamental.get("reasons") or []), result.get("tier_b_basis") if tier == "B" else None,
+                            relaxed_decision)
     return {
         "symbol": symbol, "name": result.get("name"), "as_of": result.get("as_of"),
         "price": round(float(result["price"]), 2) if result.get("price") is not None else None,
         "action": "watch" if (not reliability["executable"] or not fundamental["allow_new"]) and action == "accumulate" else action,
         "source_action": result.get("source_action", action),
         "decision": decision, "eligible_pool": bool(eligible_pool),
+        "plain_summary": summary, "turn_price": turn,
+        "quality_tier": tier, "tier_b_basis": result.get("tier_b_basis") if tier == "B" else None,
+        "relaxed_decision": relaxed_decision,
+        # 網站 API 會把已存的評估再跑一次本函式；少了這個輸入，重算後的 B 級判定會全部變成「等待更便宜」。
+        "relaxed_action": result.get("relaxed_action") if tier == "B" else None,
         "quality_pass": quality_pass, "risk_tier": risk_tier,
         "quality_schema": quality_schema(result),
         "quality_missing": list(result.get("quality_missing") or []),
@@ -188,6 +263,9 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
         (i for i in items if i["is_etf"] and i.get("as_of") == as_of),
         key=lambda x: x["rank_score"], reverse=True,
     )[:5]
+    tier_b_items = [i for i in current_eligible if i.get("quality_tier") == "B"]
+    tier_b_picks = sorted((i for i in tier_b_items if i.get("relaxed_decision") == "可分批研究"),
+                          key=lambda x: x["rank_score"], reverse=True)[:10]
     covered = sum(1 for i in eligible if i.get("fundamentals_complete"))
     priced = [i for i in items if i.get("as_of")]
     current_prices = sum(i.get("as_of") == as_of for i in priced)
@@ -200,11 +278,26 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
                      "price_stale": len(priced) - current_prices,
                      "oldest_price_as_of": min((i.get("as_of") for i in priced), default=None)},
         "top_picks": picks, "waiting_list": waiting, "etf_candidates": etf_candidates,
+        "tier_b": {
+            "policy_version": "tier_b_v1（v2.5 shadow，並行觀察）",
+            "note": "正式門檻不變。B 級＝品質篩只差一項，且合乎下列原則；不進正式候選與 Decision Ledger，"
+                    "每日判定另存供日後與正式名單比較。放寬門檻不代表報酬會提高。",
+            "rules": [
+                "單一項目與門檻的差距在一成內",
+                "金融保險業 ROE 達 9%（一般門檻 12%）",
+                "資本密集產業負債比不超過 75%（一般門檻 60%）",
+                "近四季現金轉換未達標，但近八季累計達標",
+            ],
+            "count": len(tier_b_items),
+            "by_decision": dict(Counter(i.get("relaxed_decision") for i in tier_b_items)),
+            "candidates": tier_b_picks,
+        },
         "evaluations": items,
         "method": (
             "tw_value_method v2.4：母池→四季現金轉換／品質硬篩→基本面警訊閘門→近3年估值百分位"
             "→20/60日趨勢＋高檔追價閘門；持倉另用100分Exit Engine，缺值降級且不自動下單。"
-            "ETF 子軌 etf_dca v1：定期定額，年線乖離僅供參考"
+            "ETF 子軌 etf_dca v1：定期定額，年線乖離僅供參考。"
+            "母池 pool_rules_v2（規則式）；B 級 tier_b_v1 為並行觀察，不改正式判定"
         ),
     }
 

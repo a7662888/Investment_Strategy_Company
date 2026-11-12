@@ -25,7 +25,8 @@ def main() -> int:
     full_doc, load_meta = load_fundamentals()
     # 業主 2026-10-14：母池基本面每天輪流更新 10 檔（原 5 檔），100 檔約 10 個交易日輪完一次。
     # 每檔 5 個 FinMind 資料集，每日約 50 次請求。
-    batch_size = int(os.environ.get("VALUE_FUNDAMENTALS_BATCH", "10"))
+    # 2026-11-12：母池擴為 200 檔，輪替改為每天 20 檔（仍約 10 個交易日輪完，每日約 100 次請求）。
+    batch_size = int(os.environ.get("VALUE_FUNDAMENTALS_BATCH", "20"))
     full_doc, refresh_meta = refresh_pool(pool, full_doc, batch_size=batch_size)
     fundamentals_saved = save_fundamentals(full_doc)
     fundamentals = dict(seed)

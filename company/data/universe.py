@@ -20,13 +20,16 @@ from typing import Optional
 
 
 ROOT = Path(__file__).resolve().parents[2]
-POOL_PATH = ROOT / "model_artifacts" / "active_pool.json"        # 母池 100(月)
+POOL_PATH = ROOT / "model_artifacts" / "active_pool.json"        # 母池(月)
 ACTIVE_PATH = ROOT / "model_artifacts" / "active_universe.json"  # 週選 30(供 app.py)
 
-# 選股參數
-POOL_N = 100
+# 選股參數（pool_rules_v2，2026-11-12）
+POOL_N = 200              # 母池檔數（原 100）
 WEEKLY_N = 30
-POOL_SECTOR_CAP = 20      # 母池單一產業上限
+POOL_SECTOR_CAP = 30      # 母池單一產業上限（15%）
+POOL_BUFFER_N = 260       # 既有成員跌出市值前 260 名才剔除，避免名單月月進出
+POOL_PREFILTER_N = 320    # 只對市值前 320 名逐檔抓 60 日成交額，控制 API 用量
+MIN_AVG_TURNOVER = 5e7    # 近 60 日平均成交額下限 0.5 億元（與 ETF 研究候選同一標準）
 WEEKLY_SECTOR_CAP = 8     # 週選單一產業上限
 W_LIQUIDITY = 0.6         # 週選加權:成交額(流動性)
 W_MOMENTUM = 0.4          # 週選加權:60 日動能
@@ -139,50 +142,97 @@ def _sector_capped(rows: list[dict], n: int, cap: int) -> list[dict]:
     return chosen
 
 
+def _legacy_candidates() -> list[dict]:
+    """官方公開資料取不到時的退路：沿用手寫名單，不讓月更整個失敗。"""
+    return [{"code": code, "symbol": _as_tw(code), "name": name, "sector": sector,
+             "listed": None, "market_cap": None, "day_turnover": 0.0}
+            for code, name, sector in RAW_CANDIDATES]
+
+
+def _current_pool_symbols() -> set[str]:
+    try:
+        return {s["symbol"] for s in json.loads(POOL_PATH.read_text(encoding="utf-8")).get("stocks", [])}
+    except (OSError, ValueError, KeyError, TypeError):
+        return set()
+
+
+def select_pool(rows: list[dict], incumbents: set[str], n: int = POOL_N, cap: int = POOL_SECTOR_CAP,
+                buffer_n: int = POOL_BUFFER_N, min_turnover: float = MIN_AVG_TURNOVER) -> list[dict]:
+    """純函式：流動性下限 → 既有成員緩衝 → 依市值與產業上限取 n 檔。
+
+    rows 需已依市值由大到小排序，每列含 symbol／sector／avg_turnover。
+    """
+    liquid = [r for r in rows if (r.get("avg_turnover") or 0) >= min_turnover]
+    rank = {r["symbol"]: i for i, r in enumerate(liquid)}
+    kept = [r for r in liquid if r["symbol"] in incumbents and rank[r["symbol"]] < buffer_n]
+    protected = {r["symbol"] for r in kept}
+    others = [r for r in liquid if r["symbol"] not in protected]
+    # 緩衝區內的既有成員優先保留，其餘名額依市值由大到小遞補；兩群都受產業上限約束。
+    chosen = _sector_capped(kept + others, n, cap)
+    return sorted(chosen, key=lambda r: rank[r["symbol"]])
+
+
 def refresh_all(as_of: Optional[str] = None, token: Optional[str] = None, sleep: float = 0.3) -> dict:
-    """單次抓取 RAW 候選量價,一次產出母池100 + 週選30(省 API)。"""
+    """規則式母池：官方資料定範圍與市值排序，逐檔只抓前段班的 60 日成交額。"""
     as_of = as_of or datetime.now().date().isoformat()
     token = token or os.environ.get("FINMIND_TOKEN")
-    metrics = []
-    for code, name, sector in RAW_CANDIDATES:
-        m = _fetch_metrics(code, as_of, token=token)
+    incumbents = _current_pool_symbols()
+    source = "official"
+    try:
+        from company.data.universe_rules import fetch_candidates
+
+        candidates = fetch_candidates(datetime.fromisoformat(as_of).date(),
+                                      exempt_listing_age={s.split(".")[0] for s in incumbents})
+        if len(candidates) < POOL_N:
+            raise RuntimeError(f"only {len(candidates)} official candidates")
+    except Exception as exc:  # noqa: BLE001 - 官方來源故障時退回手寫名單
+        print(f"[Universe] 官方公開資料不可用（{type(exc).__name__}），退回手寫名單")
+        candidates, source = _legacy_candidates(), "legacy_list"
+    shortlist = candidates[:POOL_PREFILTER_N]
+    seen = {c["symbol"] for c in shortlist}
+    shortlist += [c for c in candidates if c["symbol"] in incumbents and c["symbol"] not in seen]
+
+    metrics, fallback = [], 0
+    for c in shortlist:
+        m = _fetch_metrics(c["code"], as_of, token=token)
+        row = {"symbol": c["symbol"], "name": c["name"], "sector": c["sector"],
+               "market_cap": c.get("market_cap"), "listed": c.get("listed")}
         if m:
-            metrics.append({"symbol": _as_tw(code), "name": name, "sector": sector,
-                            "avg_turnover": round(m["turnover"], 0), "mom60": round(m["mom60"], 4)})
+            row.update(avg_turnover=round(m["turnover"], 0), mom60=round(m["mom60"], 4), turnover_basis="60d_avg")
+        elif c.get("day_turnover"):
+            # 逐檔來源失敗（限流）時不整檔丟掉，改用官方單日成交額並標明。
+            row.update(avg_turnover=round(c["day_turnover"], 0), mom60=0.0, turnover_basis="single_day")
+            fallback += 1
+        else:
+            continue
+        metrics.append(row)
         time.sleep(sleep)
 
-    # --- 母池 100:成交額排序 + 產業分散 ---
-    by_turnover = sorted(metrics, key=lambda x: x["avg_turnover"], reverse=True)
-    pool = _sector_capped(by_turnover, POOL_N, POOL_SECTOR_CAP)
+    if source == "official":
+        pool = select_pool(metrics, incumbents)
+        basis = (f"上市櫃普通股、上市滿 3 年；依估計市值排序，近 60 日平均成交額 ≥ {MIN_AVG_TURNOVER / 1e8:.1f} 億元；"
+                 f"單一產業上限 {POOL_SECTOR_CAP} 檔；既有成員跌出前 {POOL_BUFFER_N} 名才剔除")
+    else:
+        by_turnover = sorted(metrics, key=lambda x: x["avg_turnover"], reverse=True)
+        pool = _sector_capped(by_turnover, min(POOL_N, len(by_turnover)), POOL_SECTOR_CAP)
+        basis = "退路：手寫名單依近 60 交易日平均成交額排序 + 各產業上限分散"
+    pool = [dict(r) for r in pool]
     for i, r in enumerate(pool, 1):
         r["pool_rank"] = i
-
-    # --- 週選 30:從母池依加權複合分(成交額 + 動能)+ 產業分散 ---
-    liq = _pct_rank([r["avg_turnover"] for r in pool])
-    mom = _pct_rank([r["mom60"] for r in pool])
-    for r, l, m in zip(pool, liq, mom):
-        r["composite"] = round(W_LIQUIDITY * l + W_MOMENTUM * m, 4)
-    by_comp = sorted(pool, key=lambda x: x["composite"], reverse=True)
-    weekly = _sector_capped(by_comp, WEEKLY_N, WEEKLY_SECTOR_CAP)
-    weekly = [dict(r) for r in weekly]
-    for i, r in enumerate(weekly, 1):
-        r["rank"] = i
 
     now = datetime.now().isoformat()
     pool_doc = {
         "generated_at": now, "as_of": as_of, "tier": "母池(月更)", "n": len(pool),
-        "basis": "近 60 交易日平均成交額(流動性)排序 + 各產業上限分散",
-        "per_sector_cap": POOL_SECTOR_CAP, "candidates_evaluated": len(metrics),
-        "stocks": [{k: r[k] for k in ("symbol", "name", "sector", "avg_turnover", "mom60", "pool_rank")} for r in pool],
+        "rule_version": "pool_rules_v2", "candidate_source": source,
+        "basis": basis, "per_sector_cap": POOL_SECTOR_CAP,
+        "candidates_evaluated": len(metrics), "eligible_universe": len(candidates),
+        "turnover_single_day_fallback": fallback,
+        "added": sorted(r["symbol"] for r in pool if r["symbol"] not in incumbents),
+        "removed": sorted(incumbents - {r["symbol"] for r in pool}),
+        "stocks": [{k: r.get(k) for k in ("symbol", "name", "sector", "avg_turnover", "mom60", "pool_rank",
+                                          "market_cap", "listed", "turnover_basis")} for r in pool],
     }
-    weekly_doc = {
-        "generated_at": now, "as_of": as_of, "tier": "週選(週更,供每日推薦)", "n": len(weekly),
-        "basis": f"母池100 → 加權複合分(成交額×{W_LIQUIDITY} + 60日動能×{W_MOMENTUM},百分位)+ 各產業上限{WEEKLY_SECTOR_CAP}分散",
-        "weights": {"liquidity": W_LIQUIDITY, "momentum": W_MOMENTUM},
-        "per_sector_cap": WEEKLY_SECTOR_CAP, "pool_size": len(pool),
-        "stocks": [{k: r[k] for k in ("symbol", "name", "sector", "avg_turnover", "mom60", "composite", "rank")} for r in weekly],
-    }
-    return {"pool": pool_doc, "weekly": weekly_doc}
+    return {"pool": pool_doc, "weekly": None}
 
 
 def refresh_weekly_from_pool(as_of: Optional[str] = None, token: Optional[str] = None, sleep: float = 0.3) -> Optional[dict]:
