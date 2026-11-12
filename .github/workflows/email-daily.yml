@@ -1,6 +1,6 @@
 name: Daily Email Digest
 
-# 每交易日 16:35 台北（08:35 UTC）先重算母池100＋ETF子池，再依私有持股寄摘要。
+# 每交易日 16:35 台北（08:35 UTC）先重算母池＋ETF子池，再依私有持股寄摘要。
 # 全程在 GitHub runner 執行，不需開網站或開啟本機；每日輸入另存私有 audit 快照。
 
 on:
@@ -55,7 +55,8 @@ jobs:
     needs: [guard, broker]
     if: always() && needs.guard.result == 'success' && needs.guard.outputs.skip != 'true'
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    # 母池 100 檔時實測約 15 分鐘；擴為 200 檔後預留到 50 分鐘。
+    timeout-minutes: 50
     concurrency:
       group: daily-investment-analysis-email
       cancel-in-progress: false
@@ -160,7 +161,7 @@ jobs:
           GITHUB_DATA_BRANCH: main
           FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 22
         run: python run_chip_flow.py
 
       - name: Freeze changed decisions after fresh analysis

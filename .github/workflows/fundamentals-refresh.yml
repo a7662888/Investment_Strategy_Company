@@ -1,0 +1,38 @@
+name: Fundamentals Refresh (manual)
+
+# 母池擴大或換血後，新進股票要等每日輪替（每天 20 檔）才有財報資料。
+# 這個手動工作流一次補一批，讓新母池在一兩個小時內就有完整資料，不必等十個交易日。
+# 不登入券商、不寄信、不改任何判定；只更新私有資料庫的 value/fundamentals_full.json。
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_size:
+        description: "本次更新幾檔（最舊或不完整者優先）。FinMind 每檔約 5 次請求。"
+        default: "60"
+
+concurrency:
+  group: fundamentals-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Refresh oldest or incomplete fundamentals
+        env:
+          GITHUB_DATA_TOKEN: ${{ secrets.DATA_REPO_TOKEN }}
+          GITHUB_DATA_REPO: a7662888/investment-strategy-data
+          GITHUB_DATA_BRANCH: main
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          BATCH: ${{ inputs.batch_size }}
+        run: |
+          case "$BATCH" in ''|*[!0-9]*) echo "batch_size 必須是正整數"; exit 1;; esac
+          test -n "$GITHUB_DATA_TOKEN"
+          # 個別股票取數失敗（exit 1）不視為整批失敗：下次會優先重試。
+          python run_fundamentals_refresh.py --batch-size "$BATCH" || echo "部分股票取數失敗，已保存其餘結果"

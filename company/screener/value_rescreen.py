@@ -40,6 +40,21 @@ TH = dict(roe_ttm=12.0, gpm=20.0, opm=8.0, eq=0.6, debt=60.0,
           cyc_pb=25.0, cyc_roe_floor=5.0, ret_roe=12.0, ret_ocfni=0.8, ret_pb=50.0,
           ems_roe=12.0, ems_ocfni=0.5, ems_debt=90.0, lease_roe=10.0)
 
+# B 級（tier_b_v1，v2.5 shadow）：正式門檻 TH 不變，另列「只差一項、且合乎下列原則」的標的並行觀察。
+# 門檻用原則定，不為個別股票調整；B 級不進正式候選與 Decision Ledger。
+TIER_B = dict(
+    band=0.10,                   # 單一項目與門檻差距在一成內
+    fin_roe=9.0,                 # 金融保險業 ROE：公股行庫型金控長期 8–11%，12% 等於全數排除
+    capital_intensive_debt=75.0, # 資本密集產業負債比上限（generic 門檻 60%）
+    cash_quarters=8,             # 現金轉換改看近八季累計，排除備貨墊款造成的短期波動
+)
+FINANCIAL_SECTORS = {"金融保險業", "金融"}
+# 官方產業別名稱，另含舊手寫名單的標籤（母池尚未依新規則月更前仍會出現）。
+CAPITAL_INTENSIVE_SECTORS = {
+    "航運業", "建材營造業", "電機機械", "油電燃氣業", "通信網路業", "觀光餐旅", "水泥工業", "鋼鐵工業",
+    "航運", "營建", "重電", "電信", "水泥", "觀光",
+}
+
 _OFFICIAL_CLOSE_CACHE: dict[str, dict] | None = None
 
 
@@ -307,14 +322,14 @@ def _avg(quarterly: list[dict], key: str):
     return total / 4 if total is not None else None
 
 
-def _earnings_quality_ttm(quarterly: list[dict]) -> tuple[float | None, str | None]:
-    """Ratio of four consecutive stand-alone quarterly OCF/NI sums.
+def _earnings_quality_ttm(quarterly: list[dict], count: int = 4) -> tuple[float | None, str | None]:
+    """Ratio of `count` consecutive stand-alone quarterly OCF/NI sums (default four).
 
     Averaging quarter-level ratios weights a small-profit quarter as heavily as
     a large-profit quarter and can invert the quality conclusion.
     """
-    latest = quarterly[-4:]
-    sequence_error = _quarter_sequence_error(latest, 4)
+    latest = quarterly[-count:]
+    sequence_error = _quarter_sequence_error(latest, count)
     if sequence_error:
         return None, sequence_error
     ocfs: list[float] = []
@@ -498,7 +513,35 @@ def _evaluate_etf_dca(out: dict, rows: list[dict]) -> dict:
 
 
 # ---------- 核心 ----------
-def evaluate(symbol: str, fundamentals: dict) -> dict:
+def tier_b_basis(fail_items: list[dict], schema: str, sector: str | None, quarterly: list[dict]) -> str | None:
+    """只差一項、且合乎 TIER_B 原則時回傳白話理由；否則 None。純函式。"""
+    if len(fail_items) != 1:
+        return None
+    item = fail_items[0]
+    key, value, threshold = item["key"], item.get("value"), item.get("threshold")
+    if value is None or threshold is None:
+        return None                                  # 景氣子軌等複合條件不放寬
+    if key == "roe" and schema == "finhold" and value >= TIER_B["fin_roe"]:
+        return (f"ROE {value:.1f}% 低於一般門檻 {threshold:g}%，但達金融業放寬門檻 {TIER_B['fin_roe']:g}%"
+                "（金融業獲利率結構性較低）")
+    if key == "debt" and sector in CAPITAL_INTENSIVE_SECTORS and value <= TIER_B["capital_intensive_debt"]:
+        return (f"負債比 {value:.1f}% 高於一般門檻 {threshold:g}%，但屬資本密集產業（{sector}），"
+                f"放寬至 {TIER_B['capital_intensive_debt']:g}%")
+    if key == "eq":
+        long_ratio, _ = _earnings_quality_ttm(quarterly, TIER_B["cash_quarters"])
+        if long_ratio is not None and long_ratio >= threshold:
+            return (f"近四季現金轉換 {value:.2f} 未達 {threshold:g}，但近八季累計 {long_ratio:.2f} 達標"
+                    "（排除短期營運資金波動）")
+    within = (value >= threshold * (1 - TIER_B["band"]) if item["higher_is_better"]
+              else value <= threshold * (1 + TIER_B["band"]))
+    if within:
+        shown = f"{value:.2f}" if key == "eq" else f"{value:.1f}%"
+        limit = f"{threshold:g}" if key == "eq" else f"{threshold:g}%"
+        return f"{item['label']} {shown} 與門檻 {limit} 的差距在一成內"
+    return None
+
+
+def evaluate(symbol: str, fundamentals: dict, sector: str | None = None) -> dict:
     """回傳最新判定：action／位階／買進區間／依據。純規則、可重現。"""
     code = symbol.replace(".TWO", "").replace(".TW", "")
     info = fundamentals.get(code) or {}
@@ -594,8 +637,19 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
 
     # --- 硬篩（含 sector schema）---
     fails = []
+    fail_items = []
     missing_quality = []
-    schema = ("finhold" if code in FINHOLD else "cyclical" if code in CYCLICAL
+
+    def gate(key, label, value, threshold, higher_is_better=True, text=None):
+        failed = value < threshold if higher_is_better else value > threshold
+        if failed:
+            fails.append(text or (f"{label} {value}<{threshold}" if higher_is_better else f"{label} {value:.1f}>{threshold}"))
+            fail_items.append({"key": key, "label": label, "value": float(value),
+                               "threshold": float(threshold), "higher_is_better": higher_is_better})
+
+    # 既有手寫分類優先；規則式母池新進的金融股沒有毛利率／營益率，依官方產業別走金融子軌。
+    is_financial = code in FINHOLD or (sector in FINANCIAL_SECTORS and code not in LEASING)
+    schema = ("finhold" if is_financial else "cyclical" if code in CYCLICAL
               else "retail" if code in RETAIL else "ems" if code in EMS
               else "leasing" if code in LEASING else "generic")
     if roe is None:
@@ -609,11 +663,11 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
             missing_quality.append("毛利率資料不足")
         if opm is None:
             missing_quality.append("營益率資料不足")
-    if code in FINHOLD:
-        if roe is not None and roe < TH["roe_ttm"]:
-            fails.append(f"金控 ROE_ttm {roe}<{TH['roe_ttm']}")
+    if schema == "finhold":
+        if roe is not None:
+            gate("roe", "ROE", roe, TH["roe_ttm"], text=f"金控 ROE_ttm {roe}<{TH['roe_ttm']}")
         valuation_pct, basis = pb_pct, "PBR"          # 金控走 PBR 主
-    elif code in CYCLICAL:
+    elif schema == "cyclical":
         cheap = pb_pct is not None and pb_pct <= TH["cyc_pb"]
         trough = roe is not None and roe < TH["cyc_roe_floor"]
         ever_pos = any((q.get("roe") or 0) > 0 for q in qs)
@@ -621,42 +675,44 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
             missing_quality.append("景氣子軌 PBR 位階資料不足")
         elif roe is not None and not (cheap and trough and ever_pos):
             fails.append("景氣子軌未達（需 PB 低位＋ROE 谷底＋歷史有獲利力）")
+            fail_items.append({"key": "cyclical", "label": "景氣子軌", "value": None,
+                               "threshold": None, "higher_is_better": True})
         valuation_pct, basis = pb_pct, "PBR(景氣)"
-    elif code in RETAIL:
-        if roe is not None and roe < TH["ret_roe"]:
-            fails.append(f"零售 ROE {roe}<{TH['ret_roe']}")
-        if eq is not None and eq < TH["ret_ocfni"]:
-            fails.append(f"零售 OCF/NI {eq:.2f}<{TH['ret_ocfni']}")
+    elif schema == "retail":
+        if roe is not None:
+            gate("roe", "ROE", roe, TH["ret_roe"], text=f"零售 ROE {roe}<{TH['ret_roe']}")
+        if eq is not None:
+            gate("eq", "現金轉換（OCF/NI）", eq, TH["ret_ocfni"], text=f"零售 OCF/NI {eq:.2f}<{TH['ret_ocfni']}")
         valuation_pct, basis = pb_pct, "PBR(零售)"
-    elif code in EMS:
+    elif schema == "ems":
         # EMS/ODM is structurally low-margin and working-capital intensive.  Applying
         # the generic GPM/OPM/debt gates rejects the whole business model, so retain
         # ROE, cash conversion and a conservative high debt ceiling instead.
-        if roe is not None and roe < TH["ems_roe"]:
-            fails.append(f"EMS ROE {roe}<{TH['ems_roe']}")
-        if eq is not None and eq < TH["ems_ocfni"]:
-            fails.append(f"EMS OCF/NI {eq:.2f}<{TH['ems_ocfni']}")
-        if debt is not None and debt > TH["ems_debt"]:
-            fails.append(f"EMS 負債比 {debt:.1f}>{TH['ems_debt']}")
+        if roe is not None:
+            gate("roe", "ROE", roe, TH["ems_roe"], text=f"EMS ROE {roe}<{TH['ems_roe']}")
+        if eq is not None:
+            gate("eq", "現金轉換（OCF/NI）", eq, TH["ems_ocfni"], text=f"EMS OCF/NI {eq:.2f}<{TH['ems_ocfni']}")
+        if debt is not None:
+            gate("debt", "負債比", debt, TH["ems_debt"], False, text=f"EMS 負債比 {debt:.1f}>{TH['ems_debt']}")
         valuation_pct, basis = pe_pct, "PER(EMS)"
-    elif code in LEASING:
+    elif schema == "leasing":
         # Leasing is a credit-spread business: leverage is inventory, not a generic
         # industrial-company defect.  Use sustainable ROE plus PBR and leave asset
         # quality/funding-cost deterioration as explicit invalidation evidence.
-        if roe is not None and roe < TH["lease_roe"]:
-            fails.append(f"租賃 ROE {roe}<{TH['lease_roe']}")
+        if roe is not None:
+            gate("roe", "ROE", roe, TH["lease_roe"], text=f"租賃 ROE {roe}<{TH['lease_roe']}")
         valuation_pct, basis = pb_pct, "PBR(租賃)"
     else:
-        if roe is not None and roe < TH["roe_ttm"]:
-            fails.append(f"ROE_ttm {roe}<{TH['roe_ttm']}")
-        if gpm is not None and gpm < TH["gpm"]:
-            fails.append(f"GPM {gpm:.1f}<{TH['gpm']}")
-        if opm is not None and opm < TH["opm"]:
-            fails.append(f"OPM {opm:.1f}<{TH['opm']}")
-        if debt is not None and debt > TH["debt"]:
-            fails.append(f"負債比 {debt:.1f}>{TH['debt']}")
-        if eq is not None and eq < TH["eq"]:
-            fails.append(f"OCF/NI {eq:.2f}<{TH['eq']}")
+        if roe is not None:
+            gate("roe", "ROE", roe, TH["roe_ttm"], text=f"ROE_ttm {roe}<{TH['roe_ttm']}")
+        if gpm is not None:
+            gate("gpm", "毛利率", gpm, TH["gpm"], text=f"GPM {gpm:.1f}<{TH['gpm']}")
+        if opm is not None:
+            gate("opm", "營益率", opm, TH["opm"], text=f"OPM {opm:.1f}<{TH['opm']}")
+        if debt is not None:
+            gate("debt", "負債比", debt, TH["debt"], False, text=f"負債比 {debt:.1f}>{TH['debt']}")
+        if eq is not None:
+            gate("eq", "現金轉換（OCF/NI）", eq, TH["eq"], text=f"OCF/NI {eq:.2f}<{TH['eq']}")
         valuation_pct, basis = pe_pct, "PER"
 
     out.update(quality_pass=False if fails else None if missing_quality else True,
@@ -664,6 +720,20 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
                valuation_basis=basis, valuation_pct=valuation_pct)
     if missing_quality:
         out["fundamentals_complete"] = False
+
+    # --- B 級（並行觀察，不改正式判定）---
+    basis_b = None if missing_quality else tier_b_basis(fail_items, schema, sector, qs)
+    out["quality_tier"] = ("A" if out["quality_pass"] is True else "B" if basis_b
+                           else "C" if fails else None)
+    if basis_b:
+        relaxed = ("watch" if valuation_pct is None else "accumulate" if valuation_pct <= 40
+                   else "hold" if valuation_pct <= 70 else "watch")
+        guard = evaluate_fundamentals({**out, "quality_pass": True, "action": relaxed})
+        if relaxed == "accumulate" and not guard["allow_new"]:
+            relaxed = "watch"
+        if schema == "leasing" and relaxed == "accumulate":
+            relaxed = "hold"
+        out.update(tier_b_basis=basis_b, relaxed_action=relaxed, relaxed_fundamental_assessment=guard)
 
     # --- 估值 → action ---
     if fails:
@@ -725,10 +795,22 @@ def evaluate(symbol: str, fundamentals: dict) -> dict:
     return out
 
 
-def rescreen_all(symbols: list[str], fundamentals: dict | None = None) -> list[dict]:
+def pool_sectors() -> dict[str, str]:
+    """母池檔案中的 {代號: 產業別}；讀不到回空（等同沿用手寫分類）。"""
+    try:
+        pool = json.loads((ROOT / "model_artifacts" / "active_pool.json").read_text(encoding="utf-8"))
+        return {str(row["symbol"]).split(".")[0]: row.get("sector") for row in pool.get("stocks", [])
+                if row.get("sector")}
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def rescreen_all(symbols: list[str], fundamentals: dict | None = None,
+                 sectors: dict[str, str] | None = None) -> list[dict]:
     fundamentals = fundamentals if fundamentals is not None else (
         json.load(open(FUNDAMENTALS, encoding="utf-8")) if FUNDAMENTALS.exists() else {}
     )
+    sectors = pool_sectors() if sectors is None else sectors
     results = []
     for i, sym in enumerate(symbols):
         if i:
@@ -736,7 +818,8 @@ def rescreen_all(symbols: list[str], fundamentals: dict | None = None) -> list[d
             cached = (fundamentals.get(code) or {}).get("valuation") or {}
             time.sleep(0.1 if cached.get("pe_quantiles_5pct") or cached.get("pb_quantiles_5pct") else 1.5)
         try:
-            results.append(evaluate(sym, fundamentals))
+            results.append(evaluate(sym, fundamentals,
+                                    sectors.get(sym.replace(".TWO", "").replace(".TW", ""))))
         except Exception as exc:  # 單檔失敗不得中斷整批
             results.append({"symbol": sym, "error": f"{type(exc).__name__}: {exc}"})
     return results

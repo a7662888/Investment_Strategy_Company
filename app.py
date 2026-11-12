@@ -1165,6 +1165,7 @@ def prepare_decision_state(state: dict) -> dict:
             item["decision"] = "資料過期，暫停判定" if context["status"] == "stale" else "資料不足，暫停判定"
             item["action"] = "watch"
             item["entry_range"] = None
+            item["relaxed_decision"] = None      # 資料過期時 B 級並行判定同樣不得顯示
             item["reasons"] = list(context["reasons"]) + item.get("reasons", [])
         items.append(item)
     out = {**state, "evaluations": items, "freshness": freshness}

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-可投資母池更新。正式決策直接掃描母池100，不再使用週選30作決策來源。
+可投資母池更新（規則式，預設 200 檔）。正式決策直接掃描母池，不再使用週選30作決策來源。
 
 用法:
-    python run_universe_refresh.py pool              # 月更母池100（唯一正式模式）
+    python run_universe_refresh.py pool              # 月更母池（唯一正式模式）
     python run_universe_refresh.py pool 2026-05-28   # 指定 as_of
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ def _summary(doc, title):
     for s in doc["stocks"][:10]:
         rk = s.get("rank", s.get("pool_rank"))
         comp = f" 複合{s['composite']}" if "composite" in s else ""
-        print(f"    {rk:>2}. {s['symbol']} {s['name']} ({s['sector']}) 日均成交額 {s['avg_turnover']:,.0f} 動能{s['mom60']:+.1%}{comp}")
+        print(f"    {rk:>3}. {s['symbol']} {s['name']} ({s['sector']}) 日均成交額 {s['avg_turnover']:,.0f}{comp}")
 
 
 def main():
@@ -38,12 +38,18 @@ def main():
     if mode != "pool":
         raise SystemExit("週選30與三方競賽已退役；唯一支援模式為 pool")
     res = u.refresh_all(as_of=as_of)
+    _summary(res["pool"], "母池(月)")
+    pool = res["pool"]
+    print(f"\n  候選來源 {pool.get('candidate_source')}｜符合範圍 {pool.get('eligible_universe')} 檔｜"
+          f"逐檔評估 {pool.get('candidates_evaluated')} 檔｜單日成交額替代 {pool.get('turnover_single_day_fallback')} 檔")
+    print(f"  新增 {len(pool.get('added') or [])} 檔、剔除 {len(pool.get('removed') or [])} 檔：{pool.get('removed')}")
+    if pool["n"] < 150 and pool.get("candidate_source") == "official":
+        raise SystemExit(f"母池只有 {pool['n']} 檔，低於安全下限 150，拒絕覆寫（多半是逐檔資料來源故障）")
+
     u.save_pool(res["pool"])
     # 同時寫入私有資料庫：repo 檔案要靠部署才生效，而母池 commit 不觸發部署。
     durable = u.save_pool_durable(res["pool"])
     print("持久化:", durable)
-    _summary(res["pool"], "母池100(月)")
-
     print("\n已寫入 model_artifacts/active_pool.json 與私有資料庫；網站不必等部署即可讀到新母池。")
 
 
