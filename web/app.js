@@ -3305,7 +3305,13 @@ function renderDailyValuePanel() {
       ${provenanceLine(item)}
     </article>`;
     };
-    const picks = asArray(data.top_picks);
+    // 母池擴為 200 檔後，候選可能超過後端預先切好的前幾名；這裡直接從當日完整評估取全部，
+    // 依排序分數由高到低，避免像 2026-11-13 那樣 7 檔候選只顯示 5 檔。
+    const formalPicks = asArray(data.evaluations).filter(item =>
+      item.decision === "可分批研究" && item.eligible_pool && !item.is_etf && item.as_of === data.as_of
+      && item.decision_context?.executable !== false)
+      .sort((a, b) => Number(b.rank_score || 0) - Number(a.rank_score || 0));
+    const picks = formalPicks.length ? formalPicks : asArray(data.top_picks);
     const waiting = asArray(data.waiting_list);
     const etfs = asArray(data.etf_candidates);
     const paused = asArray(data.evaluations).filter(item =>
@@ -3343,7 +3349,7 @@ function renderDailyValuePanel() {
       <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:7px;padding:8px 10px;margin-bottom:10px;font-size:12px;color:#065f46;">
         母池 ${c.mother_pool || 0} 檔中，目前 ${c.quality_covered || 0} 檔具完整品質資料；其餘 ${c.not_yet_covered || 0} 檔不會假裝已完成基本面判定。
       </div>
-      <h3 style="font-size:14px;margin:8px 0;">可分批研究</h3>
+      <h3 style="font-size:14px;margin:8px 0;">可分批研究（${picks.length}）</h3>
       ${picks.length ? picks.map(card).join("") : `<p style="font-size:13px;color:var(--muted);">${data.freshness?.status !== "current" ? "分析資料尚未追平完整交易日，暫停買賣判定。" : asArray(data.evaluations).some(i => i.decision_context?.executable === false) ? "部分資料需重算或補齊；未驗證的標的不列買進候選。" : "目前沒有同時通過品質、估值與止跌條件的標的。"}</p>`}
       ${paused.length ? `<details open style="margin-top:8px;"><summary style="font-size:13px;font-weight:600;color:#b45309;">基本面待確認，暫緩新增（${paused.length}）</summary>${paused.map(card).join("")}</details>` : ""}
       ${waiting.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:600;">暫不追價／等待止跌／高風險（${waiting.length}）</summary><div style="margin-top:8px;">${waiting.map(card).join("")}</div></details>` : ""}

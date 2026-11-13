@@ -258,7 +258,7 @@ def build_daily_state(results: list[dict], pool_codes: set[str], pool_total: int
     as_of = _consensus_as_of(items)
     current_eligible = [i for i in eligible if i.get("as_of") == as_of]
     picks = sorted((i for i in current_eligible if i["decision"] == "可分批研究"),
-                   key=lambda x: x["rank_score"], reverse=True)[:5]
+                   key=lambda x: x["rank_score"], reverse=True)[:10]   # 母池 200 檔後由 5 放寬到 10
     waiting = sorted((i for i in current_eligible if i["decision"] in (
         "等待止跌", "高風險反轉觀察", "高檔，等待拉回", "基本面待確認，暫緩新增"
     )),
