@@ -188,7 +188,11 @@ def _daily_item(result: dict, eligible_pool: bool) -> dict:
     return {
         "symbol": symbol, "name": result.get("name"), "as_of": result.get("as_of"),
         "price": round(float(result["price"]), 2) if result.get("price") is not None else None,
-        "action": "watch" if (not reliability["executable"] or not fundamental["allow_new"]) and action == "accumulate" else action,
+        # 估值或財報還沒抓到的標的（母池剛換血時）evaluate 會回 action=None。
+        # 每日紀錄要求每檔都有 action，缺一檔就整天不存、連帶讓後面的寄信步驟全部跳過
+        # （2026-11-13 實例：母池擴為 200 檔後 21 檔尚無財報）。判定已是「資料不足」，行動一律觀望。
+        "action": "watch" if action is None or (
+            (not reliability["executable"] or not fundamental["allow_new"]) and action == "accumulate") else action,
         "source_action": result.get("source_action", action),
         "decision": decision, "eligible_pool": bool(eligible_pool),
         "plain_summary": summary, "turn_price": turn,

@@ -203,3 +203,26 @@ def test_stale_state_hides_parallel_decision_too():
     prepared = app.prepare_decision_state({"as_of": "2020-01-02", "evaluations": [item], "top_picks": []})
     assert prepared["freshness"]["status"] == "stale"
     assert prepared["evaluations"][0]["relaxed_decision"] is None
+
+
+def test_stock_without_fundamentals_still_gets_a_recordable_daily_row():
+    """母池剛換血時新進股票還沒有財報：判定為資料不足、行動為觀望，不得讓每日紀錄整天失敗。"""
+    prices = [{"date": "2026-11-12", "close": 50.0, "adj_close": 50.0} for _ in range(60)]
+    with patch("company.screener.value_rescreen._yahoo_history", return_value=prices),             patch("company.screener.value_rescreen._finmind_per", return_value=[]):
+        raw = evaluate("6278.TW", {}, "電子零組件業")
+    assert raw["action"] is None and raw["data_incomplete"] == "valuation_unavailable"
+    item = _daily_item(raw, True)
+    assert item["decision"] == "資料不足" and item["action"] == "watch"
+    assert item["quality_tier"] is None and item["relaxed_decision"] is None
+    assert item["plain_summary"] == "財報或估值資料不完整：暫不判定。"
+
+
+def test_holiday_refresh_keeps_years_the_exchange_no_longer_returns():
+    from company.data.market_calendar import merge_holidays
+    cached = [{"date": "2026-10-09", "name": "國慶日"}, {"date": "2026-12-25", "name": "行憲紀念日"}]
+    next_year = [{"date": "2027-01-01", "name": "開國紀念日"}]
+    assert [h["date"] for h in merge_holidays(next_year, cached)] == ["2026-10-09", "2026-12-25", "2027-01-01"]
+    # 同一年度以新資料為準（交易所更正時不保留舊列）。
+    corrected = [{"date": "2026-10-09", "name": "國慶日"}]
+    assert [h["date"] for h in merge_holidays(corrected, cached)] == ["2026-10-09"]
+    assert merge_holidays(next_year, []) == next_year

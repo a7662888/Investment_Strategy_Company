@@ -60,6 +60,19 @@ def parse_holidays(rows: list[dict]) -> list[dict]:
     return holidays
 
 
+def merge_holidays(fresh: list[dict], cached: list[dict]) -> list[dict]:
+    """新抓到的年度以新資料為準；新資料沒涵蓋的年度保留既有紀錄。
+
+    證交所的休市日 API 只回「一個年度」。年底公布次年行事曆後，整份回應換成次年，
+    若直接覆寫，當年剩下的休市日就全部消失（2026-11-13 實例：回應變成 2027 年版，
+    2026-12-25 行憲紀念日與所有已過的 2026 休市日被丟掉，系統會把它們當成交易日）。
+    """
+    years = {str(item.get("date") or "")[:4] for item in fresh}
+    kept = [item for item in cached
+            if isinstance(item, dict) and item.get("date") and str(item["date"])[:4] not in years]
+    return sorted(kept + list(fresh), key=lambda item: item["date"])
+
+
 def fetch_holidays(timeout: float = 30.0) -> list[dict]:
     request = urllib.request.Request(
         SOURCE_URL, headers={"User-Agent": "investment-market-calendar/1.0"})
@@ -106,7 +119,7 @@ def refresh(force: bool = False) -> dict:
     if cache is not None and fresh_enough and not force:
         return cache
     try:
-        return _save_cache(fetch_holidays())
+        return _save_cache(merge_holidays(fetch_holidays(), (cache or {}).get("holidays") or []))
     except Exception:  # noqa: BLE001
         # 抓不到就沿用舊表；完全沒有表時由 is_holiday fail-open。
         return cache or {"holidays": [], "count": 0, "stale": True}
